@@ -655,11 +655,37 @@ def create_app(
             key = (_normalize_music_text(track.artist), _normalize_music_text(track.title))
             unique.setdefault(key, track)
         tracks = list(unique.values())[:10000]
+        previous = store.latest_vk_import_job()
+        carried_processed = 0
+        carried_matched = 0
+        carried_unmatched = 0
+        if previous and previous["status"] == "complete" and previous["source_url"] == source_url:
+            previous_tracks = [ExternalTrackDTO.model_validate(item) for item in previous["tracks"]]
+            previous_keys = [
+                (_normalize_music_text(track.artist), _normalize_music_text(track.title))
+                for track in previous_tracks
+            ]
+            current_keys = [
+                (_normalize_music_text(track.artist), _normalize_music_text(track.title))
+                for track in tracks[:len(previous_keys)]
+            ]
+            if previous_keys and previous_keys == current_keys:
+                carried_processed = len(previous_keys)
+                carried_matched = int(previous["matched"])
+                carried_unmatched = int(previous["unmatched"])
         job = store.create_vk_import_job(
             app_user.id,
             source_url,
             [track.model_dump(mode="json", by_alias=True, exclude_none=True) for track in tracks],
         )
+        if carried_processed:
+            store.update_vk_import_job(
+                str(job["id"]),
+                processed=carried_processed,
+                matched=carried_matched,
+                unmatched=carried_unmatched,
+            )
+            job = store.load_vk_import_job(str(job["id"]), user_id=app_user.id) or job
         schedule_vk_import_job(str(job["id"]), app_user.id)
         return VKImportJobDTO.model_validate(job)
 

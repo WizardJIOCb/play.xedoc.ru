@@ -414,6 +414,18 @@ def test_vk_browser_import_collects_full_list_in_background(client: TestClient) 
     assert job["matched"] == 1
     assert job["unmatched"] == 1
 
+    extended = client.post(
+        "/api/import/vk/jobs",
+        json={
+            **payload,
+            "tracks": payload["tracks"] + [{"title": "Third", "artist": "Another Artist"}],
+        },
+    )
+    assert extended.status_code == 200
+    assert extended.json()["total"] == 3
+    assert extended.json()["processed"] == 2
+    assert extended.json()["matched"] == 1
+
 
 def test_interrupted_vk_import_is_resumable_after_restart(settings, store: CredentialStore) -> None:
     job = store.create_vk_import_job(
