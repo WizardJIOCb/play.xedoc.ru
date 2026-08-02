@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
-type TooltipState = { text: string; x: number; y: number; placement: 'top' | 'bottom' }
+type TooltipState = { text: string; anchorX: number; x: number; y: number; placement: 'top' | 'bottom'; arrowX?: number }
 
 const selector = 'button, [role="button"], [data-tooltip], input[type="range"]'
 
@@ -10,8 +10,25 @@ function tooltipText(element: HTMLElement) {
   return raw.replace(/\s+/g, ' ').trim().slice(0, 120)
 }
 
+export function clampTooltipX(anchorX: number, tooltipWidth: number, viewportWidth: number, padding = 10) {
+  const halfWidth = tooltipWidth / 2
+  return Math.max(padding + halfWidth, Math.min(viewportWidth - padding - halfWidth, anchorX))
+}
+
 export function GlobalTooltip() {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!tooltip || !tooltipRef.current) return
+    const width = tooltipRef.current.getBoundingClientRect().width
+    if (!width) return
+    const x = clampTooltipX(tooltip.anchorX, width, window.innerWidth)
+    const arrowX = Math.max(12, Math.min(width - 12, tooltip.anchorX - x + width / 2))
+    if (Math.abs(x - tooltip.x) > .5 || Math.abs(arrowX - (tooltip.arrowX ?? width / 2)) > .5) {
+      setTooltip((current) => current ? { ...current, x, arrowX } : current)
+    }
+  }, [tooltip])
 
   useEffect(() => {
     const migrateTitles = (root: ParentNode) => {
@@ -39,9 +56,11 @@ export function GlobalTooltip() {
       if (!text) return
       const rect = target.getBoundingClientRect()
       const placement = rect.top > 72 ? 'top' : 'bottom'
+      const anchorX = rect.left + rect.width / 2
       setTooltip({
         text,
-        x: Math.max(14, Math.min(window.innerWidth - 14, rect.left + rect.width / 2)),
+        anchorX,
+        x: Math.max(14, Math.min(window.innerWidth - 14, anchorX)),
         y: placement === 'top' ? rect.top - 10 : rect.bottom + 10,
         placement,
       })
@@ -72,5 +91,6 @@ export function GlobalTooltip() {
   }, [])
 
   if (!tooltip) return null
-  return <div className={`global-tooltip global-tooltip--${tooltip.placement}`} role="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>{tooltip.text}</div>
+  const style = { left: tooltip.x, top: tooltip.y, '--tooltip-arrow-x': tooltip.arrowX ? `${tooltip.arrowX}px` : '50%' } as CSSProperties
+  return <div ref={tooltipRef} className={`global-tooltip global-tooltip--${tooltip.placement}`} role="tooltip" style={style}>{tooltip.text}</div>
 }

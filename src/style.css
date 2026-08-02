@@ -811,7 +811,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
 .global-tooltip { position: fixed; z-index: 400; max-width: min(300px,calc(100vw - 28px)); padding: 8px 10px; border: 1px solid rgba(217,255,99,.2); border-radius: 9px; background: rgba(20,23,27,.98); box-shadow: 0 10px 35px rgba(0,0,0,.42); color: #e8eadf; font-size: var(--type-caption); font-weight: 650; line-height: 1.35; text-align: center; pointer-events: none; white-space: normal; animation: tooltip-in .13s ease; }
 .global-tooltip--top { transform: translate(-50%,-100%); }
 .global-tooltip--bottom { transform: translate(-50%,0); }
-.global-tooltip::after { content: ""; position: absolute; left: 50%; width: 7px; height: 7px; background: #15181d; border-right: 1px solid rgba(217,255,99,.2); border-bottom: 1px solid rgba(217,255,99,.2); }
+.global-tooltip::after { content: ""; position: absolute; left: var(--tooltip-arrow-x,50%); width: 7px; height: 7px; background: #15181d; border-right: 1px solid rgba(217,255,99,.2); border-bottom: 1px solid rgba(217,255,99,.2); }
 .global-tooltip--top::after { bottom: -5px; transform: translateX(-50%) rotate(45deg); }
 .global-tooltip--bottom::after { top: -5px; transform: translateX(-50%) rotate(225deg); }
 @keyframes tooltip-in { from { opacity: 0; filter: blur(2px); } }

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { GlobalTooltip } from './GlobalTooltip'
+import { clampTooltipX, GlobalTooltip } from './GlobalTooltip'
 
 afterEach(cleanup)
 
@@ -15,5 +15,11 @@ describe('GlobalTooltip', () => {
     render(<><button>Слушать подборку</button><GlobalTooltip /></>)
     fireEvent.pointerOver(screen.getByRole('button'))
     expect(screen.getByRole('tooltip')).toHaveTextContent('Слушать подборку')
+  })
+
+  it('keeps a wide hint inside both viewport edges', () => {
+    expect(clampTooltipX(14, 300, 1000)).toBe(160)
+    expect(clampTooltipX(986, 300, 1000)).toBe(840)
+    expect(clampTooltipX(500, 300, 1000)).toBe(500)
   })
 })
