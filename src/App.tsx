@@ -48,6 +48,7 @@ import { SourcesModal } from './components/SourcesModal'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
+import { trackGoal, trackSection } from './lib/analytics'
 import { usePlayer } from './player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
@@ -387,6 +388,14 @@ function PrivateApp() {
   const vkImportStarted = useRef(false)
   const player = usePlayer()
 
+  useEffect(() => {
+    if (selectedPlaylist) {
+      trackSection('playlist_detail', 'Плейлист')
+      return
+    }
+    if (window.location.pathname === '/') trackSection(view, viewTitles[view].title)
+  }, [selectedPlaylist, view])
+
   const refresh = useCallback(() => {
     setLoading(true)
     setLoadError('')
@@ -407,7 +416,10 @@ function PrivateApp() {
     window.history.replaceState(null, '', window.location.pathname)
     setSourcesOpen(true)
     void decodeVKImportFragment(fragment)
-      .then(({ sourceUrl, tracks }) => startVKImportJob(sourceUrl, tracks))
+      .then(({ sourceUrl, tracks }) => {
+        trackGoal('vk_import_started', { method: 'collector', trackCount: tracks.length })
+        return startVKImportJob(sourceUrl, tracks)
+      })
       .then((job) => setNotice(`Получено ${job.total} треков из VK. Импорт продолжается в фоне.`))
       .catch((reason) => setNotice(reason instanceof Error ? reason.message : 'Не удалось запустить импорт из VK'))
   }, [data.appUser])

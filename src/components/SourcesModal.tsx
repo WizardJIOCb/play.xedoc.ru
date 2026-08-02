@@ -1,6 +1,7 @@
 import { Bookmark, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Headphones, Import, LoaderCircle, LogOut, Music2, RotateCw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { disconnectYandex, getLatestVKImportJob, importVKTracks } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { VKImportJob } from '../types'
 
 interface SourcesModalProps {
@@ -98,6 +99,7 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   const [copied, setCopied] = useState(false)
   const [job, setJob] = useState<VKImportJob | null>(null)
   const bookmarkRef = useRef<HTMLAnchorElement>(null)
+  const trackedCompleteJob = useRef('')
   const tracks = useMemo(() => parseTracks(trackText), [trackText])
   const vkUrl = useMemo(() => canonicalVKUrl(sourceUrl), [sourceUrl])
 
@@ -117,7 +119,11 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   }, [collector])
 
   useEffect(() => {
-    if (job?.status === 'complete') onChanged()
+    if (job?.status !== 'complete') return
+    onChanged()
+    if (trackedCompleteJob.current === job.id) return
+    trackedCompleteJob.current = job.id
+    trackGoal('vk_import_completed', { method: 'collector', matched: job.matched, unmatched: job.unmatched })
   }, [job?.status, onChanged])
 
   if (!open) return null
@@ -125,7 +131,9 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   const importVK = async () => {
     setLoading(true); setError(''); setMessage('')
     try {
+      trackGoal('vk_import_started', { method: 'manual', trackCount: tracks.length })
       const result = await importVKTracks(sourceUrl, tracks)
+      trackGoal('vk_import_completed', { method: 'manual', matched: result.matched, unmatched: result.unmatched.length })
       setMessage(`Готово: ${result.matched} треков найдено в подключённом каталоге, ${result.unmatched.length} сохранено как сигналы вкуса.`)
       onChanged()
     } catch (reason) {

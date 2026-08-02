@@ -1,6 +1,7 @@
 import { Camera, Globe2, LoaderCircle, LockKeyhole, Save, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createLocalPlaylist, deleteLocalPlaylist, getPlaylist, removeTrackFromLocalPlaylist, updateLocalPlaylist, updateLocalPlaylistCover } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { Playlist } from '../types'
 import { CoverArt } from './CoverArt'
 import { PLAYLISTS_CHANGED_EVENT } from './PlaylistPicker'
@@ -52,6 +53,7 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
       const value = loaded?.id
         ? await updateLocalPlaylist(loaded.id, { title: title.trim(), description: description.trim(), isPublic })
         : await createLocalPlaylist(title.trim(), description.trim(), isPublic)
+      if (!loaded?.id) trackGoal('playlist_created', { isPublic })
       setLoaded(value)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       onSaved(value)

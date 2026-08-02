@@ -1,6 +1,7 @@
 import { ChevronRight, LoaderCircle, LockKeyhole, UserRound } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { loginAccount, registerAccount } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 
 function usernameError(value: string, mode: 'login' | 'register') {
   const username = value.trim()
@@ -28,6 +29,7 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
     try {
       if (mode === 'register') await registerAccount(username.trim(), displayName.trim(), password)
       else await loginAccount(username.trim(), password)
+      trackGoal(mode === 'register' ? 'auth_register' : 'auth_login')
       onAuthenticated()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось войти')

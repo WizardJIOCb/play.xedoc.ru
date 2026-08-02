@@ -1,6 +1,7 @@
 import { Check, Copy, ExternalLink, LoaderCircle, LockKeyhole, Music2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { pollDeviceAuth, startDeviceAuth } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { DeviceAuthStart } from '../types'
 
 export function ConnectModal({ open, onClose, onConnected }: { open: boolean; onClose: () => void; onConnected: () => void }) {
@@ -44,6 +45,7 @@ export function ConnectModal({ open, onClose, onConnected }: { open: boolean; on
     setError('')
     try {
       const result = await startDeviceAuth()
+      trackGoal('yandex_connect_started')
       setAuth(result)
       window.open(result.verificationUrl, '_blank', 'noopener,noreferrer')
       const poll = () => {
@@ -51,6 +53,7 @@ export function ConnectModal({ open, onClose, onConnected }: { open: boolean; on
           if (!status.connected) return
           stopPolling()
           setAuth(undefined)
+          trackGoal('yandex_connect_completed')
           onConnected()
           onClose()
         }).catch((reason) => {

@@ -1,6 +1,7 @@
 import { ArrowDownToLine, Clock3, Command, CornerDownLeft, ListPlus, LoaderCircle, Play, Search, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
@@ -14,7 +15,10 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
   const player = usePlayer()
 
   useEffect(() => {
-    if (open) window.setTimeout(() => inputRef.current?.focus(), 40)
+    if (open) {
+      trackGoal('search_opened')
+      window.setTimeout(() => inputRef.current?.focus(), 40)
+    }
     else {
       requestRef.current += 1
       setQuery('')
@@ -64,9 +68,9 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter') return
-              if (tracks[0]) player.playTrack(tracks[0], tracks)
-              else if (results.playlists[0]) onPlaylistPlay(results.playlists[0])
-              else if (results.profiles?.[0]) window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}`
+              if (tracks[0]) { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(tracks[0], tracks) }
+              else if (results.playlists[0]) { trackGoal('search_result_selected', { resultType: 'playlist' }); onPlaylistPlay(results.playlists[0]) }
+              else if (results.profiles?.[0]) { trackGoal('search_result_selected', { resultType: 'profile' }); window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}` }
               else return
               onClose()
             }}
@@ -84,7 +88,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
           <div className="search-results">
             {tracks.slice(0, 6).map((track) => (
               <div key={track.id} className="search-result">
-                <button className="search-result__main" type="button" onClick={() => { player.playTrack(track, tracks); onClose() }}>
+                <button className="search-result__main" type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks); onClose() }}>
                   <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
                   <span className="search-result__meta"><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span>
                   <Play size={17} fill="currentColor" />
@@ -100,7 +104,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
               <div className="search-palette__caption"><span>Плейлисты</span></div>
               <div className="search-playlist-row">
                 {results.playlists.slice(0, 4).map((playlist) => (
-                  <button key={playlist.id} type="button" onClick={() => { onPlaylistPlay(playlist); onClose() }}>
+                  <button key={playlist.id} type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'playlist' }); onPlaylistPlay(playlist); onClose() }}>
                     <CoverArt title={playlist.title} url={playlist.coverUrl} tone={playlist.coverTone} className="search-playlist-row__cover" />
                     <span><strong>{playlist.title}</strong><small>{playlist.trackCount} треков</small></span>
                   </button>
@@ -114,7 +118,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
               <div className="search-palette__caption"><span>Профили</span></div>
               <div className="search-profile-row">
                 {results.profiles.slice(0, 6).map((profile) => (
-                  <a key={profile.username} href={`/users/${encodeURIComponent(profile.username)}`} onClick={onClose}>
+                  <a key={profile.username} href={`/users/${encodeURIComponent(profile.username)}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'profile' }); onClose() }}>
                     <span className="search-profile-row__avatar"><UserRound size={20} /></span>
                     <span><strong>{profile.displayName}</strong><small>@{profile.username} · {profile.publicPlaylistCount} публичных плейлистов</small></span>
                   </a>

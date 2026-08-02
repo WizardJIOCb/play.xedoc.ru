@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { clearNowPlaying, recordListeningEvent, toggleLike as persistTrackLike, updateNowPlaying } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { Track } from '../types'
 
 export interface ListeningHistoryEntry {
@@ -341,6 +342,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setQueue(tracks)
     setPlaybackSource(source)
+    trackGoal('music_play', { source: source ? 'playlist' : 'track', queueSize: tracks.length })
+    if (source) trackGoal('playlist_play', { source: 'xedoc', queueSize: tracks.length })
     selectTrackAt(tracks, index)
   }, [selectTrackAt])
 
@@ -350,6 +353,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const index = Math.max(0, Math.min(Math.trunc(startIndex), normalized.length - 1))
     setQueue(normalized)
     setPlaybackSource(source)
+    trackGoal('music_play', { source: source ? 'playlist' : 'collection', queueSize: normalized.length })
+    if (source) trackGoal('playlist_play', { source: 'xedoc', queueSize: normalized.length })
     selectTrackAt(normalized, index)
   }, [selectTrackAt])
 
@@ -358,8 +363,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (queue.length) selectTrackAt(queue, 0)
       return
     }
+    if (!isPlaying) trackGoal('music_resume', { source: playbackSource ? 'playlist' : 'player' })
     setIsPlaying((value) => !value)
-  }, [current, queue, selectTrackAt])
+  }, [current, isPlaying, playbackSource, queue, selectTrackAt])
 
   const seek = useCallback((seconds: number) => {
     const value = Math.max(0, Math.min(seconds, duration || 0))
@@ -397,9 +403,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setTrackLiked = useCallback(async (track: Track, liked: boolean) => {
     const previous = isTrackLiked(track)
     applyTrackLike(track.id, liked)
-    if (track.id.startsWith('demo-')) return
+    if (track.id.startsWith('demo-')) {
+      trackGoal(liked ? 'track_like' : 'track_unlike', { source: 'demo' })
+      return
+    }
     try {
       await persistTrackLike(track.id, liked)
+      trackGoal(liked ? 'track_like' : 'track_unlike', { source: 'catalog' })
     } catch (error) {
       applyTrackLike(track.id, previous)
       throw error

@@ -1,6 +1,7 @@
 import { Check, ListMusic, ListPlus, LoaderCircle, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { addTrackToLocalPlaylist, createLocalPlaylist, getLocalPlaylists } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { Playlist, Track } from '../types'
 
 export const PLAYLISTS_CHANGED_EVENT = 'xedoc:playlists-changed'
@@ -36,6 +37,7 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
     setLoading(true)
     try {
       await addTrackToLocalPlaylist(playlist.id, track)
+      trackGoal('playlist_track_added', { method: 'existing' })
       setDone(playlist.id)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       window.setTimeout(() => setOpen(false), 550)
@@ -51,6 +53,8 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
     try {
       const playlist = await createLocalPlaylist(title.trim())
       await addTrackToLocalPlaylist(playlist.id, track)
+      trackGoal('playlist_created', { isPublic: false })
+      trackGoal('playlist_track_added', { method: 'new' })
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       setOpen(false)
       setTitle('')

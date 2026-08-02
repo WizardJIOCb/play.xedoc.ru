@@ -1,6 +1,7 @@
 import { Check, LoaderCircle, Share2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createPlaylistShare, createTrackShare } from '../lib/api'
+import { trackGoal } from '../lib/analytics'
 import type { Playlist, Track } from '../types'
 
 type ShareButtonProps = ({ track: Track; playlist?: never } | { playlist: Playlist; track?: never }) & {
@@ -42,6 +43,7 @@ export function ShareButton({ track, playlist, labeled = false, className = '' }
     setState('loading')
     try {
       const link = track ? await createTrackShare(track) : await createPlaylistShare(playlist!.id)
+      trackGoal('share_created', { resourceType: track ? 'track' : 'playlist' })
       const url = new URL(link.path, window.location.origin).toString()
       if (navigator.share) {
         try {
