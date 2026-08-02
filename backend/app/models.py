@@ -202,7 +202,7 @@ class ExternalTrackDTO(APIModel):
 
 
 class VKImportRequest(APIModel):
-    tracks: list[ExternalTrackDTO] = Field(min_length=1, max_length=500)
+    tracks: list[ExternalTrackDTO] = Field(min_length=1, max_length=3000)
     source_url: str = Field(default="https://vk.ru/audios145429079", max_length=500)
 
 
@@ -210,6 +210,25 @@ class VKImportResult(APIModel):
     playlist: PlaylistDTO
     matched: int
     unmatched: list[ExternalTrackDTO] = Field(default_factory=list)
+
+
+class VKBrowserImportKeyDTO(APIModel):
+    token: str
+    endpoint: str
+
+
+class VKImportJobDTO(APIModel):
+    id: str
+    status: Literal["queued", "running", "complete", "failed"]
+    source_url: str
+    total: int
+    processed: int
+    matched: int
+    unmatched: int
+    playlist_id: str | None = None
+    error: str | None = None
+    created_at: int
+    updated_at: int
 
 
 class TrackShareRequest(APIModel):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import json
+import time
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
@@ -378,10 +380,43 @@ def test_vk_taste_import_works_before_yandex_connection(client: TestClient) -> N
     imported = client.post(
         "/api/import/vk",
         json={
-            "sourceUrl": "https://vk.ru/audios-example",
+            "sourceUrl": "https://vk.ru/audios123456",
             "tracks": [{"title": "Unmatched song", "artist": "Some artist"}],
         },
     )
     assert imported.status_code == 200
     assert imported.json()["matched"] == 0
     assert imported.json()["unmatched"][0]["title"] == "Unmatched song"
+
+
+def test_vk_browser_import_collects_full_list_in_background(client: TestClient) -> None:
+    connect(client)
+    key_response = client.post("/api/import/vk/browser-key")
+    assert key_response.status_code == 200
+    key = key_response.json()
+    payload = {
+        "sourceUrl": "https://vk.ru/audios145429079?section=all",
+        "tracks": [
+            {"title": "Test Signal", "artist": "Fixture Artist", "duration": "3:21"},
+            {"title": "Unknown", "artist": "Unknown Artist", "duration": "2:10"},
+        ],
+    }
+    received = client.post(
+        "/api/import/vk/browser",
+        data={"token": key["token"], "payload": json.dumps(payload)},
+    )
+    assert received.status_code == 200
+    assert "Получено 2 треков" in received.text
+
+    job = None
+    for _ in range(20):
+        job = client.get("/api/import/vk/jobs/latest").json()
+        if job and job["status"] in {"complete", "failed"}:
+            break
+        time.sleep(0.02)
+    assert job is not None
+    assert job["status"] == "complete"
+    assert job["total"] == 2
+    assert job["processed"] == 2
+    assert job["matched"] == 1
+    assert job["unmatched"] == 1

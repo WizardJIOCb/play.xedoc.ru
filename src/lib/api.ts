@@ -1,4 +1,4 @@
-import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportResult } from '../types'
+import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKBrowserImportKey, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -56,6 +56,14 @@ export async function disconnectYandex(): Promise<void> {
 
 export async function importVKTracks(sourceUrl: string, tracks: Array<{ title: string; artist: string; duration?: string }>): Promise<VKImportResult> {
   return request<VKImportResult>('/import/vk', { method: 'POST', body: JSON.stringify({ sourceUrl, tracks }) })
+}
+
+export async function createVKBrowserImportKey(): Promise<VKBrowserImportKey> {
+  return request<VKBrowserImportKey>('/import/vk/browser-key', { method: 'POST' })
+}
+
+export async function getLatestVKImportJob(): Promise<VKImportJob | null> {
+  return request<VKImportJob | null>('/import/vk/jobs/latest')
 }
 
 export async function searchMusic(query: string): Promise<SearchPayload> {

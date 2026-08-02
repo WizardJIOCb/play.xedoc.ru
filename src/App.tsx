@@ -367,7 +367,7 @@ function PrivateApp() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [sessionOpen, setSessionOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
-  const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(window.location.search).has('vkImport'))
   const [queueOpen, setQueueOpen] = useState(false)
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>()
   const [playlistLoading, setPlaylistLoading] = useState(false)
@@ -544,7 +544,7 @@ function PrivateApp() {
       <SearchPalette open={searchOpen} suggestions={data.quickTracks} onClose={() => setSearchOpen(false)} onPlaylistPlay={playPlaylist} />
       <SessionBuilder open={sessionOpen} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
-      <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => setSourcesOpen(false)} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
+      <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
       <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />
       <PlaylistEditor
         open={playlistEditorOpen}

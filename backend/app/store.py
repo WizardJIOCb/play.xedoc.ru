@@ -224,6 +224,46 @@ class CredentialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS vk_browser_import_key (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL UNIQUE REFERENCES app_user(id) ON DELETE CASCADE,
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS vk_import_job (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    source_url TEXT NOT NULL,
+                    track_payload TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed')),
+                    total INTEGER NOT NULL,
+                    processed INTEGER NOT NULL DEFAULT 0,
+                    matched INTEGER NOT NULL DEFAULT 0,
+                    unmatched INTEGER NOT NULL DEFAULT 0,
+                    playlist_id TEXT,
+                    error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_vk_import_job_user ON vk_import_job(user_id, created_at DESC)"
+            )
+            connection.execute(
+                """
+                UPDATE vk_import_job
+                SET status = 'failed', error = 'Импорт прерван перезапуском сервиса. Запустите его ещё раз.', updated_at = ?
+                WHERE status IN ('queued', 'running')
+                """,
+                (int(time.time()),),
+            )
             now = int(time.time())
             connection.execute(
                 """
@@ -360,6 +400,128 @@ class CredentialStore:
     def delete_app_session(self, token_hash: str) -> None:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM app_session WHERE token_hash = ?", (token_hash,))
+
+    def rotate_vk_browser_import_key(self, token_hash: str) -> None:
+        user_id = self.current_user_id()
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM vk_browser_import_key WHERE user_id = ?", (user_id,))
+            connection.execute(
+                "INSERT INTO vk_browser_import_key(token_hash, user_id, created_at) VALUES(?, ?, ?)",
+                (token_hash, user_id, now),
+            )
+
+    def user_for_vk_browser_import_key(self, token_hash: str) -> AppUser | None:
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at
+                FROM vk_browser_import_key k JOIN app_user u ON u.id = k.user_id
+                WHERE k.token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "UPDATE vk_browser_import_key SET last_used_at = ? WHERE token_hash = ?",
+                    (now, token_hash),
+                )
+        return AppUser(*row) if row else None
+
+    def create_vk_import_job(self, user_id: str, source_url: str, tracks: list[dict]) -> dict:
+        job_id = f"vkjob-{secrets.token_urlsafe(14)}"
+        now = int(time.time())
+        payload = json.dumps(tracks, ensure_ascii=False, separators=(",", ":"))
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO vk_import_job(
+                    id, user_id, source_url, track_payload, status, total,
+                    processed, matched, unmatched, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, 'queued', ?, 0, 0, 0, ?, ?)
+                """,
+                (job_id, user_id, source_url, payload, len(tracks), now, now),
+            )
+        return self.load_vk_import_job(job_id, user_id=user_id) or {}
+
+    def load_vk_import_job(self, job_id: str, *, user_id: str | None = None) -> dict | None:
+        owner_id = user_id or self.current_user_id()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, user_id, source_url, track_payload, status, total, processed,
+                       matched, unmatched, playlist_id, error, created_at, updated_at
+                FROM vk_import_job WHERE id = ? AND user_id = ?
+                """,
+                (job_id, owner_id),
+            ).fetchone()
+        return self._vk_import_job_row(row) if row else None
+
+    def latest_vk_import_job(self) -> dict | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, user_id, source_url, track_payload, status, total, processed,
+                       matched, unmatched, playlist_id, error, created_at, updated_at
+                FROM vk_import_job WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
+                """,
+                (self.current_user_id(),),
+            ).fetchone()
+        return self._vk_import_job_row(row) if row else None
+
+    def update_vk_import_job(
+        self,
+        job_id: str,
+        *,
+        status: str | None = None,
+        processed: int | None = None,
+        matched: int | None = None,
+        unmatched: int | None = None,
+        playlist_id: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        fields: list[str] = ["updated_at = ?"]
+        values: list[object] = [int(time.time())]
+        for column, value in (
+            ("status", status),
+            ("processed", processed),
+            ("matched", matched),
+            ("unmatched", unmatched),
+            ("playlist_id", playlist_id),
+            ("error", error),
+        ):
+            if value is not None:
+                fields.append(f"{column} = ?")
+                values.append(value)
+        values.extend((job_id, self.current_user_id()))
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                f"UPDATE vk_import_job SET {', '.join(fields)} WHERE id = ? AND user_id = ?",
+                values,
+            )
+
+    @staticmethod
+    def _vk_import_job_row(row: tuple) -> dict:
+        try:
+            tracks = json.loads(row[3])
+        except (TypeError, json.JSONDecodeError):
+            tracks = []
+        return {
+            "id": str(row[0]),
+            "user_id": str(row[1]),
+            "source_url": str(row[2]),
+            "tracks": tracks if isinstance(tracks, list) else [],
+            "status": str(row[4]),
+            "total": int(row[5]),
+            "processed": int(row[6]),
+            "matched": int(row[7]),
+            "unmatched": int(row[8]),
+            "playlist_id": row[9],
+            "error": row[10],
+            "created_at": int(row[11]),
+            "updated_at": int(row[12]),
+        }
 
     def save(self, credential: Credential) -> None:
         user_id = self.current_user_id()

@@ -131,6 +131,25 @@ export interface VKImportResult {
   unmatched: Array<{ title: string; artist: string; duration?: string }>
 }
 
+export interface VKBrowserImportKey {
+  token: string
+  endpoint: string
+}
+
+export interface VKImportJob {
+  id: string
+  status: 'queued' | 'running' | 'complete' | 'failed'
+  sourceUrl: string
+  total: number
+  processed: number
+  matched: number
+  unmatched: number
+  playlistId?: string
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export type ViewId = 'home' | 'discover' | 'library' | 'liked' | 'history'
 
 export interface SessionPreferences {

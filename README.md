@@ -6,7 +6,7 @@ Multi-user web player that brings a Yandex Music library and VK taste signals in
 
 - XEDOC account registration and isolated playlists, listening statistics, recommendations and connections for every user.
 - Per-user Yandex Device Flow connection; the Yandex password never enters this application.
-- VK list import that matches playable tracks against the connected catalog and uses unmatched titles as recommendation signals.
+- Full VK collection import through a personal browser bookmark: it reads only title/artist/duration from the user's already-authorized “My music” tab, then matches playable tracks in the background and uses unmatched titles as recommendation signals.
 - Encrypted per-user token storage, scrypt password hashing and opaque HttpOnly sessions.
 - Personal playlists, recommendations, search, likes and audio streaming.
 - Editable XEDOC playlists with descriptions, links, custom covers and public sharing.

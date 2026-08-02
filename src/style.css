@@ -800,6 +800,31 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
 .source-card__import { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .source-card__import small, .source-card__note { color: var(--muted-2); font-size: var(--type-micro); line-height: 1.45; }
 .source-card__import .primary-button { min-height: 39px; }
+.source-card__prepare { width: max-content; min-height: 42px; }
+.vk-collector-setup { padding: 14px; display: grid; gap: 12px; border: 1px solid rgba(217,255,99,.18); border-radius: 12px; background: rgba(217,255,99,.045); }
+.vk-collector-setup ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: #c8cbd2; font-size: var(--type-caption); line-height: 1.45; }
+.vk-collector-setup > div { display: flex; align-items: center; gap: 8px; }
+.vk-bookmarklet { min-height: 42px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px dashed rgba(217,255,99,.45); border-radius: 10px; background: rgba(217,255,99,.12); color: var(--acid); font-size: var(--type-label); font-weight: 800; text-decoration: none; cursor: grab; }
+.vk-bookmarklet:active { cursor: grabbing; }
+.vk-collector-actions { justify-content: space-between; flex-wrap: wrap; }
+.vk-collector-actions .secondary-button { min-height: 38px; text-decoration: none; font-size: var(--type-caption); }
+.vk-collector-actions > button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--muted); font-size: var(--type-micro); cursor: pointer; }
+.vk-import-progress { padding: 12px; display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.15); }
+.vk-import-progress > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vk-import-progress strong { font-size: var(--type-label); }
+.vk-import-progress span, .vk-import-progress small { color: var(--muted); font-size: var(--type-micro); }
+.vk-import-progress__bar { height: 5px; overflow: hidden; border-radius: 10px; background: rgba(255,255,255,.07); }
+.vk-import-progress__bar i { height: 100%; display: block; border-radius: inherit; background: var(--acid); transition: width .3s ease; }
+.vk-import-progress--complete { border-color: rgba(217,255,99,.2); }
+.vk-import-progress--failed { border-color: rgba(255,139,148,.25); }
+.vk-import-progress--failed .vk-import-progress__bar i { background: #ff8b94; }
+.vk-manual-import { border-top: 1px solid var(--line); padding-top: 9px; }
+.vk-manual-import summary { width: max-content; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--type-caption); font-weight: 700; cursor: pointer; list-style: none; }
+.vk-manual-import summary::-webkit-details-marker { display: none; }
+.vk-manual-import[open] summary svg { transform: rotate(180deg); }
+.vk-manual-import > p { margin-top: 9px; }
+.vk-manual-import textarea { margin-top: 9px; }
+.vk-manual-import .source-card__import { margin-top: 9px; }
 .form-success { margin: 0; padding: 10px 12px; border-radius: 9px; background: rgba(217,255,99,.08); color: var(--acid); font-size: var(--type-caption); }
 .password-modal { width: min(440px,100%); padding: 34px; display: grid; justify-items: center; gap: 12px; border: 1px solid var(--line-strong); border-radius: 22px; background: #111319; box-shadow: var(--shadow); text-align: center; }
 .password-modal h2 { margin: 0; font-size: 27px; letter-spacing: -.04em; }
@@ -918,6 +943,11 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .source-card > .secondary-button, .source-card__actions { grid-column: 2; justify-self: start; }
   .source-card__vk-content { grid-column: 2; }
   .source-card__import { align-items: stretch; flex-direction: column; }
+  .source-card__prepare { width: 100%; }
+  .vk-collector-setup > div { align-items: stretch; flex-direction: column; }
+  .vk-bookmarklet { width: 100%; }
+  .vk-collector-setup .icon-button { display: none; }
+  .vk-import-progress > div:first-child { align-items: flex-start; flex-direction: column; gap: 3px; }
   .page-content { padding: 20px 14px 55px; }
   .page-heading { min-height: 94px; }
   .page-heading h1 { font-size: 32px; }

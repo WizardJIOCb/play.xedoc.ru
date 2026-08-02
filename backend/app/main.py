@@ -9,10 +9,9 @@ import re
 import secrets
 import time
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
 from .demo import DEMO_PLAYLISTS, demo_bootstrap, demo_search, demo_session
@@ -60,6 +59,8 @@ from .models import (
     UserProfileDTO,
     VKImportRequest,
     VKImportResult,
+    VKBrowserImportKeyDTO,
+    VKImportJobDTO,
 )
 from .security import CookieSigner, hash_password, session_token_hash, verify_password
 from .store import ANONYMOUS_USER_ID, LEGACY_USER_ID, AppUser, Credential, CredentialStore, CredentialStoreError
@@ -87,6 +88,7 @@ def create_app(
     attempts_lock = asyncio.Lock()
     rate_attempts: dict[str, list[float]] = {}
     rate_lock = asyncio.Lock()
+    vk_job_tasks: set[asyncio.Task[None]] = set()
 
     app = FastAPI(
         title="XEDOC Play API",
@@ -205,6 +207,153 @@ def create_app(
             recent.append(now)
             rate_attempts[key] = recent
 
+    async def match_vk_track(
+        credential: Credential | None,
+        external: ExternalTrackDTO,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[ExternalTrackDTO, TrackDTO | None]:
+        if credential is None:
+            return external, None
+        async with semaphore:
+            try:
+                result = await gateway.search(credential, f"{external.artist} {external.title}")
+            except GatewayError:
+                return external, None
+        wanted_title = _normalize_music_text(external.title)
+        wanted_artist = _normalize_music_text(external.artist)
+        best: tuple[float, TrackDTO] | None = None
+        for candidate in result.tracks:
+            title = _normalize_music_text(candidate.title)
+            artists = _normalize_music_text(" ".join(candidate.artists))
+            title_score = 5 if title == wanted_title else 2 if title in wanted_title or wanted_title in title else 0
+            artist_score = 4 if artists == wanted_artist else 2 if artists in wanted_artist or wanted_artist in artists else 0
+            overlap = len(set(wanted_artist.split()) & set(artists.split()))
+            score = title_score + artist_score + min(2, overlap)
+            if score >= 6 and (best is None or score > best[0]):
+                best = (score, candidate)
+        return external, best[1] if best else None
+
+    def existing_vk_seed_keys() -> set[tuple[str, str]]:
+        keys: set[tuple[str, str]] = set()
+        for event in store.list_listening_events(30_000):
+            if event.get("source") != "vk_seed":
+                continue
+            track = event.get("track") or {}
+            title = _normalize_music_text(str(track.get("title") or ""))
+            artists = track.get("artists") or []
+            artist = _normalize_music_text(str(artists[0] if artists else ""))
+            if title and artist:
+                keys.add((artist, title))
+        return keys
+
+    def save_vk_seed(
+        external: ExternalTrackDTO,
+        track: TrackDTO | None,
+        known_keys: set[tuple[str, str]],
+    ) -> None:
+        key = (_normalize_music_text(external.artist), _normalize_music_text(external.title))
+        if key in known_keys:
+            return
+        seed = track or TrackDTO(
+            id=f"vk-seed-{hashlib.sha1(f'{external.artist}|{external.title}'.encode()).hexdigest()[:20]}",
+            title=external.title,
+            artists=[external.artist],
+            duration_ms=0,
+        )
+        store.save_listening_event(
+            seed.id,
+            seed.model_dump(mode="json", by_alias=True, exclude_none=True),
+            45_000,
+            "vk_seed",
+        )
+        known_keys.add(key)
+
+    def ensure_vk_playlist(source_url: str, total: int) -> str:
+        description = (
+            f"Импортировано из {source_url}\n"
+            f"Собираем доступные версии для {total} треков. "
+            "Весь список уже используется как сигнал для рекомендаций XEDOC."
+        )
+        playlist_data = next(
+            (
+                item for item in store.list_local_playlists()
+                if item["title"] == "Музыка из VK" and source_url in (item.get("description") or "")
+            ),
+            None,
+        )
+        if playlist_data:
+            playlist_data = store.update_local_playlist(playlist_data["id"], description=description) or playlist_data
+        else:
+            playlist_data = store.create_local_playlist("Музыка из VK", description)
+        return str(playlist_data["id"])
+
+    async def process_vk_import_job(job_id: str, owner_id: str) -> None:
+        tenant_token = store.set_current_user(owner_id)
+        try:
+            job = store.load_vk_import_job(job_id)
+            if not job:
+                return
+            store.update_vk_import_job(job_id, status="running")
+            credential = store.load()
+            tracks = [ExternalTrackDTO.model_validate(item) for item in job["tracks"]]
+            playlist_id = ensure_vk_playlist(job["source_url"], len(tracks))
+            store.update_vk_import_job(job_id, playlist_id=playlist_id)
+            known_keys = existing_vk_seed_keys()
+            matched = 0
+            processed = 0
+            semaphore = asyncio.Semaphore(4)
+            for offset in range(0, len(tracks), 20):
+                chunk = tracks[offset:offset + 20]
+                results = await asyncio.gather(
+                    *(match_vk_track(credential, external, semaphore) for external in chunk)
+                )
+                for external, track in results:
+                    save_vk_seed(external, track, known_keys)
+                    if track:
+                        matched += 1
+                        store.add_local_playlist_track(
+                            playlist_id,
+                            track.id,
+                            track.model_copy(update={"stream_url": None}).model_dump(
+                                mode="json", by_alias=True, exclude_none=True
+                            ),
+                        )
+                processed += len(results)
+                store.update_vk_import_job(
+                    job_id,
+                    processed=processed,
+                    matched=matched,
+                    unmatched=processed - matched,
+                )
+            store.update_local_playlist(
+                playlist_id,
+                description=(
+                    f"Импортировано из {job['source_url']}\n"
+                    f"Найдено в подключённом каталоге: {matched} из {len(tracks)}. "
+                    "Весь список учитывается в рекомендациях XEDOC."
+                ),
+            )
+            store.update_vk_import_job(
+                job_id,
+                status="complete",
+                processed=len(tracks),
+                matched=matched,
+                unmatched=len(tracks) - matched,
+            )
+        except Exception:
+            store.update_vk_import_job(
+                job_id,
+                status="failed",
+                error="Не удалось завершить сопоставление. Запустите импорт ещё раз.",
+            )
+        finally:
+            store.reset_current_user(tenant_token)
+
+    def schedule_vk_import_job(job_id: str, owner_id: str) -> None:
+        task = asyncio.create_task(process_vk_import_job(job_id, owner_id))
+        vk_job_tasks.add(task)
+        task.add_done_callback(vk_job_tasks.discard)
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         raw_session = request.cookies.get(settings.user_cookie_name)
@@ -222,7 +371,11 @@ def create_app(
         tenant_token = store.set_current_user(user.id if user else ANONYMOUS_USER_ID)
         if settings.environment == "production" and request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
-            if origin != settings.public_origin.rstrip("/"):
+            vk_bridge_request = (
+                request.url.path == "/api/import/vk/browser"
+                and origin in {"https://vk.ru", "https://m.vk.com"}
+            )
+            if origin != settings.public_origin.rstrip("/") and not vk_bridge_request:
                 store.reset_current_user(tenant_token)
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -446,72 +599,104 @@ def create_app(
     ) -> VKImportResult:
         credential = optional_credential(request)
         semaphore = asyncio.Semaphore(4)
-
-        async def match(external: ExternalTrackDTO) -> tuple[ExternalTrackDTO, TrackDTO | None]:
-            if credential is None:
-                return external, None
-            async with semaphore:
-                try:
-                    result = await gateway.search(credential, f"{external.artist} {external.title}")
-                except GatewayError:
-                    return external, None
-            wanted_title = _normalize_music_text(external.title)
-            wanted_artist = _normalize_music_text(external.artist)
-            best: tuple[float, TrackDTO] | None = None
-            for candidate in result.tracks:
-                title = _normalize_music_text(candidate.title)
-                artists = _normalize_music_text(" ".join(candidate.artists))
-                title_score = 5 if title == wanted_title else 2 if title in wanted_title or wanted_title in title else 0
-                artist_score = 4 if artists == wanted_artist else 2 if artists in wanted_artist or wanted_artist in artists else 0
-                overlap = len(set(wanted_artist.split()) & set(artists.split()))
-                score = title_score + artist_score + min(2, overlap)
-                if score >= 6 and (best is None or score > best[0]):
-                    best = (score, candidate)
-            return external, best[1] if best else None
-
-        results = await asyncio.gather(*(match(track) for track in body.tracks))
+        source_url = _canonical_vk_url(body.source_url)
+        results = await asyncio.gather(
+            *(match_vk_track(credential, track, semaphore) for track in body.tracks)
+        )
         matched_tracks: dict[str, TrackDTO] = {}
         unmatched: list[ExternalTrackDTO] = []
+        known_keys = existing_vk_seed_keys()
         for external, track in results:
-            seed = track or TrackDTO(
-                id=f"vk-seed-{hashlib.sha1(f'{external.artist}|{external.title}'.encode()).hexdigest()[:20]}",
-                title=external.title,
-                artists=[external.artist],
-                duration_ms=0,
-            )
-            store.save_listening_event(
-                seed.id,
-                seed.model_dump(mode="json", by_alias=True, exclude_none=True),
-                45_000,
-                "vk_seed",
-            )
+            save_vk_seed(external, track, known_keys)
             if track:
                 matched_tracks.setdefault(track.id, track)
             else:
                 unmatched.append(external)
 
-        description = (
-            f"Импортировано из {body.source_url}\n"
-            f"Совпало с каталогом Яндекс Музыки: {len(matched_tracks)} из {len(body.tracks)}. "
-            "Список также используется как сигнал для рекомендаций XEDOC."
-        )
-        playlist_data = next(
-            (item for item in store.list_local_playlists() if item["title"] == "Музыка из VK" and body.source_url in (item.get("description") or "")),
-            None,
-        )
-        if playlist_data:
-            playlist_data = store.update_local_playlist(playlist_data["id"], description=description) or playlist_data
-        else:
-            playlist_data = store.create_local_playlist("Музыка из VK", description)
-        playlist_id = playlist_data["id"]
+        playlist_id = ensure_vk_playlist(source_url, len(body.tracks))
         for track in matched_tracks.values():
             store.add_local_playlist_track(
                 playlist_id,
                 track.id,
-                track.model_copy(update={"stream_url": None}).model_dump(mode="json", by_alias=True, exclude_none=True),
+                track.model_copy(update={"stream_url": None}).model_dump(
+                    mode="json", by_alias=True, exclude_none=True
+                ),
             )
+        store.update_local_playlist(
+            playlist_id,
+            description=(
+            f"Импортировано из {source_url}\n"
+            f"Совпало с каталогом Яндекс Музыки: {len(matched_tracks)} из {len(body.tracks)}. "
+            "Список также используется как сигнал для рекомендаций XEDOC."
+            ),
+        )
         playlist = _require_local_playlist(store.load_local_playlist(playlist_id))
         return VKImportResult(playlist=playlist, matched=len(matched_tracks), unmatched=unmatched)
+
+    @app.post("/api/import/vk/browser-key", response_model=VKBrowserImportKeyDTO)
+    async def create_vk_browser_import_key(
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> VKBrowserImportKeyDTO:
+        await enforce_rate_limit(request, "vk-browser-key", maximum=10, window_seconds=3600)
+        token = secrets.token_urlsafe(32)
+        store.rotate_vk_browser_import_key(session_token_hash(token))
+        return VKBrowserImportKeyDTO(token=token, endpoint=f"{settings.public_origin}/api/import/vk/browser")
+
+    @app.get("/api/import/vk/jobs/latest", response_model=VKImportJobDTO | None)
+    async def latest_vk_import_job(_: None = Depends(require_access)) -> VKImportJobDTO | None:
+        job = store.latest_vk_import_job()
+        return VKImportJobDTO.model_validate(job) if job else None
+
+    @app.post("/api/import/vk/browser", response_class=HTMLResponse)
+    async def receive_vk_browser_import(request: Request) -> HTMLResponse:
+        if settings.environment == "production" and request.headers.get("origin") not in {
+            "https://vk.ru",
+            "https://m.vk.com",
+        }:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Откройте импорт со страницы VK")
+        content_length = int(request.headers.get("content-length") or 0)
+        if content_length > 1_500_000:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Список слишком большой")
+        raw_body = await request.body()
+        if len(raw_body) > 1_500_000:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Список слишком большой")
+        try:
+            form = parse_qs(raw_body.decode("utf-8"), keep_blank_values=False, max_num_fields=4)
+            token = form["token"][0]
+            body = VKImportRequest.model_validate_json(form["payload"][0])
+        except (KeyError, UnicodeDecodeError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось прочитать список VK") from exc
+        app_user = store.user_for_vk_browser_import_key(session_token_hash(token))
+        if app_user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Кнопка импорта устарела")
+        await enforce_rate_limit(request, f"vk-browser-import:{app_user.id}", maximum=5, window_seconds=3600)
+        source_url = _canonical_vk_url(body.source_url)
+        unique: dict[tuple[str, str], ExternalTrackDTO] = {}
+        for track in body.tracks:
+            key = (_normalize_music_text(track.artist), _normalize_music_text(track.title))
+            unique.setdefault(key, track)
+        tracks = list(unique.values())[:3000]
+        job = store.create_vk_import_job(
+            app_user.id,
+            source_url,
+            [track.model_dump(mode="json", by_alias=True, exclude_none=True) for track in tracks],
+        )
+        schedule_vk_import_job(str(job["id"]), app_user.id)
+        destination = f"{settings.public_origin}/?vkImport={quote(str(job['id']), safe='')}"
+        return HTMLResponse(
+            content=(
+                "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<title>Импорт VK — XEDOC Play</title></head>"
+                "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#090a0d;"
+                "color:#f5f5f3;font:16px system-ui;text-align:center'>"
+                f"<div><h1>Получено {len(tracks)} треков</h1>"
+                "<p style='color:#a8abb4'>XEDOC уже собирает плейлист. Открываем прогресс…</p></div>"
+                f"<script>setTimeout(()=>location.replace({destination!r}),900)</script></body></html>"
+            ),
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
 
     @app.post("/api/access/unlock", response_model=ActionResponse)
     async def unlock(body: AccessUnlockRequest, request: Request, response: Response) -> ActionResponse:
@@ -1134,6 +1319,18 @@ def _safe_share_token(value: str) -> str:
     if not 20 <= len(value) <= 80 or any(not (char.isalnum() or char in "_-") for char in value):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публичная ссылка не найдена")
     return value
+
+
+def _canonical_vk_url(value: str) -> str:
+    parsed = urlparse(value.strip())
+    hostname = (parsed.hostname or "").casefold()
+    match = re.fullmatch(r"/audios(-?\d+)", parsed.path.rstrip("/"))
+    if parsed.scheme != "https" or hostname not in {"vk.ru", "www.vk.ru", "vk.com", "www.vk.com"} or not match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нужна ссылка вида https://vk.ru/audios145429079",
+        )
+    return f"https://vk.ru/audios{match.group(1)}"
 
 
 def _load_public_share(store: CredentialStore, token: str):
