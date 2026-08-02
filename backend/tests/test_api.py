@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import time
 from dataclasses import replace
 
@@ -391,9 +390,6 @@ def test_vk_taste_import_works_before_yandex_connection(client: TestClient) -> N
 
 def test_vk_browser_import_collects_full_list_in_background(client: TestClient) -> None:
     connect(client)
-    key_response = client.post("/api/import/vk/browser-key")
-    assert key_response.status_code == 200
-    key = key_response.json()
     payload = {
         "sourceUrl": "https://vk.ru/audios145429079?section=all",
         "tracks": [
@@ -401,12 +397,9 @@ def test_vk_browser_import_collects_full_list_in_background(client: TestClient) 
             {"title": "Unknown", "artist": "Unknown Artist", "duration": "2:10"},
         ],
     }
-    received = client.post(
-        "/api/import/vk/browser",
-        data={"token": key["token"], "payload": json.dumps(payload)},
-    )
+    received = client.post("/api/import/vk/jobs", json=payload)
     assert received.status_code == 200
-    assert "Получено 2 треков" in received.text
+    assert received.json()["total"] == 2
 
     job = None
     for _ in range(20):

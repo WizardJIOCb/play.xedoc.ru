@@ -131,11 +131,6 @@ export interface VKImportResult {
   unmatched: Array<{ title: string; artist: string; duration?: string }>
 }
 
-export interface VKBrowserImportKey {
-  token: string
-  endpoint: string
-}
-
 export interface VKImportJob {
   id: string
   status: 'queued' | 'running' | 'complete' | 'failed'

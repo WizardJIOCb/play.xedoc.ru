@@ -212,11 +212,6 @@ class VKImportResult(APIModel):
     unmatched: list[ExternalTrackDTO] = Field(default_factory=list)
 
 
-class VKBrowserImportKeyDTO(APIModel):
-    token: str
-    endpoint: str
-
-
 class VKImportJobDTO(APIModel):
     id: str
     status: Literal["queued", "running", "complete", "failed"]

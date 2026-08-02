@@ -1,7 +1,7 @@
 import { Bookmark, Check, CheckCircle2, ChevronDown, Copy, ExternalLink, Headphones, Import, LoaderCircle, LogOut, Music2, RotateCw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createVKBrowserImportKey, disconnectYandex, getLatestVKImportJob, importVKTracks } from '../lib/api'
-import type { VKBrowserImportKey, VKImportJob } from '../types'
+import { disconnectYandex, getLatestVKImportJob, importVKTracks } from '../lib/api'
+import type { VKImportJob } from '../types'
 
 interface SourcesModalProps {
   open: boolean
@@ -30,10 +30,9 @@ function canonicalVKUrl(value: string) {
   }
 }
 
-function buildCollector({ token, endpoint }: VKBrowserImportKey) {
+function buildCollector(destination: string) {
   const collector = async () => {
-    const endpointValue = '__ENDPOINT__'
-    const tokenValue = '__TOKEN__'
+    const destinationValue = '__DESTINATION__'
     const wait = (delay: number) => new Promise((resolve) => window.setTimeout(resolve, delay))
     const id = window.location.pathname.replace(/\/$/, '').match(/^\/audios(-?\d+)$/)?.[1]
     if (!id) { window.alert('Откройте в VK страницу «Моя музыка» из XEDOC.'); return }
@@ -68,22 +67,24 @@ function buildCollector({ token, endpoint }: VKBrowserImportKey) {
     const tracks = Array.from(unique.values()).slice(0, 3000)
     if (!tracks.length) { badge.textContent = 'XEDOC: треки не найдены. Откройте раздел «Моя музыка».'; return }
     badge.textContent = `XEDOC: передаём ${tracks.length} треков…`
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = endpointValue
-    form.target = '_blank'
-    for (const [name, value] of Object.entries({ token: tokenValue, payload: JSON.stringify({ sourceUrl: `https://vk.ru/audios${id}`, tracks }) })) {
-      const field = document.createElement('textarea')
-      field.name = name
-      field.value = value
-      form.appendChild(field)
+    const json = JSON.stringify({ sourceUrl: `https://vk.ru/audios${id}`, tracks })
+    const bytes = new TextEncoder().encode(json)
+    let payload = bytes
+    let format = 'j'
+    if ('CompressionStream' in window) {
+      const compressed = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))
+      payload = new Uint8Array(await new Response(compressed).arrayBuffer())
+      format = 'g'
     }
-    form.style.display = 'none'
-    document.body.appendChild(form)
-    form.submit()
-    badge.textContent = `XEDOC: ${tracks.length} треков отправлено. Сопоставление продолжится в фоне.`
+    let binary = ''
+    for (let offset = 0; offset < payload.length; offset += 8192) {
+      binary += String.fromCharCode(...payload.subarray(offset, offset + 8192))
+    }
+    const encoded = window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+    badge.textContent = `XEDOC: передаём ${tracks.length} треков и возвращаемся в плеер…`
+    window.location.href = `${destinationValue}#${format}.${encoded}`
   }
-  return `javascript:(${collector.toString().replace('__ENDPOINT__', endpoint).replace('__TOKEN__', token)})()`
+  return `javascript:(${collector.toString().replace('__DESTINATION__', destination)})()`
 }
 
 export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, onChanged }: SourcesModalProps) {
@@ -133,14 +134,9 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
     }
   }
 
-  const prepareCollector = async () => {
-    setLoading(true); setError(''); setMessage('')
-    try {
-      const key = await createVKBrowserImportKey()
-      setCollector(buildCollector(key))
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось подготовить кнопку импорта')
-    } finally { setLoading(false) }
+  const prepareCollector = () => {
+    setError(''); setMessage('')
+    setCollector(buildCollector(`${window.location.origin}/?vkImport=collect`))
   }
 
   const copyCollector = async () => {
@@ -166,10 +162,10 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
             <h3>Весь список из VK по ссылке</h3>
             <p>VK показывает коллекцию только вашей авторизованной вкладке. Персональная кнопка XEDOC прокрутит список до конца и передаст названия — без пароля и cookies VK.</p>
             <input value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setCollector('') }} placeholder="https://vk.ru/audios145429079" aria-label="Ссылка на страницу аудиозаписей VK" />
-            {!collector ? <button className="primary-button source-card__prepare" type="button" disabled={!vkUrl || loading} onClick={() => void prepareCollector()}>{loading ? <LoaderCircle className="spin" size={17} /> : <Bookmark size={17} />} Подготовить автоимпорт</button> : <div className="vk-collector-setup">
+            {!collector ? <button className="primary-button source-card__prepare" type="button" disabled={!vkUrl || loading} onClick={prepareCollector}>{loading ? <LoaderCircle className="spin" size={17} /> : <Bookmark size={17} />} Подготовить автоимпорт</button> : <div className="vk-collector-setup">
               <ol><li>Перетащите кнопку ниже на панель закладок браузера.</li><li>Откройте вашу «Мою музыку» по ссылке.</li><li>На странице VK нажмите сохранённую закладку — остальное произойдёт автоматически.</li></ol>
               <div><a ref={bookmarkRef} className="vk-bookmarklet" draggable="true"><Bookmark size={17} /> Забрать все треки в XEDOC</a><button className="icon-button" type="button" onClick={() => void copyCollector()} data-tooltip="Скопировать код кнопки" aria-label="Скопировать код кнопки">{copied ? <Check size={17} /> : <Copy size={17} />}</button></div>
-              <div className="vk-collector-actions"><a className="secondary-button" href={`${vkUrl}?section=all`} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Открыть мою музыку VK</a><button type="button" onClick={() => void prepareCollector()}><RotateCw size={14} /> Создать новую кнопку</button></div>
+              <div className="vk-collector-actions"><a className="secondary-button" href={`${vkUrl}?section=all`} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Открыть мою музыку VK</a><button type="button" onClick={prepareCollector}><RotateCw size={14} /> Обновить кнопку</button></div>
             </div>}
             {job && <div className={`vk-import-progress vk-import-progress--${job.status}`}><div><strong>{job.status === 'complete' ? 'Импорт завершён' : job.status === 'failed' ? 'Импорт остановлен' : 'Собираем плейлист'}</strong><span>{job.processed} из {job.total} · найдено {job.matched}</span></div><div className="vk-import-progress__bar"><i style={{ width: `${progress}%` }} /></div>{job.error && <small>{job.error}</small>}</div>}
             <details className="vk-manual-import"><summary>Ручной импорт списка <ChevronDown size={15} /></summary><p>Можно вставить строки в формате «Исполнитель — Название».</p><textarea value={trackText} onChange={(event) => setTrackText(event.target.value)} placeholder={'Limp Bizkit — Lonely World\nКино — Группа крови'} aria-label="Список треков из VK" /><div className="source-card__import"><small>Распознано строк: {tracks.length}</small><button className="secondary-button" type="button" disabled={!tracks.length || !vkUrl || loading} onClick={() => void importVK()}>{loading ? <LoaderCircle className="spin" size={17} /> : <Import size={17} />} Импортировать</button></div></details>

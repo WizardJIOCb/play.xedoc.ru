@@ -1,4 +1,4 @@
-import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKBrowserImportKey, VKImportJob, VKImportResult } from '../types'
+import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -58,8 +58,30 @@ export async function importVKTracks(sourceUrl: string, tracks: Array<{ title: s
   return request<VKImportResult>('/import/vk', { method: 'POST', body: JSON.stringify({ sourceUrl, tracks }) })
 }
 
-export async function createVKBrowserImportKey(): Promise<VKBrowserImportKey> {
-  return request<VKBrowserImportKey>('/import/vk/browser-key', { method: 'POST' })
+export async function startVKImportJob(sourceUrl: string, tracks: Array<{ title: string; artist: string; duration?: string }>): Promise<VKImportJob> {
+  return request<VKImportJob>('/import/vk/jobs', { method: 'POST', body: JSON.stringify({ sourceUrl, tracks }) })
+}
+
+export async function decodeVKImportFragment(hash: string): Promise<{ sourceUrl: string; tracks: Array<{ title: string; artist: string; duration?: string }> }> {
+  const match = hash.replace(/^#/, '').match(/^([gj])\.([A-Za-z0-9_-]+)$/)
+  if (!match) throw new Error('Данные импорта VK повреждены или имеют неизвестный формат')
+  const base64 = match[2].replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4)
+  let bytes = Uint8Array.from(window.atob(padded), (character) => character.charCodeAt(0))
+  if (match[1] === 'g') {
+    const decompressed = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    bytes = new Uint8Array(await new Response(decompressed).arrayBuffer())
+  }
+  const payload = JSON.parse(new TextDecoder().decode(bytes)) as { sourceUrl?: unknown; tracks?: unknown }
+  if (typeof payload.sourceUrl !== 'string' || !Array.isArray(payload.tracks)) throw new Error('В данных импорта VK нет списка треков')
+  const tracks = payload.tracks.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const candidate = item as Record<string, unknown>
+    if (typeof candidate.title !== 'string' || typeof candidate.artist !== 'string') return []
+    return [{ title: candidate.title, artist: candidate.artist, ...(typeof candidate.duration === 'string' ? { duration: candidate.duration } : {}) }]
+  }).slice(0, 3000)
+  if (!tracks.length) throw new Error('В списке VK не найдено ни одного трека')
+  return { sourceUrl: payload.sourceUrl, tracks }
 }
 
 export async function getLatestVKImportJob(): Promise<VKImportJob | null> {

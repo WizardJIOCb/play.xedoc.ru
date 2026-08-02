@@ -226,16 +226,6 @@ class CredentialStore:
             )
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS vk_browser_import_key (
-                    token_hash TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL UNIQUE REFERENCES app_user(id) ON DELETE CASCADE,
-                    created_at INTEGER NOT NULL,
-                    last_used_at INTEGER
-                )
-                """
-            )
-            connection.execute(
-                """
                 CREATE TABLE IF NOT EXISTS vk_import_job (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
@@ -400,34 +390,6 @@ class CredentialStore:
     def delete_app_session(self, token_hash: str) -> None:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM app_session WHERE token_hash = ?", (token_hash,))
-
-    def rotate_vk_browser_import_key(self, token_hash: str) -> None:
-        user_id = self.current_user_id()
-        now = int(time.time())
-        with self._lock, self._connect() as connection:
-            connection.execute("DELETE FROM vk_browser_import_key WHERE user_id = ?", (user_id,))
-            connection.execute(
-                "INSERT INTO vk_browser_import_key(token_hash, user_id, created_at) VALUES(?, ?, ?)",
-                (token_hash, user_id, now),
-            )
-
-    def user_for_vk_browser_import_key(self, token_hash: str) -> AppUser | None:
-        now = int(time.time())
-        with self._lock, self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at
-                FROM vk_browser_import_key k JOIN app_user u ON u.id = k.user_id
-                WHERE k.token_hash = ?
-                """,
-                (token_hash,),
-            ).fetchone()
-            if row:
-                connection.execute(
-                    "UPDATE vk_browser_import_key SET last_used_at = ? WHERE token_hash = ?",
-                    (now, token_hash),
-                )
-        return AppUser(*row) if row else None
 
     def create_vk_import_job(self, user_id: str, source_url: str, tracks: list[dict]) -> dict:
         job_id = f"vkjob-{secrets.token_urlsafe(14)}"

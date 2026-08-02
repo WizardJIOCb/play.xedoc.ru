@@ -9,9 +9,9 @@ import re
 import secrets
 import time
 from dataclasses import dataclass
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
 from .demo import DEMO_PLAYLISTS, demo_bootstrap, demo_search, demo_session
@@ -59,7 +59,6 @@ from .models import (
     UserProfileDTO,
     VKImportRequest,
     VKImportResult,
-    VKBrowserImportKeyDTO,
     VKImportJobDTO,
 )
 from .security import CookieSigner, hash_password, session_token_hash, verify_password
@@ -371,11 +370,7 @@ def create_app(
         tenant_token = store.set_current_user(user.id if user else ANONYMOUS_USER_ID)
         if settings.environment == "production" and request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
-            vk_bridge_request = (
-                request.url.path == "/api/import/vk/browser"
-                and origin in {"https://vk.ru", "https://m.vk.com"}
-            )
-            if origin != settings.public_origin.rstrip("/") and not vk_bridge_request:
+            if origin != settings.public_origin.rstrip("/"):
                 store.reset_current_user(tenant_token)
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -625,52 +620,22 @@ def create_app(
         store.update_local_playlist(
             playlist_id,
             description=(
-            f"Импортировано из {source_url}\n"
-            f"Совпало с каталогом Яндекс Музыки: {len(matched_tracks)} из {len(body.tracks)}. "
-            "Список также используется как сигнал для рекомендаций XEDOC."
+                f"Импортировано из {source_url}\n"
+                f"Совпало с каталогом Яндекс Музыки: {len(matched_tracks)} из {len(body.tracks)}. "
+                "Список также используется как сигнал для рекомендаций XEDOC."
             ),
         )
         playlist = _require_local_playlist(store.load_local_playlist(playlist_id))
         return VKImportResult(playlist=playlist, matched=len(matched_tracks), unmatched=unmatched)
 
-    @app.post("/api/import/vk/browser-key", response_model=VKBrowserImportKeyDTO)
-    async def create_vk_browser_import_key(
+    @app.post("/api/import/vk/jobs", response_model=VKImportJobDTO)
+    async def create_vk_import_job(
+        body: VKImportRequest,
         request: Request,
         _: None = Depends(require_access),
-    ) -> VKBrowserImportKeyDTO:
-        await enforce_rate_limit(request, "vk-browser-key", maximum=10, window_seconds=3600)
-        token = secrets.token_urlsafe(32)
-        store.rotate_vk_browser_import_key(session_token_hash(token))
-        return VKBrowserImportKeyDTO(token=token, endpoint=f"{settings.public_origin}/api/import/vk/browser")
-
-    @app.get("/api/import/vk/jobs/latest", response_model=VKImportJobDTO | None)
-    async def latest_vk_import_job(_: None = Depends(require_access)) -> VKImportJobDTO | None:
-        job = store.latest_vk_import_job()
-        return VKImportJobDTO.model_validate(job) if job else None
-
-    @app.post("/api/import/vk/browser", response_class=HTMLResponse)
-    async def receive_vk_browser_import(request: Request) -> HTMLResponse:
-        if settings.environment == "production" and request.headers.get("origin") not in {
-            "https://vk.ru",
-            "https://m.vk.com",
-        }:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Откройте импорт со страницы VK")
-        content_length = int(request.headers.get("content-length") or 0)
-        if content_length > 1_500_000:
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Список слишком большой")
-        raw_body = await request.body()
-        if len(raw_body) > 1_500_000:
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Список слишком большой")
-        try:
-            form = parse_qs(raw_body.decode("utf-8"), keep_blank_values=False, max_num_fields=4)
-            token = form["token"][0]
-            body = VKImportRequest.model_validate_json(form["payload"][0])
-        except (KeyError, UnicodeDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось прочитать список VK") from exc
-        app_user = store.user_for_vk_browser_import_key(session_token_hash(token))
-        if app_user is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Кнопка импорта устарела")
-        await enforce_rate_limit(request, f"vk-browser-import:{app_user.id}", maximum=5, window_seconds=3600)
+    ) -> VKImportJobDTO:
+        app_user = require_app_user(request)
+        await enforce_rate_limit(request, f"vk-import-job:{app_user.id}", maximum=5, window_seconds=3600)
         source_url = _canonical_vk_url(body.source_url)
         unique: dict[tuple[str, str], ExternalTrackDTO] = {}
         for track in body.tracks:
@@ -683,20 +648,12 @@ def create_app(
             [track.model_dump(mode="json", by_alias=True, exclude_none=True) for track in tracks],
         )
         schedule_vk_import_job(str(job["id"]), app_user.id)
-        destination = f"{settings.public_origin}/?vkImport={quote(str(job['id']), safe='')}"
-        return HTMLResponse(
-            content=(
-                "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
-                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-                "<title>Импорт VK — XEDOC Play</title></head>"
-                "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#090a0d;"
-                "color:#f5f5f3;font:16px system-ui;text-align:center'>"
-                f"<div><h1>Получено {len(tracks)} треков</h1>"
-                "<p style='color:#a8abb4'>XEDOC уже собирает плейлист. Открываем прогресс…</p></div>"
-                f"<script>setTimeout(()=>location.replace({destination!r}),900)</script></body></html>"
-            ),
-            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-        )
+        return VKImportJobDTO.model_validate(job)
+
+    @app.get("/api/import/vk/jobs/latest", response_model=VKImportJobDTO | None)
+    async def latest_vk_import_job(_: None = Depends(require_access)) -> VKImportJobDTO | None:
+        job = store.latest_vk_import_job()
+        return VKImportJobDTO.model_validate(job) if job else None
 
     @app.post("/api/access/unlock", response_model=ActionResponse)
     async def unlock(body: AccessUnlockRequest, request: Request, response: Response) -> ActionResponse:

@@ -24,7 +24,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectModal } from './components/ConnectModal'
 import { AuthGate } from './components/AuthGate'
 import { CoverArt } from './components/CoverArt'
@@ -42,7 +42,7 @@ import { Sidebar } from './components/Sidebar'
 import { SourcesModal } from './components/SourcesModal'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
-import { getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount } from './lib/api'
+import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
 import { usePlayer } from './player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
@@ -375,6 +375,7 @@ function PrivateApp() {
   const [playlistEditorOpen, setPlaylistEditorOpen] = useState(false)
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist>()
   const [notice, setNotice] = useState('')
+  const vkImportStarted = useRef(false)
   const player = usePlayer()
 
   const refresh = useCallback(() => {
@@ -387,6 +388,20 @@ function PrivateApp() {
   }, [])
 
   useEffect(refresh, [refresh])
+
+  useEffect(() => {
+    if (!data.appUser || vkImportStarted.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('vkImport') !== 'collect' || !window.location.hash) return
+    vkImportStarted.current = true
+    const fragment = window.location.hash
+    window.history.replaceState(null, '', window.location.pathname)
+    setSourcesOpen(true)
+    void decodeVKImportFragment(fragment)
+      .then(({ sourceUrl, tracks }) => startVKImportJob(sourceUrl, tracks))
+      .then((job) => setNotice(`Получено ${job.total} треков из VK. Импорт продолжается в фоне.`))
+      .catch((reason) => setNotice(reason instanceof Error ? reason.message : 'Не удалось запустить импорт из VK'))
+  }, [data.appUser])
 
   useEffect(() => {
     const userId = data.appUser?.id

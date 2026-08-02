@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildSession, createPlaylistShare, createTrackShare, getBootstrap, getPublicShare, searchMusic } from './api'
+import { buildSession, createPlaylistShare, createTrackShare, decodeVKImportFragment, getBootstrap, getPublicShare, searchMusic } from './api'
 
 describe('API error handling', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -33,5 +33,18 @@ describe('API error handling', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/shares/tracks', expect.objectContaining({ method: 'POST' }))
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/shares/playlists', expect.objectContaining({ body: JSON.stringify({ playlistId: '42:7' }) }))
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/shares/share-token', expect.objectContaining({ credentials: 'include' }))
+  })
+
+  it('decodes the browser-collected VK list from an uncompressed URL fragment', async () => {
+    const payload = JSON.stringify({ sourceUrl: 'https://vk.ru/audios145429079', tracks: [{ title: 'Signal', artist: 'Artist', duration: '3:21' }] })
+    const encoded = window.btoa(payload).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+    await expect(decodeVKImportFragment(`#j.${encoded}`)).resolves.toEqual({
+      sourceUrl: 'https://vk.ru/audios145429079',
+      tracks: [{ title: 'Signal', artist: 'Artist', duration: '3:21' }],
+    })
+  })
+
+  it('rejects a malformed VK import fragment', async () => {
+    await expect(decodeVKImportFragment('#broken')).rejects.toThrow('повреждены')
   })
 })
