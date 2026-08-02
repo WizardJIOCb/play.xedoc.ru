@@ -1,0 +1,420 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { toggleLike as persistTrackLike } from '../lib/api'
+import type { Track } from '../types'
+
+export interface ListeningHistoryEntry {
+  track: Track
+  playedAt: number
+}
+
+interface PlayerContextValue {
+  current?: Track
+  currentIndex: number
+  queue: Track[]
+  upNext: Track[]
+  history: Track[]
+  historyEntries: ListeningHistoryEntry[]
+  isPlaying: boolean
+  progress: number
+  duration: number
+  volume: number
+  shuffle: boolean
+  repeat: boolean
+  playTrack: (track: Track, context?: Track[], startIndex?: number) => void
+  playQueue: (tracks: Track[], startIndex?: number) => void
+  togglePlayback: () => void
+  next: () => void
+  previous: () => void
+  seek: (seconds: number) => void
+  setVolume: (value: number) => void
+  toggleShuffle: () => void
+  toggleRepeat: () => void
+  addNext: (track: Track) => void
+  isTrackLiked: (track: Track) => boolean
+  setTrackLiked: (track: Track, liked: boolean) => Promise<void>
+  clear: () => void
+}
+
+const PlayerContext = createContext<PlayerContextValue | null>(null)
+
+const HISTORY_STORAGE_KEY = 'xedoc-play-history-v1'
+const HISTORY_LIMIT = 50
+const coverTones = new Set(['lime', 'violet', 'coral', 'blue', 'amber', 'mono'])
+
+function safeHistoryTrack(value: unknown): Track | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<Track>
+  if (
+    typeof candidate.id !== 'string'
+    || typeof candidate.title !== 'string'
+    || !Array.isArray(candidate.artists)
+    || !candidate.artists.every((artist) => typeof artist === 'string')
+    || typeof candidate.durationMs !== 'number'
+    || !Number.isFinite(candidate.durationMs)
+  ) return undefined
+
+  return {
+    id: candidate.id,
+    title: candidate.title,
+    artists: [...candidate.artists],
+    durationMs: candidate.durationMs,
+    ...(typeof candidate.album === 'string' ? { album: candidate.album } : {}),
+    ...(typeof candidate.coverUrl === 'string' ? { coverUrl: candidate.coverUrl } : {}),
+    ...(typeof candidate.coverTone === 'string' && coverTones.has(candidate.coverTone) ? { coverTone: candidate.coverTone } : {}),
+    ...(typeof candidate.liked === 'boolean' ? { liked: candidate.liked } : {}),
+    ...(typeof candidate.explicit === 'boolean' ? { explicit: candidate.explicit } : {}),
+  }
+}
+
+function readHistoryEntries(): ListeningHistoryEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(parsed)) return []
+
+    const seen = new Set<string>()
+    return parsed
+      .flatMap((value): ListeningHistoryEntry[] => {
+        if (!value || typeof value !== 'object') return []
+        const entry = value as Partial<ListeningHistoryEntry>
+        const track = safeHistoryTrack(entry.track)
+        return track && typeof entry.playedAt === 'number' && Number.isFinite(entry.playedAt)
+          ? [{ track, playedAt: entry.playedAt }]
+          : []
+      })
+      .sort((left, right) => right.playedAt - left.playedAt)
+      .filter(({ track }) => {
+        if (seen.has(track.id)) return false
+        seen.add(track.id)
+        return true
+      })
+      .slice(0, HISTORY_LIMIT)
+  } catch {
+    return []
+  }
+}
+
+function writeHistoryEntries(entries: ListeningHistoryEntry[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries))
+  } catch {
+    // History is a convenience; playback must keep working when storage is blocked or full.
+  }
+}
+
+function resolveTrackIndex(items: Track[], track: Track, preferredIndex?: number) {
+  if (
+    preferredIndex !== undefined
+    && preferredIndex >= 0
+    && preferredIndex < items.length
+    && items[preferredIndex].id === track.id
+  ) return preferredIndex
+  const referenceIndex = items.findIndex((item) => item === track)
+  return referenceIndex >= 0 ? referenceIndex : items.findIndex((item) => item.id === track.id)
+}
+
+function normalizeQueue(items: Track[]) {
+  const seen = new Set<Track>()
+  let changed = false
+  const normalized = items.map((track) => {
+    if (!seen.has(track)) {
+      seen.add(track)
+      return track
+    }
+    changed = true
+    return { ...track }
+  })
+  return changed ? normalized : items
+}
+
+function streamUrl(track: Track) {
+  return track.streamUrl || `/api/tracks/${encodeURIComponent(track.id)}/stream`
+}
+
+export function PlayerProvider({ children }: { children: ReactNode }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const timerRef = useRef<number | null>(null)
+  const nextRef = useRef<() => void>(() => undefined)
+  const repeatRef = useRef(false)
+  const [current, setCurrent] = useState<Track>()
+  const [currentIndex, setCurrentIndex] = useState(-1)
+  const [queue, setQueue] = useState<Track[]>([])
+  const [historyEntries, setHistoryEntries] = useState<ListeningHistoryEntry[]>(readHistoryEntries)
+  const [trackLikes, setTrackLikes] = useState<Record<string, boolean>>({})
+  const [selectionVersion, setSelectionVersion] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolumeState] = useState(0.74)
+  const [shuffle, setShuffle] = useState(false)
+  const [repeat, setRepeat] = useState(false)
+
+  const clearDemoTimer = useCallback(() => {
+    if (timerRef.current !== null) window.clearInterval(timerRef.current)
+    timerRef.current = null
+  }, [])
+
+  const selectTrackAt = useCallback((items: Track[], index: number) => {
+    const track = items[index]
+    if (!track) return
+    setCurrentIndex(index)
+    setCurrent(track)
+    setProgress(0)
+    setDuration(track.durationMs / 1000)
+    setIsPlaying(true)
+    setSelectionVersion((value) => value + 1)
+  }, [])
+
+  const next = useCallback(() => {
+    if (!current || queue.length === 0 || currentIndex < 0) return
+    let nextIndex = (currentIndex + 1) % queue.length
+    if (shuffle && queue.length > 1) {
+      const offset = 1 + Math.min(queue.length - 2, Math.floor(Math.random() * (queue.length - 1)))
+      nextIndex = (currentIndex + offset) % queue.length
+    }
+    selectTrackAt(queue, nextIndex)
+  }, [current, currentIndex, queue, selectTrackAt, shuffle])
+
+  const previous = useCallback(() => {
+    if (!current || queue.length === 0 || currentIndex < 0) return
+    if (progress > 4) {
+      setProgress(0)
+      if (audioRef.current) audioRef.current.currentTime = 0
+      return
+    }
+    const previousIndex = (currentIndex - 1 + queue.length) % queue.length
+    selectTrackAt(queue, previousIndex)
+  }, [current, currentIndex, progress, queue, selectTrackAt])
+
+  useEffect(() => {
+    nextRef.current = next
+    repeatRef.current = repeat
+  }, [next, repeat])
+
+  useEffect(() => {
+    const audio = new Audio()
+    audio.preload = 'metadata'
+    audio.volume = volume
+    audioRef.current = audio
+    const update = () => {
+      setProgress(audio.currentTime || 0)
+      if (Number.isFinite(audio.duration)) setDuration(audio.duration)
+    }
+    const ended = () => {
+      if (repeatRef.current) {
+        audio.currentTime = 0
+        void audio.play()
+      } else nextRef.current()
+    }
+    audio.addEventListener('timeupdate', update)
+    audio.addEventListener('loadedmetadata', update)
+    audio.addEventListener('ended', ended)
+    return () => {
+      audio.pause()
+      audio.removeEventListener('timeupdate', update)
+      audio.removeEventListener('loadedmetadata', update)
+      audio.removeEventListener('ended', ended)
+      clearDemoTimer()
+    }
+  }, [clearDemoTimer])
+
+  useEffect(() => {
+    writeHistoryEntries(historyEntries)
+  }, [historyEntries])
+
+  useEffect(() => {
+    if (!current || selectionVersion === 0) return
+    const track = safeHistoryTrack(current)
+    if (!track) return
+    const entry = { track, playedAt: Date.now() }
+    setHistoryEntries((items) => [entry, ...items.filter((item) => item.track.id !== track.id)].slice(0, HISTORY_LIMIT))
+  }, [current?.id, selectionVersion])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!current || !audio) return
+    setDuration(current.durationMs / 1000)
+    setProgress(0)
+    clearDemoTimer()
+    if (current.id.startsWith('demo-')) {
+      audio.pause()
+      return
+    }
+    audio.src = streamUrl(current)
+    audio.load()
+  }, [clearDemoTimer, current?.id, selectionVersion])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !current) return
+    clearDemoTimer()
+    if (current.id.startsWith('demo-')) {
+      audio.pause()
+      if (isPlaying) {
+        timerRef.current = window.setInterval(() => {
+          setProgress((value) => {
+            const limit = current.durationMs / 1000
+            if (value + 1 >= limit) {
+              window.setTimeout(() => nextRef.current(), 0)
+              return 0
+            }
+            return value + 1
+          })
+        }, 1000)
+      }
+      return clearDemoTimer
+    }
+    if (isPlaying) void audio.play().catch(() => setIsPlaying(false))
+    else audio.pause()
+    return undefined
+  }, [clearDemoTimer, current?.id, isPlaying, selectionVersion])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !current) return
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: current.title,
+      artist: current.artists.join(', '),
+      album: current.album,
+      artwork: current.coverUrl ? [{ src: current.coverUrl.replace('%%', '400x400') }] : [],
+    })
+    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true))
+    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false))
+    navigator.mediaSession.setActionHandler('nexttrack', next)
+    navigator.mediaSession.setActionHandler('previoustrack', previous)
+  }, [current, next, previous])
+
+  const playTrack = useCallback((track: Track, context: Track[] = [track], startIndex?: number) => {
+    let tracks = normalizeQueue(context.length ? context : [track])
+    let index = resolveTrackIndex(tracks, track, startIndex)
+    if (index < 0) {
+      tracks = [track, ...tracks]
+      index = 0
+    }
+    setQueue(tracks)
+    selectTrackAt(tracks, index)
+  }, [selectTrackAt])
+
+  const playQueue = useCallback((tracks: Track[], startIndex = 0) => {
+    if (!tracks.length) return
+    const normalized = normalizeQueue(tracks)
+    const index = Math.max(0, Math.min(Math.trunc(startIndex), normalized.length - 1))
+    setQueue(normalized)
+    selectTrackAt(normalized, index)
+  }, [selectTrackAt])
+
+  const togglePlayback = useCallback(() => {
+    if (!current) {
+      if (queue.length) selectTrackAt(queue, 0)
+      return
+    }
+    setIsPlaying((value) => !value)
+  }, [current, queue, selectTrackAt])
+
+  const seek = useCallback((seconds: number) => {
+    const value = Math.max(0, Math.min(seconds, duration || 0))
+    setProgress(value)
+    if (audioRef.current && current && !current.id.startsWith('demo-')) audioRef.current.currentTime = value
+  }, [current, duration])
+
+  const changeVolume = useCallback((value: number) => {
+    const normalized = Math.max(0, Math.min(value, 1))
+    setVolumeState(normalized)
+    if (audioRef.current) audioRef.current.volume = normalized
+  }, [])
+
+  const addNext = useCallback((track: Track) => {
+    setQueue((items) => {
+      const copy = [...items]
+      copy.splice(currentIndex >= 0 ? currentIndex + 1 : 0, 0, items.includes(track) ? { ...track } : track)
+      return copy
+    })
+  }, [currentIndex])
+
+  const applyTrackLike = useCallback((trackId: string, liked: boolean) => {
+    setTrackLikes((items) => ({ ...items, [trackId]: liked }))
+    setCurrent((track) => track?.id === trackId ? { ...track, liked } : track)
+    setQueue((items) => items.map((track) => track.id === trackId ? { ...track, liked } : track))
+    setHistoryEntries((items) => items.map((entry) => entry.track.id === trackId
+      ? { ...entry, track: { ...entry.track, liked } }
+      : entry))
+  }, [])
+
+  const isTrackLiked = useCallback((track: Track) => (
+    Object.prototype.hasOwnProperty.call(trackLikes, track.id) ? trackLikes[track.id] : Boolean(track.liked)
+  ), [trackLikes])
+
+  const setTrackLiked = useCallback(async (track: Track, liked: boolean) => {
+    const previous = isTrackLiked(track)
+    applyTrackLike(track.id, liked)
+    if (track.id.startsWith('demo-')) return
+    try {
+      await persistTrackLike(track.id, liked)
+    } catch (error) {
+      applyTrackLike(track.id, previous)
+      throw error
+    }
+  }, [applyTrackLike, isTrackLiked])
+
+  const clear = useCallback(() => {
+    clearDemoTimer()
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    setCurrent(undefined)
+    setCurrentIndex(-1)
+    setQueue([])
+    setIsPlaying(false)
+    setProgress(0)
+    setDuration(0)
+    setTrackLikes({})
+  }, [clearDemoTimer])
+
+  const upNext = useMemo(() => {
+    if (!queue.length) return []
+    if (currentIndex < 0 || currentIndex >= queue.length) return queue
+    return [...queue.slice(currentIndex + 1), ...queue.slice(0, currentIndex)]
+  }, [currentIndex, queue])
+
+  const history = useMemo(() => historyEntries.map((entry) => entry.track), [historyEntries])
+
+  const value = useMemo<PlayerContextValue>(() => ({
+    current,
+    currentIndex,
+    queue,
+    upNext,
+    history,
+    historyEntries,
+    isPlaying,
+    progress,
+    duration,
+    volume,
+    shuffle,
+    repeat,
+    playTrack,
+    playQueue,
+    togglePlayback,
+    next,
+    previous,
+    seek,
+    setVolume: changeVolume,
+    toggleShuffle: () => setShuffle((value) => !value),
+    toggleRepeat: () => setRepeat((value) => !value),
+    addNext,
+    isTrackLiked,
+    setTrackLiked,
+    clear,
+  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isTrackLiked, next, playQueue, playTrack, previous, progress, queue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
+
+  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
+}
+
+export function usePlayer() {
+  const value = useContext(PlayerContext)
+  if (!value) throw new Error('usePlayer must be used inside PlayerProvider')
+  return value
+}

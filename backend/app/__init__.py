@@ -1,0 +1,2 @@
+"""XEDOC Play backend package."""
+

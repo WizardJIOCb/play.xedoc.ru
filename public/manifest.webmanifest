@@ -1,0 +1,13 @@
+{
+  "name": "XEDOC Play",
+  "short_name": "XEDOC",
+  "description": "Быстрый интерфейс для вашей музыки",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090a0d",
+  "theme_color": "#090a0d",
+  "lang": "ru",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
