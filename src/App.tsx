@@ -297,7 +297,7 @@ function TrackCollectionView({ type, tracks, total, loading = false, error }: { 
     <section className="content-section content-section--first">
       <div className="collection-summary">
         <div className={`collection-summary__icon collection-summary__icon--${type}`}>{type === 'liked' ? <Heart size={34} fill="currentColor" /> : <History size={34} />}</div>
-        <div><span className="eyebrow">{type === 'liked' ? 'ВАША КОЛЛЕКЦИЯ' : 'НА ЭТОМ УСТРОЙСТВЕ'}</span><h2>{type === 'liked' ? `${total ?? tracks.length} любимых треков` : 'История прослушивания'}</h2><p>{type === 'liked' ? `Показываем ${tracks.length} последних треков из синхронизированной коллекции.` : 'История хранится локально и помогает убирать повторы.'}</p></div>
+        <div><span className="eyebrow">{type === 'liked' ? 'ВАША КОЛЛЕКЦИЯ' : 'НА ЭТОМ УСТРОЙСТВЕ'}</span><h2>{type === 'liked' ? `${total ?? tracks.length} любимых треков` : 'История прослушивания'}</h2><p>{type === 'liked' ? `Показываем все ${tracks.length} треков из синхронизированной коллекции.` : 'История хранится локально и помогает убирать повторы.'}</p></div>
         <button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button>
       </div>
       <div className="track-table track-table--large">
