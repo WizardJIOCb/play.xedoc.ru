@@ -593,7 +593,7 @@ function PrivateApp() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
-      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
+      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>

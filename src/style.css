@@ -203,9 +203,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .sidebar__session:hover { background: rgba(217, 255, 99, .13); }
 
 .sidebar__section { margin-top: 13px; }
-.sidebar__section > p, .sidebar__section-title p { margin: 0 10px 8px; color: var(--muted-2); font-size: var(--type-caption); text-transform: uppercase; letter-spacing: .13em; font-weight: 800; white-space: nowrap; }
-.sidebar__section-title { display: flex; align-items: center; justify-content: space-between; color: var(--muted-2); }
-.sidebar__section-title svg { margin-right: 11px; }
+.sidebar__section > p { margin: 0 10px 8px; color: var(--muted-2); font-size: var(--type-caption); text-transform: uppercase; letter-spacing: .13em; font-weight: 800; white-space: nowrap; }
+.sidebar__section > .sidebar__section-title { height: 34px; padding: 0 10px; justify-content: space-between; gap: 10px; border-radius: 8px; color: var(--muted-2); font-size: var(--type-caption); text-transform: uppercase; letter-spacing: .13em; font-weight: 800; }
+.sidebar__section-title svg { flex: 0 0 auto; margin: 0; }
 
 .sidebar__playlists { flex: 1; min-height: 0; overflow: auto; }
 .sidebar__playlist {
