@@ -3,6 +3,15 @@ import { usePlayer } from '../player/PlayerContext'
 import type { Playlist } from '../types'
 import { CoverArt } from './CoverArt'
 
+function trackCountLabel(count: number) {
+  const remainder100 = count % 100
+  const remainder10 = count % 10
+  if (remainder100 >= 11 && remainder100 <= 14) return `${count} треков`
+  if (remainder10 === 1) return `${count} трек`
+  if (remainder10 >= 2 && remainder10 <= 4) return `${count} трека`
+  return `${count} треков`
+}
+
 export function PlaylistCard({ playlist, wide = false, onOpen, onPlay }: { playlist: Playlist; wide?: boolean; onOpen?: (playlist: Playlist) => void; onPlay?: (playlist: Playlist) => void }) {
   const player = usePlayer()
   const play = () => {
@@ -16,7 +25,8 @@ export function PlaylistCard({ playlist, wide = false, onOpen, onPlay }: { playl
       <div className="playlist-card__body">
         <div>
           <h3>{playlist.title}</h3>
-          <p>{playlist.subtitle || `${playlist.trackCount} треков`}</p>
+          {playlist.subtitle && <p>{playlist.subtitle}</p>}
+          <span className="playlist-card__count">{trackCountLabel(playlist.trackCount)}</span>
         </div>
       </div>
       {wide && (

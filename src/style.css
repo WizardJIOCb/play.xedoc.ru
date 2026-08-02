@@ -269,7 +269,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   height: 72px;
   padding: 0 30px;
   display: grid;
-  grid-template-columns: 90px 44px 1fr;
+  grid-template-columns: 90px 1fr;
   align-items: center;
   gap: 18px;
   position: sticky;
@@ -468,6 +468,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .playlist-card__body { margin-top: 10px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; }
 .playlist-card h3 { margin: 0; font-size: var(--type-control); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .playlist-card p { min-height: 35px; margin: 5px 0 0; color: var(--muted); font-size: var(--type-caption); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.playlist-card__count { display: inline-flex; margin-top: 6px; color: var(--muted-2); font-size: var(--type-caption); line-height: 1.3; }
 .playlist-card__more { width: 28px; height: 28px; opacity: 0; }
 .playlist-card:hover .playlist-card__more { opacity: 1; }
 .playlist-card__wide-play { display: none; }
@@ -1095,7 +1096,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .sidebar__nav button, .sidebar__section > button { justify-content: center; padding: 0; }
   .sidebar__session { padding: 0; }
   .sidebar__footer { justify-content: center; }
-  .topbar { grid-template-columns: 50px minmax(200px,1fr) auto; padding-inline: 18px; }
+  .topbar { grid-template-columns: 50px minmax(0,1fr); padding-inline: 18px; }
   .topbar__history button:nth-child(2), .profile-chip > span:nth-child(2), .topbar__actions > .icon-button { display: none; }
   .hero-session { grid-template-columns: 1fr; }
   .hero-session__visual { display: none; }
@@ -1125,7 +1126,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .app-shell, .app-shell--compact { display: block; height: 100dvh; padding-bottom: 124px; }
   .sidebar { display: none; }
   .main-view { height: calc(100dvh - 124px); overflow: auto; }
-  .topbar { height: 60px; padding: 0 10px; grid-template-columns: 44px minmax(0,1fr); gap: 8px; }
+  .topbar { height: 60px; padding: 0 10px; grid-template-columns: minmax(0,1fr); gap: 8px; }
   .topbar__history { display: none; }
   .topbar__search { width: 40px; height: 40px; justify-self: start; }
   .topbar__actions { gap: 5px; }
