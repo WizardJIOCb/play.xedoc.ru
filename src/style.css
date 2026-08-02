@@ -1048,15 +1048,19 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .app-shell, .app-shell--compact { display: block; height: 100dvh; padding-bottom: 124px; }
   .sidebar { display: none; }
   .main-view { height: calc(100dvh - 124px); overflow: auto; }
-  .topbar { height: 60px; padding: 0 14px; grid-template-columns: 1fr auto; }
+  .topbar { height: 60px; padding: 0 10px; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
   .topbar__history { display: none; }
-  .topbar__search { height: 38px; min-width: 0; }
+  .topbar__search { height: 40px; min-width: 0; padding: 0 9px; grid-template-columns: 18px minmax(0,1fr); gap: 7px; }
+  .topbar__search > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar__search kbd { display: none; }
-  .connect-button { width: 38px; padding: 0; }
+  .topbar__actions { gap: 5px; }
+  .connect-button { width: 40px; height: 40px; min-height: 40px; padding: 0; }
   .connect-button span, .connect-button:not(:has(span)) { font-size: 0; }
   .connect-button { font-size: 0; }
   .connect-button { display: grid; place-items: center; gap: 0; }
-  .profile-chip { padding: 4px; }
+  .profile-chip { height: 40px; padding: 3px; gap: 3px; border-radius: 12px; }
+  .profile-chip__avatar { width: 32px; height: 32px; }
+  .profile-chip .icon-button { width: 28px; height: 32px; }
   .profile-chip > span:nth-child(2) { display: none; }
   .profile-chip > .icon-button { display: grid; }
   .sources-modal { padding: 22px 16px; }
