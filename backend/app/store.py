@@ -249,8 +249,9 @@ class CredentialStore:
             connection.execute(
                 """
                 UPDATE vk_import_job
-                SET status = 'failed', error = 'Импорт прерван перезапуском сервиса. Запустите его ещё раз.', updated_at = ?
-                WHERE status IN ('queued', 'running')
+                SET status = 'queued', error = NULL, updated_at = ?
+                WHERE status = 'failed'
+                  AND error = 'Импорт прерван перезапуском сервиса. Запустите его ещё раз.'
                 """,
                 (int(time.time()),),
             )

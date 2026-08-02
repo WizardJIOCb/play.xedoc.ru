@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
-from app.store import CredentialStore
+from app.store import LEGACY_USER_ID, CredentialStore
 
 from .conftest import FakeGateway, TEST_CREDENTIAL, connect, unlock
 
@@ -413,3 +413,27 @@ def test_vk_browser_import_collects_full_list_in_background(client: TestClient) 
     assert job["processed"] == 2
     assert job["matched"] == 1
     assert job["unmatched"] == 1
+
+
+def test_interrupted_vk_import_is_resumable_after_restart(settings, store: CredentialStore) -> None:
+    job = store.create_vk_import_job(
+        LEGACY_USER_ID,
+        "https://vk.ru/audios145429079",
+        [{"title": "Signal", "artist": "Artist"}, {"title": "Second", "artist": "Artist"}],
+    )
+    tenant_token = store.set_current_user(LEGACY_USER_ID)
+    try:
+        store.update_vk_import_job(
+            job["id"],
+            status="failed",
+            processed=1,
+            error="Импорт прерван перезапуском сервиса. Запустите его ещё раз.",
+        )
+    finally:
+        store.reset_current_user(tenant_token)
+
+    reopened = CredentialStore(settings.database_path, settings.fernet_key)
+    pending = reopened.incomplete_vk_import_jobs()
+    assert pending[0]["id"] == job["id"]
+    assert pending[0]["status"] == "queued"
+    assert pending[0]["processed"] == 1
