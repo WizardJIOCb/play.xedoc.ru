@@ -316,9 +316,24 @@ export function filterCollectionTracks(type: 'liked' | 'history', tracks: Track[
   return type === 'liked' ? tracks.filter(isTrackLiked) : tracks
 }
 
+export function stabilizeTrackOrder(order: string[], tracks: Track[]) {
+  const byId = new Map(tracks.map((track) => [track.id, track]))
+  const nextOrder = order.filter((id) => byId.has(id))
+  const known = new Set(nextOrder)
+  tracks.forEach((track) => {
+    if (known.has(track.id)) return
+    known.add(track.id)
+    nextOrder.push(track.id)
+  })
+  return { order: nextOrder, tracks: nextOrder.flatMap((id) => byId.get(id) || []) }
+}
+
 function TrackCollectionView({ type, tracks, total, loading = false, error }: { type: 'liked' | 'history'; tracks: Track[]; total?: number; loading?: boolean; error?: string }) {
   const player = usePlayer()
-  const visibleTracks = filterCollectionTracks(type, tracks, player.isTrackLiked)
+  const historyOrderRef = useRef<string[]>([])
+  const orderedTracks = type === 'history' ? stabilizeTrackOrder(historyOrderRef.current, tracks) : undefined
+  if (orderedTracks) historyOrderRef.current = orderedTracks.order
+  const visibleTracks = filterCollectionTracks(type, orderedTracks?.tracks || tracks, player.isTrackLiked)
   const visibleTotal = type === 'liked' ? visibleTracks.length : total ?? visibleTracks.length
   return (
     <section className="content-section content-section--first">
