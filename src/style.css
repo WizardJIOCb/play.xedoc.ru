@@ -1055,7 +1055,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .topbar__search kbd { display: none; }
   .topbar__actions { gap: 5px; }
   .connect-button { width: 40px; height: 40px; min-height: 40px; padding: 0; }
-  .connect-button svg { transform: translateY(1px); }
+  .connect-button span { display: none; }
   .connect-button span, .connect-button:not(:has(span)) { font-size: 0; }
   .connect-button { font-size: 0; }
   .connect-button { display: grid; place-items: center; gap: 0; }
