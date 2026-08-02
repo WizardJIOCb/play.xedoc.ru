@@ -4,7 +4,7 @@ import { buildSession } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
 import type { SessionPreferences } from '../types'
 
-export function SessionBuilder({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SessionBuilder({ open, initialDiscovery = 58, onClose }: { open: boolean; initialDiscovery?: number; onClose: () => void }) {
   const [preferences, setPreferences] = useState<SessionPreferences>({ duration: 50, discovery: 58, cooldownDays: 30, source: 'all' })
   const [building, setBuilding] = useState(false)
   const [error, setError] = useState('')
@@ -14,11 +14,12 @@ export function SessionBuilder({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!open) return
     setError('')
+    setPreferences((current) => ({ ...current, discovery: initialDiscovery }))
     window.setTimeout(() => closeRef.current?.focus(), 30)
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, open])
+  }, [initialDiscovery, onClose, open])
 
   if (!open) return null
 

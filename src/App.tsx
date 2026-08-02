@@ -33,7 +33,7 @@ import { AuthGate } from './components/AuthGate'
 import { ArtistLinks } from './components/ArtistLinks'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
-import { MoodMap } from './components/MoodMap'
+import { MoodMap, type MoodSettings } from './components/MoodMap'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
 import { PasswordChangeModal } from './components/PasswordChangeModal'
@@ -234,7 +234,7 @@ function ListeningTopView({ stats, loading, error }: { stats?: ListeningStats; l
   )
 }
 
-function DiscoverView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: BootstrapPayload; onSession: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void }) {
+function DiscoverView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: BootstrapPayload; onSession: (settings: MoodSettings) => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void }) {
   return (
     <>
       <MoodMap onSession={onSession} />
@@ -367,6 +367,7 @@ function PrivateApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [searchOpen, setSearchOpen] = useState(isSearchPath)
   const [sessionOpen, setSessionOpen] = useState(false)
+  const [sessionDiscovery, setSessionDiscovery] = useState(58)
   const [connectOpen, setConnectOpen] = useState(false)
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
   const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(window.location.search).has('vkImport'))
@@ -560,18 +561,22 @@ function PrivateApp() {
   }, [openSearch, player])
 
   const title = viewTitles[view]
+  const openSession = useCallback((discovery = 58) => {
+    setSessionDiscovery(discovery)
+    setSessionOpen(true)
+  }, [])
   const content = useMemo(() => {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylist} />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
-    if (view === 'home') return <HomeView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
-    if (view === 'discover') return <DiscoverView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
-    if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
+    if (view === 'home') return <HomeView data={data} onSession={() => openSession()} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
+    if (view === 'discover') return <DiscoverView data={data} onSession={(settings) => openSession(settings.novelty)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
+    if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -579,7 +584,7 @@ function PrivateApp() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
-      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
+      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
@@ -600,7 +605,7 @@ function PrivateApp() {
 
       <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
       <PlayerBar onQueue={() => setQueueOpen((value) => !value)} />
-      <SessionBuilder open={sessionOpen} onClose={() => setSessionOpen(false)} />
+      <SessionBuilder open={sessionOpen} initialDiscovery={sessionDiscovery} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
       <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
       <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />
