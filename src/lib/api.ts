@@ -9,6 +9,22 @@ class ApiError extends Error {
   }
 }
 
+function apiErrorMessage(body: unknown): string {
+  if (!body || typeof body !== 'object') return 'Ошибка запроса'
+  const detail = (body as { detail?: unknown }).detail
+  if (typeof detail === 'string') return detail
+  if (!Array.isArray(detail)) return 'Не удалось обработать запрос. Проверьте заполнение полей.'
+  const issue = detail.find((item) => item && typeof item === 'object') as { loc?: unknown[]; msg?: unknown; type?: unknown } | undefined
+  if (!issue) return 'Не удалось обработать запрос. Проверьте заполнение полей.'
+  const field = String(issue.loc?.at(-1) || '')
+  if (field === 'username') return 'Логин может содержать только латинские буквы, цифры, точку, дефис и подчёркивание. Email здесь не используется.'
+  if (field === 'password' || field === 'currentPassword') return 'Проверьте пароль: новый пароль должен содержать не меньше 10 символов.'
+  if (field === 'displayName') return 'Укажите имя, которое будет отображаться в профиле.'
+  return typeof issue.msg === 'string' && !issue.msg.startsWith('String should')
+    ? issue.msg
+    : 'Не удалось обработать запрос. Проверьте заполнение полей.'
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     credentials: 'include',
@@ -17,7 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: 'Ошибка запроса' }))
-    throw new ApiError(body.detail || 'Ошибка запроса', response.status)
+    throw new ApiError(apiErrorMessage(body), response.status)
   }
   return response.json() as Promise<T>
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildSession, createPlaylistShare, createTrackShare, decodeVKImportFragment, getBootstrap, getPublicShare, searchMusic } from './api'
+import { buildSession, createPlaylistShare, createTrackShare, decodeVKImportFragment, getBootstrap, getPublicShare, registerAccount, searchMusic } from './api'
 
 describe('API error handling', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -46,5 +46,14 @@ describe('API error handling', () => {
 
   it('rejects a malformed VK import fragment', async () => {
     await expect(decodeVKImportFragment('#broken')).rejects.toThrow('повреждены')
+  })
+
+  it('turns structured validation details into a readable field error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: [{ type: 'string_pattern_mismatch', loc: ['body', 'username'], msg: 'String should match pattern' }] }),
+    }))
+    await expect(registerAccount('person@example.com', 'Person', 'secure-password')).rejects.toThrow('Email здесь не используется')
   })
 })
