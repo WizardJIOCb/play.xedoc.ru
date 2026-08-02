@@ -80,7 +80,7 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     dashboard = client.get("/api/admin/dashboard")
     assert dashboard.status_code == 200
     body = dashboard.json()
-    assert body["summary"]["usersTotal"] == 1
+    assert body["summary"]["usersTotal"] == 2
     assert body["summary"]["yandexConnected"] == 1
     assert body["summary"]["playlistsTotal"] == 1
     assert body["summary"]["publicPlaylists"] == 1

@@ -930,10 +930,10 @@ class CredentialStore:
             summary_row = connection.execute(
                 """
                 SELECT
-                    (SELECT COUNT(*) FROM app_user WHERE id <> ?),
-                    (SELECT COUNT(*) FROM app_user WHERE id <> ? AND created_at >= ?),
-                    (SELECT COUNT(DISTINCT owner_id) FROM listening_event WHERE owner_id <> ? AND source = 'player' AND created_at >= ?),
-                    (SELECT COUNT(*) FROM user_yandex_credential WHERE user_id <> ?),
+                    (SELECT COUNT(*) FROM app_user),
+                    (SELECT COUNT(*) FROM app_user WHERE created_at >= ?),
+                    (SELECT COUNT(DISTINCT owner_id) FROM listening_event WHERE source = 'player' AND created_at >= ?),
+                    (SELECT COUNT(*) FROM user_yandex_credential),
                     (SELECT COUNT(*) FROM local_playlist),
                     (SELECT COUNT(*) FROM local_playlist WHERE is_public = 1),
                     (SELECT COUNT(*) FROM local_playlist_track),
@@ -942,7 +942,7 @@ class CredentialStore:
                     (SELECT COALESCE(SUM(total_listened_ms), 0) FROM user_track_listening_stat),
                     (SELECT COUNT(*) FROM user_public_share)
                 """,
-                (LEGACY_USER_ID, LEGACY_USER_ID, now - 7 * 86_400, LEGACY_USER_ID, now - 30 * 86_400, LEGACY_USER_ID),
+                (now - 7 * 86_400, now - 30 * 86_400),
             ).fetchone()
             user_rows = connection.execute(
                 """
@@ -955,12 +955,12 @@ class CredentialStore:
                        COALESCE(SUM(s.total_listened_ms), 0), MAX(s.last_played_at)
                 FROM app_user u
                 LEFT JOIN user_track_listening_stat s ON s.user_id = u.id
-                WHERE u.id <> ? AND (? = '' OR u.username LIKE ? ESCAPE '\\' COLLATE NOCASE OR u.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE)
+                WHERE (? = '' OR u.username LIKE ? ESCAPE '\\' COLLATE NOCASE OR u.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE)
                 GROUP BY u.id
                 ORDER BY u.is_admin DESC, MAX(s.last_played_at) DESC, u.created_at DESC
                 LIMIT ?
                 """,
-                (LEGACY_USER_ID, value, pattern, pattern, max(1, min(limit, 250))),
+                (value, pattern, pattern, max(1, min(limit, 250))),
             ).fetchall()
             top_rows = connection.execute(
                 """
