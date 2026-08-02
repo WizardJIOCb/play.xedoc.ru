@@ -53,9 +53,9 @@ function buildCollector(destination: string) {
       const nearBottom = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < window.innerHeight * 1.5
       stable = nearBottom && count === previous ? stable + 1 : 0
       previous = count
-      window.scrollBy(0, Math.max(900, window.innerHeight * 0.85))
-      if (nearBottom) window.scrollTo(0, document.documentElement.scrollHeight)
-      await wait(450)
+      const rows = document.querySelectorAll('[data-testid="AudioCatalog_SectionTracks"] [data-testid="MusicTrackRow"]')
+      rows[rows.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      await wait(650)
     }
     const rows = Array.from(document.querySelectorAll('[data-testid="AudioCatalog_SectionTracks"] [data-testid="MusicTrackRow"]'))
     const unique = new Map<string, { title: string; artist: string; duration?: string }>()
