@@ -655,7 +655,7 @@ def create_app(
             key = (_normalize_music_text(track.artist), _normalize_music_text(track.title))
             unique.setdefault(key, track)
         tracks = list(unique.values())[:10000]
-        previous = store.latest_vk_import_job()
+        previous = store.largest_completed_vk_import_job(source_url)
         carried_processed = 0
         carried_matched = 0
         carried_unmatched = 0

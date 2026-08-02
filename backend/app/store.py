@@ -444,6 +444,20 @@ class CredentialStore:
             ).fetchall()
         return [self._vk_import_job_row(row) for row in rows]
 
+    def largest_completed_vk_import_job(self, source_url: str) -> dict | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, user_id, source_url, track_payload, status, total, processed,
+                       matched, unmatched, playlist_id, error, created_at, updated_at
+                FROM vk_import_job
+                WHERE user_id = ? AND source_url = ? AND status = 'complete'
+                ORDER BY total DESC, created_at DESC LIMIT 1
+                """,
+                (self.current_user_id(), source_url),
+            ).fetchone()
+        return self._vk_import_job_row(row) if row else None
+
     def update_vk_import_job(
         self,
         job_id: str,
