@@ -44,8 +44,20 @@ interface PlayerContextValue {
 const PlayerContext = createContext<PlayerContextValue | null>(null)
 
 const HISTORY_STORAGE_KEY = 'xedoc-play-history-v1'
+const PLAYER_STORAGE_KEY = 'xedoc-player-state-v1'
 const HISTORY_LIMIT = 50
+const QUEUE_STORAGE_LIMIT = 300
 const coverTones = new Set(['lime', 'violet', 'coral', 'blue', 'amber', 'mono'])
+
+interface PersistedPlaybackState {
+  queue: Track[]
+  currentIndex: number
+  progress: number
+  volume: number
+  shuffle: boolean
+  repeat: boolean
+  playbackSource?: PlaybackSource
+}
 
 function safeHistoryTrack(value: unknown): Track | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -110,6 +122,77 @@ function writeHistoryEntries(entries: ListeningHistoryEntry[]) {
   }
 }
 
+function safePlaybackTrack(value: unknown): Track | undefined {
+  const track = safeHistoryTrack(value)
+  if (!track || !value || typeof value !== 'object') return track
+  const streamUrl = (value as Partial<Track>).streamUrl
+  return typeof streamUrl === 'string' && streamUrl.startsWith('/api/shares/') ? { ...track, streamUrl } : track
+}
+
+function safePlaybackSource(value: unknown): PlaybackSource | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<PlaybackSource>
+  return typeof candidate.playlistId === 'string' && typeof candidate.playlistTitle === 'string'
+    ? { playlistId: candidate.playlistId, playlistTitle: candidate.playlistTitle }
+    : undefined
+}
+
+function readPlaybackState(): PersistedPlaybackState | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : undefined
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const candidate = parsed as Partial<PersistedPlaybackState>
+    if (!Array.isArray(candidate.queue)) return undefined
+    const queue = candidate.queue.flatMap((value): Track[] => {
+      const track = safePlaybackTrack(value)
+      return track ? [track] : []
+    }).slice(0, QUEUE_STORAGE_LIMIT)
+    if (!queue.length || typeof candidate.currentIndex !== 'number' || !Number.isInteger(candidate.currentIndex)) return undefined
+    const currentIndex = Math.max(0, Math.min(candidate.currentIndex, queue.length - 1))
+    const duration = queue[currentIndex].durationMs / 1000
+    const progress = typeof candidate.progress === 'number' && Number.isFinite(candidate.progress)
+      ? Math.max(0, Math.min(candidate.progress, duration))
+      : 0
+    const volume = typeof candidate.volume === 'number' && Number.isFinite(candidate.volume)
+      ? Math.max(0, Math.min(candidate.volume, 1))
+      : .74
+    return {
+      queue,
+      currentIndex,
+      progress,
+      volume,
+      shuffle: candidate.shuffle === true,
+      repeat: candidate.repeat === true,
+      playbackSource: safePlaybackSource(candidate.playbackSource),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function writePlaybackState(state?: PersistedPlaybackState) {
+  if (typeof window === 'undefined') return
+  try {
+    if (!state?.queue.length) {
+      window.localStorage.removeItem(PLAYER_STORAGE_KEY)
+      return
+    }
+    const queue = state.queue.flatMap((value): Track[] => {
+      const track = safePlaybackTrack(value)
+      return track ? [track] : []
+    }).slice(0, QUEUE_STORAGE_LIMIT)
+    if (!queue.length) {
+      window.localStorage.removeItem(PLAYER_STORAGE_KEY)
+      return
+    }
+    window.localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify({ ...state, queue }))
+  } catch {
+    // Playback persistence is optional; storage failures must not interrupt audio.
+  }
+}
+
 function resolveTrackIndex(items: Track[], track: Track, preferredIndex?: number) {
   if (
     preferredIndex !== undefined
@@ -140,25 +223,28 @@ function streamUrl(track: Track) {
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  const [restoredPlayback] = useState(readPlaybackState)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timerRef = useRef<number | null>(null)
   const nextRef = useRef<() => void>(() => undefined)
   const repeatRef = useRef(false)
   const presenceActiveRef = useRef(false)
   const recordedSelectionRef = useRef<number>(-1)
-  const [current, setCurrent] = useState<Track>()
-  const [currentIndex, setCurrentIndex] = useState(-1)
-  const [queue, setQueue] = useState<Track[]>([])
-  const [playbackSource, setPlaybackSource] = useState<PlaybackSource>()
+  const pendingSeekRef = useRef<number | null>(restoredPlayback?.progress ?? null)
+  const playbackSnapshotRef = useRef<PersistedPlaybackState | undefined>(undefined)
+  const [current, setCurrent] = useState<Track | undefined>(() => restoredPlayback?.queue[restoredPlayback.currentIndex])
+  const [currentIndex, setCurrentIndex] = useState(() => restoredPlayback?.currentIndex ?? -1)
+  const [queue, setQueue] = useState<Track[]>(() => restoredPlayback?.queue ?? [])
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource | undefined>(() => restoredPlayback?.playbackSource)
   const [historyEntries, setHistoryEntries] = useState<ListeningHistoryEntry[]>(readHistoryEntries)
   const [trackLikes, setTrackLikes] = useState<Record<string, boolean>>({})
   const [selectionVersion, setSelectionVersion] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [volume, setVolumeState] = useState(0.74)
-  const [shuffle, setShuffle] = useState(false)
-  const [repeat, setRepeat] = useState(false)
+  const [progress, setProgress] = useState(() => restoredPlayback?.progress ?? 0)
+  const [duration, setDuration] = useState(() => current ? current.durationMs / 1000 : 0)
+  const [volume, setVolumeState] = useState(() => restoredPlayback?.volume ?? .74)
+  const [shuffle, setShuffle] = useState(() => restoredPlayback?.shuffle ?? false)
+  const [repeat, setRepeat] = useState(() => restoredPlayback?.repeat ?? false)
 
   const clearDemoTimer = useCallback(() => {
     if (timerRef.current !== null) window.clearInterval(timerRef.current)
@@ -168,6 +254,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const selectTrackAt = useCallback((items: Track[], index: number) => {
     const track = items[index]
     if (!track) return
+    pendingSeekRef.current = null
     setCurrentIndex(index)
     setCurrent(track)
     setProgress(0)
@@ -225,6 +312,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setProgress(audio.currentTime || 0)
       if (Number.isFinite(audio.duration)) setDuration(audio.duration)
     }
+    const loaded = () => {
+      if (pendingSeekRef.current !== null) {
+        const limit = Number.isFinite(audio.duration) ? audio.duration : pendingSeekRef.current
+        audio.currentTime = Math.max(0, Math.min(pendingSeekRef.current, limit))
+        pendingSeekRef.current = null
+      }
+      update()
+    }
     const ended = () => {
       if (repeatRef.current) {
         audio.currentTime = 0
@@ -232,12 +327,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       } else nextRef.current()
     }
     audio.addEventListener('timeupdate', update)
-    audio.addEventListener('loadedmetadata', update)
+    audio.addEventListener('loadedmetadata', loaded)
     audio.addEventListener('ended', ended)
     return () => {
       audio.pause()
       audio.removeEventListener('timeupdate', update)
-      audio.removeEventListener('loadedmetadata', update)
+      audio.removeEventListener('loadedmetadata', loaded)
       audio.removeEventListener('ended', ended)
       clearDemoTimer()
     }
@@ -246,6 +341,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     writeHistoryEntries(historyEntries)
   }, [historyEntries])
+
+  playbackSnapshotRef.current = current && currentIndex >= 0 && queue.length ? {
+    queue,
+    currentIndex,
+    progress,
+    volume,
+    shuffle,
+    repeat,
+    playbackSource,
+  } : undefined
+
+  const persistedProgressSecond = Math.floor(progress)
+  useEffect(() => {
+    writePlaybackState(playbackSnapshotRef.current)
+  }, [current?.id, currentIndex, persistedProgressSecond, playbackSource, queue, repeat, shuffle, volume])
+
+  useEffect(() => {
+    const persist = () => writePlaybackState(playbackSnapshotRef.current)
+    window.addEventListener('pagehide', persist)
+    return () => window.removeEventListener('pagehide', persist)
+  }, [])
 
   useEffect(() => {
     if (!current || selectionVersion === 0) return
@@ -256,7 +372,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current?.id, selectionVersion])
 
   useEffect(() => {
-    if (!current || !isPlaying || selectionVersion === 0 || recordedSelectionRef.current === selectionVersion) return
+    if (!current || !isPlaying || recordedSelectionRef.current === selectionVersion) return
     if (current.id.startsWith('demo-') || current.streamUrl?.startsWith('/api/shares/')) return
     const timeout = window.setTimeout(() => {
       recordedSelectionRef.current = selectionVersion
@@ -284,7 +400,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current
     if (!current || !audio) return
     setDuration(current.durationMs / 1000)
-    setProgress(0)
+    setProgress(selectionVersion === 0 && pendingSeekRef.current !== null ? pendingSeekRef.current : 0)
     clearDemoTimer()
     if (current.id.startsWith('demo-')) {
       audio.pause()
@@ -369,6 +485,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seek = useCallback((seconds: number) => {
     const value = Math.max(0, Math.min(seconds, duration || 0))
+    pendingSeekRef.current = null
     setProgress(value)
     if (audioRef.current && current && !current.id.startsWith('demo-')) audioRef.current.currentTime = value
   }, [current, duration])
@@ -418,6 +535,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => {
     clearDemoTimer()
+    pendingSeekRef.current = null
+    writePlaybackState()
     const audio = audioRef.current
     if (audio) {
       audio.pause()

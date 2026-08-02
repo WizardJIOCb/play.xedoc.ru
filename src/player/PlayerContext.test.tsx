@@ -9,6 +9,7 @@ vi.mock('../lib/api', () => api)
 
 class FakeAudio {
   static instances: FakeAudio[] = []
+  listeners = new Map<string, Set<() => void>>()
   preload = ''
   volume = 1
   currentTime = 0
@@ -17,14 +18,24 @@ class FakeAudio {
   play = vi.fn().mockResolvedValue(undefined)
   pause = vi.fn()
   load = vi.fn()
-  addEventListener = vi.fn()
-  removeEventListener = vi.fn()
+  addEventListener = vi.fn((name: string, listener: () => void) => {
+    const listeners = this.listeners.get(name) || new Set()
+    listeners.add(listener)
+    this.listeners.set(name, listeners)
+  })
+  removeEventListener = vi.fn((name: string, listener: () => void) => {
+    this.listeners.get(name)?.delete(listener)
+  })
   removeAttribute = vi.fn((name: string) => {
     if (name === 'src') this.src = ''
   })
 
   constructor() {
     FakeAudio.instances.push(this)
+  }
+
+  emit(name: string) {
+    this.listeners.get(name)?.forEach((listener) => listener())
   }
 }
 
@@ -151,6 +162,43 @@ describe('PlayerProvider state', () => {
     expect(FakeAudio.instances[0].pause).toHaveBeenCalled()
     expect(FakeAudio.instances[0].removeAttribute).toHaveBeenCalledWith('src')
     expect(FakeAudio.instances[0].load).toHaveBeenCalled()
+    expect(window.localStorage.getItem('xedoc-player-state-v1')).toBeNull()
+  })
+
+  it('restores the queue, current track and paused position after remounting', async () => {
+    const first = track('a', 'A')
+    const second = track('b', 'B')
+    const view = renderPlayer()
+
+    act(() => player.playQueue([first, second], 1, { playlistId: 'mix', playlistTitle: 'Mix' }))
+    act(() => player.seek(67))
+    act(() => player.toggleShuffle())
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('xedoc-player-state-v1') || '{}')).toMatchObject({
+      currentIndex: 1,
+      progress: 67,
+      shuffle: true,
+      playbackSource: { playlistId: 'mix', playlistTitle: 'Mix' },
+    }))
+
+    view.unmount()
+    renderPlayer()
+    expect(player.current?.id).toBe('b')
+    expect(player.queue.map((item) => item.id)).toEqual(['a', 'b'])
+    expect(player.currentIndex).toBe(1)
+    expect(player.progress).toBe(67)
+    expect(player.shuffle).toBe(true)
+    expect(player.isPlaying).toBe(false)
+
+    act(() => FakeAudio.instances.at(-1)?.emit('loadedmetadata'))
+    expect(FakeAudio.instances.at(-1)?.currentTime).toBe(67)
+  })
+
+  it('ignores invalid persisted playback data', () => {
+    window.localStorage.setItem('xedoc-player-state-v1', JSON.stringify({ queue: [{ id: 5 }], currentIndex: 9, progress: 'bad' }))
+    renderPlayer()
+    expect(player.current).toBeUndefined()
+    expect(player.queue).toEqual([])
+    expect(player.progress).toBe(0)
   })
 
   it('persists a deduped recent-first history with timestamps and no stream URLs', async () => {
