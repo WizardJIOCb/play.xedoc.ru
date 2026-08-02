@@ -570,6 +570,26 @@ class CredentialStore:
         except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError, TypeError, KeyError) as exc:
             raise CredentialStoreError("Saved Yandex credential cannot be decrypted") from exc
 
+    def load_catalog_credential(self) -> Credential | None:
+        """Use an administrator's connected catalog for anonymous public search."""
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT credential.encrypted_payload
+                FROM user_yandex_credential credential
+                JOIN app_user user ON user.id = credential.user_id
+                ORDER BY user.is_admin DESC, credential.updated_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(self._fernet.decrypt(row[0]))
+            return Credential(**payload)
+        except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError, TypeError, KeyError) as exc:
+            raise CredentialStoreError("Public catalog credential cannot be decrypted") from exc
+
     def delete(self) -> None:
         user_id = self.current_user_id()
         with self._lock, self._connect() as connection:

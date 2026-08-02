@@ -942,6 +942,10 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .public-share-state a { color: var(--text); text-decoration: none; }
 
 .public-profile-page { height: 100dvh; display: grid; grid-template-rows: 74px minmax(0,1fr) var(--player-height); overflow: hidden; background: radial-gradient(circle at 15% -10%, rgba(217,255,99,.11), transparent 30%), radial-gradient(circle at 88% 20%, rgba(159,122,234,.18), transparent 32%), var(--bg); }
+.public-search-page { height: 100dvh; display: grid; grid-template-rows: 74px minmax(0,1fr) var(--player-height); overflow: hidden; background: radial-gradient(circle at 12% -10%, rgba(217,255,99,.09), transparent 30%), radial-gradient(circle at 88% 15%, rgba(159,122,234,.16), transparent 34%), var(--bg); }
+.public-search-main { grid-row: 2; min-width: 0; overflow: auto; padding: 38px 30px 64px; }
+.public-search-main > .search-page { width: min(1080px,100%); margin: 0 auto; }
+.public-search-page > .player-bar { grid-column: 1; grid-row: 3; }
 .public-profile-main { grid-row: 2; min-width: 0; overflow: auto; padding: 42px 30px 80px; }
 .public-profile-hero { width: min(1080px,100%); min-height: 230px; margin: 0 auto; padding: 34px; display: flex; align-items: center; gap: 28px; border: 1px solid var(--line-strong); border-radius: 26px; background: linear-gradient(130deg,rgba(255,255,255,.05),rgba(255,255,255,.012)); box-shadow: 0 30px 90px rgba(0,0,0,.24); }
 .public-profile-avatar { flex: 0 0 146px; height: 146px; display: grid; place-items: center; border-radius: 42px; background: linear-gradient(145deg,#d9ff63,#7e9e25); color: #11140b; font-size: 64px; font-weight: 900; box-shadow: 0 20px 55px rgba(140,178,40,.18); }
@@ -1257,7 +1261,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .public-share-tracks > header { min-height: 68px; padding: 11px 13px; }
   .public-share-tracks > header > span { display: none; }
   .public-share-page > .player-bar { bottom: 0; }
-  .public-profile-page { grid-template-rows: 60px minmax(0,1fr); }
+  .public-profile-page, .public-search-page { grid-template-rows: 60px minmax(0,1fr); }
+  .public-search-main { padding: 20px 14px 100px; }
   .public-profile-main { padding: 20px 14px 100px; }
   .public-profile-hero { min-height: 0; padding: 20px; gap: 17px; border-radius: 20px; }
   .public-profile-avatar { flex-basis: 88px; height: 88px; border-radius: 26px; font-size: 38px; }
@@ -1289,6 +1294,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .public-profile-top article em { display: none; }
   .public-profile-top-cover { width: 44px; height: 44px; }
   .public-profile-page > .player-bar { bottom: 0; }
+  .public-search-page > .player-bar { bottom: 0; }
   .search-page { gap: 10px; }
   .search-page__heading { min-height: 94px; }
   .search-page__heading h1 { font-size: 32px; }

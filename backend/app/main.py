@@ -863,33 +863,84 @@ def create_app(
     async def search(
         request: Request,
         q: str = Query(min_length=1, max_length=200),
-        _: None = Depends(require_access),
     ) -> SearchPayload:
+        await enforce_rate_limit(request, "music-search", maximum=90, window_seconds=60)
         query = q.strip()
         if not query:
             return SearchPayload()
         profile_query = query.removeprefix("@").strip()
         profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(profile_query)]
         music_query = profile_query if query.startswith("@") else query
-        credential = optional_credential(request)
+        public_search = optional_app_user(request) is None
+        try:
+            credential = store.load_catalog_credential() if public_search else optional_credential(request)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         if credential is None:
             result = demo_search(music_query)
             result.profiles = profiles
             return result
         try:
             result = await gateway.search(credential, music_query)
-            _decorate_tracks_with_stats(result.tracks, store)
+            if public_search:
+                result.tracks = [
+                    track.model_copy(update={
+                        "liked": None,
+                        "play_count": None,
+                        "total_listened_ms": None,
+                        "last_played_at": None,
+                        "stream_url": (
+                            f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                            f"?ticket={quote(signer.issue(f'public-search:{track.id}', 600), safe='')}"
+                        ),
+                    })
+                    for track in result.tracks
+                ]
+                result.playlists = []
+            else:
+                _decorate_tracks_with_stats(result.tracks, store)
             result.profiles = profiles
             return result
         except GatewayUnauthorized as exc:
-            store.delete()
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+            if not public_search:
+                store.delete()
+            if settings.demo_fallback:
+                result = demo_search(music_query)
+                result.profiles = profiles
+                return result
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         except GatewayError as exc:
             if settings.demo_fallback:
                 result = demo_search(music_query)
                 result.profiles = profiles
                 return result
             raise _http_gateway_error(exc) from exc
+
+    @app.get("/api/public-search/tracks/{track_id}/stream", response_class=RedirectResponse)
+    async def public_search_stream(
+        track_id: str,
+        request: Request,
+        ticket: str = Query(min_length=20, max_length=500),
+    ) -> RedirectResponse:
+        await enforce_rate_limit(request, "public-search-stream", maximum=240, window_seconds=60)
+        track_identifier = _safe_identifier(track_id)
+        if not signer.verify(ticket, f"public-search:{track_identifier}"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ссылка на трек истекла")
+        try:
+            credential = store.load_catalog_credential()
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
+        try:
+            url = await gateway.stream_url(credential, track_identifier)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        return RedirectResponse(
+            url=url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, no-store, max-age=0", "Referrer-Policy": "no-referrer"},
+        )
 
     @app.get("/api/profiles/search", response_model=list[ProfileSearchItemDTO])
     async def search_public_profiles(

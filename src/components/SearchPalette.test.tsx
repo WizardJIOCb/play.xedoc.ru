@@ -43,4 +43,16 @@ describe('content search page', () => {
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(view.container.querySelector('.search-page__content')).toContainElement(screen.getByText('Найденный трек'))
   })
+
+  it('offers track search without registration in public mode', async () => {
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} publicMode /></PlayerProvider>)
+
+    expect(screen.getByText('ПУБЛИЧНЫЙ ПОИСК XEDOC')).toBeInTheDocument()
+    expect(screen.getByText(/регистрация не нужна/)).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Поисковый запрос' }), { target: { value: 'Signal' } })
+
+    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Signal'))
+    expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
+    expect(screen.queryByText('Плейлисты')).not.toBeInTheDocument()
+  })
 })

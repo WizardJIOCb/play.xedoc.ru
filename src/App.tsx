@@ -41,6 +41,7 @@ import { PlaylistEditor } from './components/PlaylistEditor'
 import { PLAYLISTS_CHANGED_EVENT } from './components/PlaylistPicker'
 import { PublicSharePage } from './components/PublicSharePage'
 import { PublicProfilePage } from './components/PublicProfilePage'
+import { PublicSearchPage } from './components/PublicSearchPage'
 import { SearchPalette } from './components/SearchPalette'
 import { SessionBuilder } from './components/SessionBuilder'
 import { ShareButton } from './components/ShareButton'
@@ -651,5 +652,6 @@ function PrivateApp() {
 export default function App() {
   const shareMatch = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
   const profileMatch = window.location.pathname.match(/^\/users\/([A-Za-z0-9_.-]{3,32})\/?$/)
-  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : profileMatch ? <PublicProfilePage username={profileMatch[1]} /> : <PrivateApp />}<GlobalTooltip /></>
+  const publicSearch = window.location.pathname.replace(/\/+$/, '') === '/search'
+  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : profileMatch ? <PublicProfilePage username={profileMatch[1]} /> : publicSearch ? <PublicSearchPage /> : <PrivateApp />}<GlobalTooltip /></>
 }

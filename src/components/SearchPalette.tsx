@@ -9,7 +9,7 @@ import { ArtistLinks } from './ArtistLinks'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
-export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Track[]; onPlaylistPlay: (playlist: Playlist) => void }) {
+export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false }: { suggestions: Track[]; onPlaylistPlay: (playlist: Playlist) => void; publicMode?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
   const [loading, setLoading] = useState(false)
@@ -82,9 +82,9 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
     <section className="search-page" aria-label="Поиск музыки">
       <header className="search-page__heading">
         <div>
-          <span className="eyebrow">ПОИСК ПО ВСЕЙ МУЗЫКЕ</span>
+          <span className="eyebrow">{publicMode ? 'ПУБЛИЧНЫЙ ПОИСК XEDOC' : 'ПОИСК ПО ВСЕЙ МУЗЫКЕ'}</span>
           <h1>Что хотите послушать?</h1>
-          <p>Ищите треки, исполнителей, плейлисты и открытые профили в одном месте.</p>
+          <p>{publicMode ? 'Находите и слушайте треки прямо в браузере — регистрация не нужна.' : 'Ищите треки, исполнителей, плейлисты и открытые профили в одном месте.'}</p>
         </div>
       </header>
 
@@ -104,8 +104,8 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
 
         <div className="search-page__content" aria-live="polite">
           <div className="search-page__caption">
-            <span>{query.trim() ? 'Треки' : 'Можно включить сразу'}</span>
-            {!query.trim() && <small><Clock3 size={13} /> быстрый выбор</small>}
+            <span>{query.trim() ? 'Треки' : publicMode ? 'Начните с запроса' : 'Можно включить сразу'}</span>
+            {!query.trim() && <small><Clock3 size={13} /> {publicMode ? 'без регистрации' : 'быстрый выбор'}</small>}
           </div>
           <div className="search-results">
             {tracks.slice(0, 12).map((track) => (
@@ -119,10 +119,11 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
               </div>
             ))}
             {error && <div className="search-empty search-empty--error"><ArrowDownToLine size={24} /><p>{error}</p></div>}
+            {publicMode && !query.trim() && <div className="search-empty"><Search size={24} /><p>Введите название трека или имя исполнителя.</p></div>}
             {query.trim() && !loading && !error && tracks.length === 0 && results.playlists.length === 0 && (results.profiles || []).length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Проверьте имя, логин или название музыки.</p></div>}
           </div>
 
-          {results.playlists.length > 0 && (
+          {!publicMode && results.playlists.length > 0 && (
             <div className="search-page__playlists">
               <div className="search-page__caption"><span>Плейлисты</span></div>
               <div className="search-playlist-row">
@@ -151,7 +152,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
           )}
         </div>
         <footer className="search-page__footer">
-          <span><Command size={14} /> K — перейти к поиску</span>
+          <span>{publicMode ? <><Search size={14} /> поиск доступен всем</> : <><Command size={14} /> K — перейти к поиску</>}</span>
           <span><CornerDownLeft size={14} /> — включить первый результат</span>
         </footer>
       </div>

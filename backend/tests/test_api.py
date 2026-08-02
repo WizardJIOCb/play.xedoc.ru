@@ -489,8 +489,34 @@ def test_first_connected_yandex_uid_is_pinned(
 
 def test_private_endpoints_require_access(client: TestClient) -> None:
     assert client.post("/api/auth/device/start").status_code == 401
-    assert client.get("/api/search", params={"q": "test"}).status_code == 401
+    assert client.get("/api/search", params={"q": "test"}).status_code == 200
     assert client.put("/api/tracks/101/like").status_code == 401
+
+
+def test_public_search_uses_signed_guest_stream(
+    client: TestClient,
+    fake_gateway: FakeGateway,
+) -> None:
+    connect(client)
+    assert client.post("/api/account/logout").status_code == 200
+
+    search = client.get("/api/search", params={"q": "signal"})
+    assert search.status_code == 200
+    payload = search.json()
+    assert payload["playlists"] == []
+    assert "liked" not in payload["tracks"][0]
+    stream_path = payload["tracks"][0]["streamUrl"]
+    assert stream_path.startswith("/api/public-search/tracks/101/stream?ticket=")
+
+    stream = client.get(stream_path, follow_redirects=False)
+    assert stream.status_code == 307
+    assert stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
+    assert stream.headers["cache-control"] == "public, no-store, max-age=0"
+    assert fake_gateway.search_queries[-1] == "signal"
+
+    separator = "&" if "?" in stream_path else "?"
+    rejected = client.get(f"{stream_path}{separator}ticket=invalid-ticket-value", follow_redirects=False)
+    assert rejected.status_code == 403
 
 
 def test_registration_login_and_tenant_isolation(client: TestClient, store: CredentialStore) -> None:

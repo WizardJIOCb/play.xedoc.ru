@@ -126,7 +126,15 @@ function safePlaybackTrack(value: unknown): Track | undefined {
   const track = safeHistoryTrack(value)
   if (!track || !value || typeof value !== 'object') return track
   const streamUrl = (value as Partial<Track>).streamUrl
-  return typeof streamUrl === 'string' && streamUrl.startsWith('/api/shares/') ? { ...track, streamUrl } : track
+  return typeof streamUrl === 'string' && isPublicStreamUrl(streamUrl) ? { ...track, streamUrl } : track
+}
+
+function isPublicStreamUrl(streamUrl?: string): boolean {
+  return Boolean(
+    streamUrl?.startsWith('/api/shares/')
+    || streamUrl?.startsWith('/api/public-search/')
+    || streamUrl?.startsWith('/api/profiles/'),
+  )
 }
 
 function safePlaybackSource(value: unknown): PlaybackSource | undefined {
@@ -373,7 +381,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!current || !isPlaying || recordedSelectionRef.current === selectionVersion) return
-    if (current.id.startsWith('demo-') || current.streamUrl?.startsWith('/api/shares/')) return
+    if (current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) return
     const timeout = window.setTimeout(() => {
       recordedSelectionRef.current = selectionVersion
       void recordListeningEvent(current, 20_000).catch(() => undefined)
@@ -382,7 +390,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current, isPlaying, selectionVersion])
 
   useEffect(() => {
-    if (!current || !isPlaying || current.id.startsWith('demo-') || current.streamUrl?.startsWith('/api/shares/')) {
+    if (!current || !isPlaying || current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) {
       if (presenceActiveRef.current) {
         presenceActiveRef.current = false
         void clearNowPlaying().catch(() => undefined)
