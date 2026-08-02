@@ -12,6 +12,7 @@ from app.gateway import DeviceAuthorization
 from app.main import create_app
 from app.models import (
     BootstrapPayload,
+    DiscoveryRecommendationsPayload,
     LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
@@ -45,6 +46,17 @@ TEST_PLAYLIST = PlaylistDTO(
     tracks=[TEST_TRACK],
 )
 
+TEST_DISCOVERY_TRACK = TrackDTO(
+    id="202",
+    title="Unknown Signal",
+    artists=["Adjacent Artist"],
+    album="Never Heard",
+    duration_ms=189_000,
+    cover_tone="lime",
+    liked=False,
+    stream_url="/api/tracks/202/stream",
+)
+
 TEST_CREDENTIAL = Credential(
     access_token="very-secret-yandex-token",
     refresh_token="secret-refresh-token",
@@ -61,6 +73,7 @@ class FakeGateway:
         self.likes: list[tuple[str, bool]] = []
         self.playlist_ids: list[str] = []
         self.search_queries: list[str] = []
+        self.discovery_contexts: list[tuple[list[str], set[str]]] = []
 
     async def start_device_auth(self) -> DeviceAuthorization:
         return DeviceAuthorization(
@@ -95,6 +108,20 @@ class FakeGateway:
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         return LikedTracksPayload(tracks=[TEST_TRACK], total=1)
+
+    async def discovery_recommendations(
+        self,
+        credential: Credential,
+        seed_track_ids: list[str],
+        exclude_track_ids: set[str],
+    ) -> DiscoveryRecommendationsPayload:
+        self.discovery_contexts.append((seed_track_ids, exclude_track_ids))
+        return DiscoveryRecommendationsPayload(
+            tracks=[TEST_DISCOVERY_TRACK],
+            seed_count=len(seed_track_ids),
+            known_track_count=len(exclude_track_ids),
+            insight="Fixture discovery",
+        )
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None:
         self.likes.append((track_id, liked))

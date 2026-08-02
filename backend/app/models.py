@@ -89,6 +89,13 @@ class LikedTracksPayload(APIModel):
     total: int = 0
 
 
+class DiscoveryRecommendationsPayload(APIModel):
+    tracks: list[TrackDTO] = Field(default_factory=list)
+    seed_count: int = 0
+    known_track_count: int = 0
+    insight: str
+
+
 class ListeningTopDTO(APIModel):
     id: str
     title: str

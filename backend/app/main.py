@@ -33,6 +33,7 @@ from .models import (
     DeviceAuthPollDTO,
     DeviceAuthPollRequest,
     DeviceAuthStartDTO,
+    DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
     ListeningEventRequest,
     ListeningStatsPayload,
@@ -551,6 +552,26 @@ def create_app(
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
 
+    @app.get(
+        "/api/discovery-recommendations",
+        response_model=DiscoveryRecommendationsPayload,
+        response_model_exclude_none=True,
+    )
+    async def discovery_recommendations(
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> DiscoveryRecommendationsPayload:
+        credential = require_credential(request)
+        seed_track_ids, known_track_ids = _discovery_context(store)
+        try:
+            return await gateway.discovery_recommendations(
+                credential,
+                seed_track_ids,
+                known_track_ids,
+            )
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+
     @app.get("/api/listening-stats", response_model=ListeningStatsPayload, response_model_exclude_none=True)
     async def listening_stats(
         request: Request,
@@ -852,6 +873,32 @@ def _decorate_tracks_with_stats(tracks: list[TrackDTO], store: CredentialStore) 
             track.play_count = item["play_count"]
             track.total_listened_ms = item["total_listened_ms"]
             track.last_played_at = item["last_played_at"]
+
+
+def _discovery_context(store: CredentialStore) -> tuple[list[str], set[str]]:
+    events = store.list_listening_events(3000)
+    known_track_ids = set(store.list_track_stats())
+    recent_player_ids: list[str] = []
+    fallback_signal_ids: list[str] = []
+    for event in events:
+        track_id = str(event.get("track_id") or "").strip()
+        if not track_id:
+            continue
+        known_track_ids.add(track_id)
+        if event.get("source") == "player" and track_id not in recent_player_ids:
+            recent_player_ids.append(track_id)
+        elif track_id not in fallback_signal_ids:
+            fallback_signal_ids.append(track_id)
+
+    for summary in store.list_local_playlists():
+        playlist = store.load_local_playlist(summary["id"])
+        for item in (playlist or {}).get("tracks", []):
+            track_id = str(item.get("id") or "").strip()
+            if track_id:
+                known_track_ids.add(track_id)
+
+    seeds = recent_player_ids[:8] or fallback_signal_ids[:8]
+    return seeds, known_track_ids
 
 
 def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> None:

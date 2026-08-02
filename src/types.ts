@@ -82,6 +82,13 @@ export interface LikedTracksPayload {
   total: number
 }
 
+export interface DiscoveryRecommendations {
+  tracks: Track[]
+  seedCount: number
+  knownTrackCount: number
+  insight: string
+}
+
 export interface SearchPayload {
   tracks: Track[]
   playlists: Playlist[]

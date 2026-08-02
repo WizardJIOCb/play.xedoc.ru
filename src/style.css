@@ -411,6 +411,17 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .recommendation-period-detail p { margin: 0; color: var(--muted); font-size: var(--type-body); }
 .recommendation-period-detail header small { display: block; margin-top: 8px; color: #b6a4d8; font-size: var(--type-caption); }
 .recommendation-period-detail > header .primary-button { flex: 0 0 auto; }
+.discovery-recommendations { margin-top: 38px; padding: 22px; border: 1px solid rgba(87,211,255,.22); border-radius: var(--radius-lg); background: radial-gradient(circle at 8% 0, rgba(87,211,255,.12), transparent 28%), linear-gradient(135deg, rgba(15,22,25,.97), rgba(16,16,23,.98)); }
+.discovery-recommendations > header { min-height: 105px; margin-bottom: 16px; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 20px; }
+.discovery-recommendations__intro { min-width: 0; display: flex; align-items: center; gap: 15px; }
+.discovery-recommendations__mark { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid rgba(87,211,255,.28); border-radius: 14px; background: rgba(87,211,255,.09); color: #57d3ff; box-shadow: 0 0 30px rgba(87,211,255,.09); }
+.discovery-recommendations h2 { margin: 7px 0 5px; font-size: 30px; letter-spacing: -.035em; }
+.discovery-recommendations p { max-width: 690px; margin: 0; color: var(--muted); font-size: var(--type-body); line-height: 1.45; }
+.discovery-recommendations__proof { min-width: 180px; padding: 11px 14px; display: grid; grid-template-columns: auto 1fr; column-gap: 9px; align-items: center; border: 1px solid rgba(217,255,99,.16); border-radius: 13px; background: rgba(0,0,0,.2); cursor: help; }
+.discovery-recommendations__proof strong { grid-row: 1 / 3; color: var(--acid); font-size: 30px; line-height: 1; }
+.discovery-recommendations__proof span { color: var(--text); font-size: var(--type-caption); font-weight: 750; line-height: 1.15; }
+.discovery-recommendations__proof small { grid-column: 1 / 3; margin-top: 7px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.discovery-recommendations > header .primary-button { white-space: nowrap; }
 
 .listening-top-page { padding-top: 5px; }
 .listening-top-page__hero { min-height: 285px; padding: 38px 42px; display: grid; grid-template-columns: minmax(0,1.2fr) minmax(330px,.8fr); align-items: center; gap: 38px; border: 1px solid rgba(255,191,95,.2); border-radius: var(--radius-lg); background: radial-gradient(circle at 82% 20%, rgba(255,191,95,.14), transparent 29%), linear-gradient(125deg, rgba(26,24,19,.97), rgba(19,18,28,.97)); }
@@ -846,6 +857,8 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .recommendation-periods { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .recommendations-page__hero { grid-template-columns: minmax(0,1fr) 160px; padding: 30px; }
   .recommendations-page__signal { width: 150px; height: 150px; }
+  .discovery-recommendations > header { grid-template-columns: minmax(0,1fr) auto; }
+  .discovery-recommendations__proof { display: none; }
 }
 
 @media (max-width: 720px) {
@@ -885,6 +898,12 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .recommendation-period-detail > header { min-height: 0; align-items: stretch; flex-direction: column; }
   .recommendation-period-detail h2 { font-size: 26px; }
   .recommendation-period-detail > header .primary-button { width: 100%; }
+  .discovery-recommendations { margin-top: 30px; padding: 17px 13px; }
+  .discovery-recommendations > header { min-height: 0; display: flex; align-items: stretch; flex-direction: column; gap: 14px; }
+  .discovery-recommendations__intro { align-items: flex-start; }
+  .discovery-recommendations__mark { width: 42px; height: 42px; }
+  .discovery-recommendations h2 { font-size: 26px; }
+  .discovery-recommendations > header .primary-button { width: 100%; }
   .listening-top-page__hero { min-height: 0; padding: 28px 23px; display: block; }
   .listening-top-page__hero h1 { font-size: 37px; }
   .listening-top-page__numbers { margin-top: 24px; }

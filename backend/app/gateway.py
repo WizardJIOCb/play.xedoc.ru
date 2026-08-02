@@ -4,6 +4,7 @@ import asyncio
 import random
 import secrets
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import quote, urlparse
@@ -11,6 +12,7 @@ from urllib.parse import quote, urlparse
 from .config import Settings
 from .models import (
     BootstrapPayload,
+    DiscoveryRecommendationsPayload,
     LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
@@ -87,6 +89,13 @@ class MusicGateway(Protocol):
     async def search(self, credential: Credential, query: str) -> SearchPayload: ...
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload: ...
+
+    async def discovery_recommendations(
+        self,
+        credential: Credential,
+        seed_track_ids: list[str],
+        exclude_track_ids: set[str],
+    ) -> DiscoveryRecommendationsPayload: ...
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None: ...
 
@@ -281,6 +290,142 @@ class YandexMusicGateway:
         return LikedTracksPayload(
             tracks=[map_track(track, liked_ids=liked_ids) for track in hydrated],
             total=len(shorts),
+        )
+
+    async def discovery_recommendations(
+        self,
+        credential: Credential,
+        seed_track_ids: list[str],
+        exclude_track_ids: set[str],
+    ) -> DiscoveryRecommendationsPayload:
+        client = await self._authorized_client(credential)
+        try:
+            likes_result, playlists_result, history_result = await asyncio.gather(
+                client.users_likes_tracks(user_id=_number_or_text(credential.user_uid)),
+                client.users_playlists_list(user_id=_number_or_text(credential.user_uid)),
+                client.music_history(full_models_count=0),
+                return_exceptions=True,
+            )
+            _raise_if_authorization_failed(likes_result, playlists_result, history_result)
+            if isinstance(likes_result, Exception) or isinstance(playlists_result, Exception):
+                raise GatewayUnavailable("Could not read the existing music collection")
+            liked_shorts = list(getattr(likes_result, "tracks", None) or [])
+            history_ids = [] if isinstance(history_result, Exception) else _music_history_track_ids(history_result)
+            playlist_summaries = list(playlists_result or [])
+            kinds = [
+                getattr(item, "kind")
+                for item in playlist_summaries
+                if getattr(item, "kind", None) is not None
+            ]
+            full_playlists: list[Any] = []
+            if kinds:
+                playlist_results = await asyncio.gather(
+                    *[
+                        client.users_playlists(
+                            kind=kinds[index:index + 50],
+                            user_id=_number_or_text(credential.user_uid),
+                        )
+                        for index in range(0, len(kinds), 50)
+                    ]
+                )
+                for playlist_result in playlist_results:
+                    if isinstance(playlist_result, list):
+                        full_playlists.extend(playlist_result)
+                    elif playlist_result is not None:
+                        full_playlists.append(playlist_result)
+
+            known_ids = set(exclude_track_ids)
+            known_ids.update(
+                identifier
+                for item in liked_shorts
+                if (identifier := _short_track_id(item)) is not None
+            )
+            known_ids.update(history_ids)
+            for playlist in full_playlists:
+                known_ids.update(
+                    identifier
+                    for item in list(getattr(playlist, "tracks", None) or [])
+                    if (identifier := _short_track_id(item)) is not None
+                )
+
+            seeds = _dedupe_identifiers([*seed_track_ids, *history_ids])
+            if not seeds:
+                seeds = _dedupe_identifiers(
+                    [identifier for item in liked_shorts if (identifier := _short_track_id(item))]
+                )
+            seeds = seeds[:6]
+            if not seeds:
+                return DiscoveryRecommendationsPayload(
+                    tracks=[],
+                    seed_count=0,
+                    known_track_count=len(_canonical_identifiers(known_ids)),
+                    insight="Послушайте несколько треков — затем мы найдём новое по сходству.",
+                )
+
+            similar_results = await asyncio.gather(
+                *[client.tracks_similar(seed) for seed in seeds],
+                return_exceptions=True,
+            )
+            try:
+                wave_result = await client.rotor_station_tracks("user:onyourwave")
+            except YandexMusicError:
+                wave_result = None
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("Could not build discovery recommendations") from exc
+
+        known_aliases = _identifier_aliases_for(known_ids)
+        scores: dict[str, float] = {}
+        candidates: dict[str, Any] = {}
+        for seed_index, result in enumerate(similar_results):
+            if isinstance(result, Exception) or result is None:
+                continue
+            for position, track in enumerate(list(getattr(result, "similar_tracks", None) or [])[:30]):
+                track_id = _track_id(track)
+                if _identifier_aliases(track_id) & known_aliases:
+                    continue
+                candidates[track_id] = track
+                scores[track_id] = scores.get(track_id, 0) + max(1.0, 30 - position) * max(.55, 1 - seed_index * .09)
+
+        for position, sequence in enumerate(list(getattr(wave_result, "sequence", None) or [])[:60]):
+            track = getattr(sequence, "track", None)
+            if track is None:
+                continue
+            track_id = _track_id(track)
+            if _identifier_aliases(track_id) & known_aliases:
+                continue
+            candidates.setdefault(track_id, track)
+            scores[track_id] = scores.get(track_id, 0) + max(.25, 5 - position * .08)
+
+        ranked = sorted(candidates.values(), key=lambda item: scores.get(_track_id(item), 0), reverse=True)
+        selected: list[Any] = []
+        artist_counts: dict[str, int] = {}
+        for track in ranked:
+            if getattr(track, "available", True) is False:
+                continue
+            artist = _primary_artist(track)
+            if artist and artist_counts.get(artist, 0) >= 2:
+                continue
+            selected.append(track)
+            if artist:
+                artist_counts[artist] = artist_counts.get(artist, 0) + 1
+            if len(selected) >= 24:
+                break
+
+        liked_aliases = _identifier_aliases_for(
+            identifier for item in liked_shorts if (identifier := _short_track_id(item))
+        )
+        tracks = [map_track(track, liked_ids=liked_aliases) for track in selected]
+        return DiscoveryRecommendationsPayload(
+            tracks=tracks,
+            seed_count=len(seeds),
+            known_track_count=len(_canonical_identifiers(known_ids)),
+            insight=(
+                f"Сравнили с {len(seeds)} недавними треками и исключили всё, что уже есть в вашей музыке."
+                if tracks
+                else "Похожая музыка найдена, но все кандидаты уже встречались в вашей коллекции."
+            ),
         )
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None:
@@ -611,6 +756,55 @@ def _short_track_id(item: Any) -> str | None:
         if value is not None and album_id is not None:
             value = f"{value}:{album_id}"
     return str(value) if value is not None else None
+
+
+def _music_history_track_ids(history: Any) -> list[str]:
+    identifiers: list[str] = []
+    for tab in list(getattr(history, "history_tabs", None) or []):
+        for group in list(getattr(tab, "items", None) or []):
+            for item in list(getattr(group, "tracks", None) or []):
+                if getattr(item, "type", None) != "track":
+                    continue
+                data = getattr(item, "data", None)
+                item_id = getattr(data, "item_id", None)
+                track_id = getattr(item_id, "track_id", None)
+                album_id = getattr(item_id, "album_id", None)
+                if track_id is not None:
+                    identifiers.append(f"{track_id}:{album_id}" if album_id is not None else str(track_id))
+    return _dedupe_identifiers(identifiers)
+
+
+def _identifier_aliases(value: str) -> set[str]:
+    identifier = str(value).strip()
+    if not identifier:
+        return set()
+    aliases = {identifier}
+    if ":" in identifier:
+        aliases.add(identifier.split(":", 1)[0])
+    return aliases
+
+
+def _identifier_aliases_for(values: Iterable[str]) -> set[str]:
+    aliases: set[str] = set()
+    for value in values:
+        aliases.update(_identifier_aliases(value))
+    return aliases
+
+
+def _canonical_identifiers(values: Iterable[str]) -> set[str]:
+    return {str(value).split(":", 1)[0] for value in values if str(value).strip()}
+
+
+def _dedupe_identifiers(values: Iterable[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        aliases = _identifier_aliases(value)
+        if not aliases or aliases & seen:
+            continue
+        result.append(str(value))
+        seen.update(aliases)
+    return result
 
 
 def _tone_for(value: str) -> str:

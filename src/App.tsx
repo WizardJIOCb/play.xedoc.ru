@@ -41,9 +41,9 @@ import { ShareButton } from './components/ShareButton'
 import { Sidebar } from './components/Sidebar'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
-import { getAllLikedTracks, getBootstrap, getListeningStats, getPlaylist, logout, unlockAccess } from './lib/api'
+import { getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logout, unlockAccess } from './lib/api'
 import { usePlayer } from './player/PlayerContext'
-import type { BootstrapPayload, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
+import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
 const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: string }> = {
   home: { eyebrow: 'ВОСКРЕСЕНЬЕ · ВАШ РИТМ', title: 'Добрый день', description: 'Музыка, которая подходит именно сейчас.' },
@@ -136,9 +136,26 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
 function RecommendationsView({ data }: { data: BootstrapPayload }) {
   const player = usePlayer()
   const [selectedId, setSelectedId] = useState(data.xedocCollections[0]?.id || '')
+  const [discovery, setDiscovery] = useState<DiscoveryRecommendations>()
+  const [discoveryLoading, setDiscoveryLoading] = useState(data.connected)
+  const [discoveryError, setDiscoveryError] = useState('')
   useEffect(() => {
     if (!data.xedocCollections.some((item) => item.id === selectedId)) setSelectedId(data.xedocCollections[0]?.id || '')
   }, [data.xedocCollections, selectedId])
+  useEffect(() => {
+    if (!data.connected) {
+      setDiscoveryLoading(false)
+      return
+    }
+    let cancelled = false
+    setDiscoveryLoading(true)
+    setDiscoveryError('')
+    void getDiscoveryRecommendations()
+      .then((result) => { if (!cancelled) setDiscovery(result) })
+      .catch(() => { if (!cancelled) setDiscoveryError('Не удалось подобрать новую музыку. Попробуйте открыть рекомендации чуть позже.') })
+      .finally(() => { if (!cancelled) setDiscoveryLoading(false) })
+    return () => { cancelled = true }
+  }, [data.connected])
   const selected = data.xedocCollections.find((item) => item.id === selectedId) || data.xedocCollections[0]
 
   return (
@@ -156,6 +173,15 @@ function RecommendationsView({ data }: { data: BootstrapPayload }) {
         <header><div><span className="eyebrow">ОБНОВЛЯЕТСЯ АВТОМАТИЧЕСКИ</span><h2>{selected.title}</h2><p>{selected.subtitle}</p>{selected.fallback && <small>Пока в этом периоде мало прослушиваний — подборка заполнена треками, близкими вашему вкусу.</small>}</div><button className="primary-button" type="button" disabled={!selected.tracks.length} onClick={() => player.playQueue(selected.tracks)}><Play size={18} fill="currentColor" /> Слушать подборку</button></header>
         {selected.tracks.length ? <div className="track-table track-table--large">{selected.tracks.map((track, index) => <TrackRow key={`${selected.id}-${track.id}`} track={track} context={selected.tracks} index={index} />)}</div> : <div className="playlist-detail__loading">Послушайте несколько треков — здесь появится ваша подборка.</div>}
       </section> : <div className="playlist-detail__loading">Подборки появятся после подключения коллекции.</div>}
+
+      <section className="discovery-recommendations">
+        <header>
+          <div className="discovery-recommendations__intro"><span className="discovery-recommendations__mark"><WandSparkles size={23} /></span><div><span className="eyebrow">НИ РАЗУ НЕ СЛУШАЛИ</span><h2>Новые для вас</h2><p>{discovery?.insight || 'Ищем музыку, похожую на то, что звучало у вас в последнее время.'}</p></div></div>
+          {discovery && <div className="discovery-recommendations__proof" data-tooltip="Лайки, плейлисты и история XEDOC исключены из этой подборки"><strong>0</strong><span>знакомых<br />треков</span><small>{discovery.seedCount} ориентиров · {discovery.knownTrackCount} исключено</small></div>}
+          <button className="primary-button" type="button" disabled={!discovery?.tracks.length} onClick={() => discovery && player.playQueue(discovery.tracks)}><Play size={18} fill="currentColor" /> Слушать новое</button>
+        </header>
+        {discoveryLoading ? <div className="playlist-detail__loading"><LoaderCircle className="spin" size={22} /> Ищем неизвестное рядом с любимым…</div> : discoveryError ? <div className="playlist-detail__loading form-error">{discoveryError}</div> : discovery?.tracks.length ? <div className="track-table track-table--large">{discovery.tracks.map((track, index) => <TrackRow key={`discovery-${track.id}`} track={track} context={discovery.tracks} index={index} />)}</div> : <div className="playlist-detail__loading">Послушайте несколько треков через XEDOC Play — новая подборка появится здесь.</div>}
+      </section>
 
       <section className="content-section">
         <SectionHeader title="Для вас прямо сейчас" hint="Отдельная модель XEDOC: вкус, новизна и защита от недавних повторов" />

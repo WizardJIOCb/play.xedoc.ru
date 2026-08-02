@@ -114,7 +114,7 @@ def test_connected_music_endpoints(
     assert session.json()["tracks"][0]["title"] == "Test Signal"
 
 
-def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient) -> None:
+def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_gateway) -> None:
     connect(client)
     created = client.post("/api/local-playlists", json={"title": "My XEDOC list", "description": "See https://example.com"})
     assert created.status_code == 200
@@ -159,6 +159,13 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient) -> No
     assert liked_tracks.status_code == 200
     assert liked_tracks.json()["total"] == 1
     assert liked_tracks.json()["tracks"][0]["id"] == "101"
+
+    discovery = client.get("/api/discovery-recommendations")
+    assert discovery.status_code == 200
+    assert discovery.json()["tracks"][0]["id"] == "202"
+    assert discovery.json()["seedCount"] == 1
+    assert fake_gateway.discovery_contexts[-1][0] == ["101"]
+    assert "101" in fake_gateway.discovery_contexts[-1][1]
 
     shared = client.post("/api/shares/playlists", json={"playlistId": playlist_id})
     assert shared.status_code == 200
