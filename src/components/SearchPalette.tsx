@@ -6,39 +6,49 @@ import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
 
-export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { open: boolean; suggestions: Track[]; onClose: () => void; onPlaylistPlay: (playlist: Playlist) => void }) {
+const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
+
+export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Track[]; onPlaylistPlay: (playlist: Playlist) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
   const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<SearchPayload>({ tracks: [], playlists: [], profiles: [] })
+  const [error, setError] = useState('')
+  const [results, setResults] = useState<SearchPayload>(emptyResults)
   const requestRef = useRef(0)
   const player = usePlayer()
 
   useEffect(() => {
-    if (open) {
-      trackGoal('search_opened')
-      window.setTimeout(() => inputRef.current?.focus(), 40)
-    }
-    else {
-      requestRef.current += 1
-      setQuery('')
-      setLoading(false)
-    }
-  }, [open])
+    trackGoal('search_opened')
+    window.setTimeout(() => inputRef.current?.focus(), 40)
+  }, [])
+
+  useEffect(() => {
+    if (window.location.pathname.replace(/\/+$/, '') !== '/search') return
+    const url = new URL(window.location.href)
+    if (query.trim()) url.searchParams.set('q', query)
+    else url.searchParams.delete('q')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`)
+  }, [query])
 
   useEffect(() => {
     if (!query.trim()) {
       requestRef.current += 1
-      setResults({ tracks: [], playlists: [], profiles: [] })
+      setResults(emptyResults())
       setLoading(false)
+      setError('')
       return
     }
     const requestId = ++requestRef.current
     setLoading(true)
+    setError('')
     const timeout = window.setTimeout(() => {
-      void searchMusic(query)
+      void searchMusic(query.trim())
         .then((payload) => requestId === requestRef.current && setResults(payload))
-        .catch(() => requestId === requestRef.current && setResults({ tracks: [], playlists: [], profiles: [] }))
+        .catch(() => {
+          if (requestId !== requestRef.current) return
+          setResults(emptyResults())
+          setError('Не удалось выполнить поиск. Проверьте соединение и попробуйте ещё раз.')
+        })
         .finally(() => requestId === requestRef.current && setLoading(false))
     }, 240)
     return () => {
@@ -47,64 +57,70 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
     }
   }, [query])
 
-  useEffect(() => {
-    if (!open) return
-    const close = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [onClose, open])
-
-  if (!open) return null
-  const tracks = query ? results.tracks : suggestions
+  const tracks = query.trim() ? results.tracks : suggestions
+  const playFirst = () => {
+    if (tracks[0]) {
+      trackGoal('search_result_selected', { resultType: 'track' })
+      player.playTrack(tracks[0], tracks)
+    } else if (results.playlists[0]) {
+      trackGoal('search_result_selected', { resultType: 'playlist' })
+      onPlaylistPlay(results.playlists[0])
+    } else if (results.profiles?.[0]) {
+      trackGoal('search_result_selected', { resultType: 'profile' })
+      window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}`
+    }
+  }
 
   return (
-    <div className="overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="search-palette" role="dialog" aria-modal="true" aria-label="Поиск музыки">
-        <div className="search-palette__input">
-          {loading ? <LoaderCircle className="spin" size={21} /> : <Search size={21} />}
+    <section className="search-page" aria-label="Поиск музыки">
+      <header className="search-page__heading">
+        <div>
+          <span className="eyebrow">ПОИСК ПО ВСЕЙ МУЗЫКЕ</span>
+          <h1>Что хотите послушать?</h1>
+          <p>Ищите треки, исполнителей, плейлисты и открытые профили в одном месте.</p>
+        </div>
+      </header>
+
+      <div className="search-page__surface">
+        <div className="search-page__input">
+          {loading ? <LoaderCircle className="spin" size={22} /> : <Search size={22} />}
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return
-              if (tracks[0]) { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(tracks[0], tracks) }
-              else if (results.playlists[0]) { trackGoal('search_result_selected', { resultType: 'playlist' }); onPlaylistPlay(results.playlists[0]) }
-              else if (results.profiles?.[0]) { trackGoal('search_result_selected', { resultType: 'profile' }); window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}` }
-              else return
-              onClose()
-            }}
+            onKeyDown={(event) => event.key === 'Enter' && playFirst()}
             placeholder="Трек, артист, плейлист или @профиль"
+            aria-label="Поисковый запрос"
           />
-          <kbd>ESC</kbd>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><X size={19} /></button>
+          {query && <button className="icon-button" type="button" onClick={() => setQuery('')} aria-label="Очистить поиск" data-tooltip="Очистить запрос"><X size={18} /></button>}
         </div>
 
-        <div className="search-palette__content">
-          <div className="search-palette__caption">
-            <span>{query ? 'Треки' : 'Недавно слушали'}</span>
-            {!query && <small><Clock3 size={13} /> локальная история</small>}
+        <div className="search-page__content" aria-live="polite">
+          <div className="search-page__caption">
+            <span>{query.trim() ? 'Треки' : 'Можно включить сразу'}</span>
+            {!query.trim() && <small><Clock3 size={13} /> быстрый выбор</small>}
           </div>
           <div className="search-results">
-            {tracks.slice(0, 6).map((track) => (
+            {tracks.slice(0, 12).map((track) => (
               <div key={track.id} className="search-result">
-                <button className="search-result__main" type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks); onClose() }}>
+                <button className="search-result__main" type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }}>
                   <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
                   <span className="search-result__meta"><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span>
                   <Play size={17} fill="currentColor" />
                 </button>
-                <button className="search-result__next" type="button" aria-label={`Добавить ${track.title} следующим`} onClick={() => player.addNext(track)}><ListPlus size={18} /></button>
+                <button className="search-result__next" type="button" aria-label={`Добавить ${track.title} следующим`} data-tooltip="Добавить следующим" onClick={() => player.addNext(track)}><ListPlus size={18} /></button>
               </div>
             ))}
-            {query && !loading && tracks.length === 0 && results.playlists.length === 0 && (results.profiles || []).length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Проверьте имя, логин или название музыки.</p></div>}
+            {error && <div className="search-empty search-empty--error"><ArrowDownToLine size={24} /><p>{error}</p></div>}
+            {query.trim() && !loading && !error && tracks.length === 0 && results.playlists.length === 0 && (results.profiles || []).length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Проверьте имя, логин или название музыки.</p></div>}
           </div>
 
           {results.playlists.length > 0 && (
-            <div className="search-palette__playlists">
-              <div className="search-palette__caption"><span>Плейлисты</span></div>
+            <div className="search-page__playlists">
+              <div className="search-page__caption"><span>Плейлисты</span></div>
               <div className="search-playlist-row">
-                {results.playlists.slice(0, 4).map((playlist) => (
-                  <button key={playlist.id} type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'playlist' }); onPlaylistPlay(playlist); onClose() }}>
+                {results.playlists.slice(0, 6).map((playlist) => (
+                  <button key={playlist.id} type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'playlist' }); onPlaylistPlay(playlist) }}>
                     <CoverArt title={playlist.title} url={playlist.coverUrl} tone={playlist.coverTone} className="search-playlist-row__cover" />
                     <span><strong>{playlist.title}</strong><small>{playlist.trackCount} треков</small></span>
                   </button>
@@ -114,11 +130,11 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
           )}
 
           {(results.profiles || []).length > 0 && (
-            <div className="search-palette__profiles">
-              <div className="search-palette__caption"><span>Профили</span></div>
+            <div className="search-page__profiles">
+              <div className="search-page__caption"><span>Профили</span></div>
               <div className="search-profile-row">
                 {results.profiles.slice(0, 6).map((profile) => (
-                  <a key={profile.username} href={`/users/${encodeURIComponent(profile.username)}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'profile' }); onClose() }}>
+                  <a key={profile.username} href={`/users/${encodeURIComponent(profile.username)}`} onClick={() => trackGoal('search_result_selected', { resultType: 'profile' })}>
                     <span className="search-profile-row__avatar"><UserRound size={20} /></span>
                     <span><strong>{profile.displayName}</strong><small>@{profile.username} · {profile.publicPlaylistCount} публичных плейлистов</small></span>
                   </a>
@@ -127,11 +143,11 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
             </div>
           )}
         </div>
-        <footer className="search-palette__footer">
-          <span><Command size={14} /> K — открыть поиск</span>
-          <span><CornerDownLeft size={14} /> — включить</span>
+        <footer className="search-page__footer">
+          <span><Command size={14} /> K — перейти к поиску</span>
+          <span><CornerDownLeft size={14} /> — включить первый результат</span>
         </footer>
-      </section>
-    </div>
+      </div>
+    </section>
   )
 }

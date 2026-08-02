@@ -64,6 +64,7 @@ const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '')
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
 const isLikedPath = () => window.location.pathname.replace(/\/+$/, '') === '/liked'
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
+const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
 
 function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
@@ -379,7 +380,7 @@ function PrivateApp() {
   const [likedLoading, setLikedLoading] = useState(false)
   const [likedError, setLikedError] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(isSearchPath)
   const [sessionOpen, setSessionOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
@@ -445,6 +446,7 @@ function PrivateApp() {
       setRecommendationsOpen(isRecommendationsPath())
       setTopOpen(isTopPath())
       setAdminOpen(isAdminPath())
+      setSearchOpen(isSearchPath())
       setView(isLikedPath() ? 'liked' : 'home')
     }
     window.addEventListener('popstate', onPopState)
@@ -506,6 +508,7 @@ function PrivateApp() {
     setRecommendationsOpen(false)
     setTopOpen(false)
     setAdminOpen(false)
+    setSearchOpen(false)
     const nextPath = nextView === 'liked' ? '/liked' : '/'
     if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
     setView(nextView)
@@ -516,6 +519,7 @@ function PrivateApp() {
     setRecommendationsOpen(true)
     setTopOpen(false)
     setAdminOpen(false)
+    setSearchOpen(false)
     if (!isRecommendationsPath()) window.history.pushState(null, '', '/recommendations')
   }, [])
 
@@ -524,6 +528,7 @@ function PrivateApp() {
     setRecommendationsOpen(false)
     setTopOpen(true)
     setAdminOpen(false)
+    setSearchOpen(false)
     setListeningStats(undefined)
     if (!isTopPath()) window.history.pushState(null, '', '/top')
   }, [])
@@ -533,7 +538,18 @@ function PrivateApp() {
     setRecommendationsOpen(false)
     setTopOpen(false)
     setAdminOpen(true)
+    setSearchOpen(false)
     if (!isAdminPath()) window.history.pushState(null, '', '/admin')
+  }, [])
+
+  const openSearch = useCallback(() => {
+    setSelectedPlaylist(undefined)
+    setRecommendationsOpen(false)
+    setTopOpen(false)
+    setAdminOpen(false)
+    setSearchOpen(true)
+    if (!isSearchPath()) window.history.pushState(null, '', '/search')
+    window.setTimeout(() => document.querySelector<HTMLInputElement>('.search-page__input input')?.focus(), 40)
   }, [])
 
   useEffect(() => {
@@ -542,10 +558,10 @@ function PrivateApp() {
       const interactive = Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"]'))
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        setSearchOpen(true)
+        openSearch()
       } else if (!interactive && event.key === '/') {
         event.preventDefault()
-        setSearchOpen(true)
+        openSearch()
       } else if (!interactive && event.code === 'Space') {
         event.preventDefault()
         player.togglePlayback()
@@ -555,11 +571,12 @@ function PrivateApp() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [player])
+  }, [openSearch, player])
 
   const title = viewTitles[view]
   const content = useMemo(() => {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
+    if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylist} />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
@@ -568,7 +585,7 @@ function PrivateApp() {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -576,11 +593,11 @@ function PrivateApp() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
-      <Sidebar view={view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
+      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
       <main className="main-view">
         <header className="topbar">
-          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
-          <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
+          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
+          <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
             <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
@@ -588,7 +605,7 @@ function PrivateApp() {
         </header>
 
         <div className="page-content">
-          {!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && <header className="page-heading">
+          {!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}
@@ -597,7 +614,6 @@ function PrivateApp() {
 
       <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
       <PlayerBar onQueue={() => setQueueOpen((value) => !value)} />
-      <SearchPalette open={searchOpen} suggestions={data.quickTracks} onClose={() => setSearchOpen(false)} onPlaylistPlay={playPlaylist} />
       <SessionBuilder open={sessionOpen} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
       <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
@@ -617,7 +633,7 @@ function PrivateApp() {
       <nav className="mobile-nav" aria-label="Мобильная навигация">
         {[['home', Headphones, 'Главная'], ['discover', Radio, 'Обзор'], ['library', ListMusic, 'Библиотека'], ['liked', Heart, 'Любимые'], ['history', History, 'История']].map(([id, Icon, label]) => {
           const IconComponent = Icon as typeof Headphones
-          return <button key={id as string} className={!recommendationsOpen && !topOpen && view === id ? 'is-active' : ''} type="button" onClick={() => changeView(id as ViewId)}><IconComponent size={20} /><span>{label as string}</span></button>
+          return <button key={id as string} className={!recommendationsOpen && !topOpen && !searchOpen && view === id ? 'is-active' : ''} type="button" onClick={() => changeView(id as ViewId)}><IconComponent size={20} /><span>{label as string}</span></button>
         })}
       </nav>
 

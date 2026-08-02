@@ -20,7 +20,7 @@ export function Sidebar({
   onToggle,
   onSession,
 }: {
-  view: ViewId
+  view: ViewId | null
   playlists: Playlist[]
   collapsed: boolean
   recommendationsActive: boolean
