@@ -1,8 +1,8 @@
-import { ArrowLeft, CalendarDays, Clock3, Disc3, Globe2, Headphones, Library, LoaderCircle, Play, UserRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Play, Radio, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { getPublicProfile, getPublicProfilePlaylist } from '../lib/api'
+import { getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
-import type { Playlist, PublicProfile } from '../types'
+import type { Playlist, PublicNowPlaying, PublicProfile } from '../types'
 import { CoverArt } from './CoverArt'
 import { PlayerBar } from './PlayerBar'
 import { TrackRow } from './TrackRow'
@@ -20,6 +20,7 @@ function memberDate(timestamp: number) {
 
 export function PublicProfilePage({ username }: { username: string }) {
   const [profile, setProfile] = useState<PublicProfile>()
+  const [nowPlaying, setNowPlaying] = useState<PublicNowPlaying>()
   const [playlist, setPlaylist] = useState<Playlist>()
   const [loading, setLoading] = useState(true)
   const [playlistLoading, setPlaylistLoading] = useState(false)
@@ -33,12 +34,27 @@ export function PublicProfilePage({ username }: { username: string }) {
       .then((value) => {
         if (!active) return
         setProfile(value)
+        setNowPlaying(value.nowPlaying)
         document.title = `${value.displayName} (@${value.username}) — XEDOC Play`
       })
       .catch(() => active && setError('Такого профиля нет или он больше недоступен.'))
       .finally(() => active && setLoading(false))
     return () => { active = false }
   }, [username])
+
+  useEffect(() => {
+    if (!profile) return
+    let active = true
+    const interval = window.setInterval(() => {
+      void getPublicNowPlaying(profile.username)
+        .then((value) => active && setNowPlaying(value || undefined))
+        .catch(() => undefined)
+    }, 15_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [profile])
 
   const openPlaylist = async (value: Playlist) => {
     if (!profile) return
@@ -87,6 +103,18 @@ export function PublicProfilePage({ username }: { username: string }) {
               <div className="public-profile-avatar">{profile.displayName.trim().charAt(0).toUpperCase() || 'X'}</div>
               <div className="public-profile-identity"><span className="eyebrow">ПРОФИЛЬ XEDOC</span><h1>{profile.displayName}</h1><p>@{profile.username}</p><small><CalendarDays size={14} /> В XEDOC с {memberDate(profile.memberSince)}</small></div>
             </section>
+
+            {nowPlaying && <section className="public-profile-now-playing" aria-label="Слушает сейчас">
+              <div className="public-profile-now-playing__live"><span /><Radio size={16} /> СЛУШАЕТ СЕЙЧАС</div>
+              <CoverArt title={nowPlaying.track.title} url={nowPlaying.track.coverUrl} tone={nowPlaying.track.coverTone} className="public-profile-now-playing__cover" />
+              <button className="public-profile-now-playing__track" type="button" onClick={() => player.playTrack(nowPlaying.track)}>
+                <span><strong>{nowPlaying.track.title}</strong><small>{nowPlaying.track.artists.join(', ')}</small></span>
+                <span className="public-profile-now-playing__play"><Play size={19} fill="currentColor" /></span>
+              </button>
+              {nowPlaying.playlist && <button className="public-profile-now-playing__playlist" type="button" onClick={() => void openPlaylist(nowPlaying.playlist!)}>
+                <ListMusic size={17} /><span><small>ИЗ ПЛЕЙЛИСТА</small><strong>{nowPlaying.playlist.title}</strong></span><ChevronRight size={16} />
+              </button>}
+            </section>}
 
             <section className="public-profile-stats" aria-label="Статистика профиля">
               <article><Headphones size={20} /><span><strong>{profile.stats.totalPlays.toLocaleString('ru-RU')}</strong><small>прослушиваний</small></span></article>

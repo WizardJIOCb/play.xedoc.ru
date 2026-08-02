@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import sqlite3
 import time
 from dataclasses import replace
 
@@ -265,6 +266,48 @@ def test_public_profile_exposes_only_explicitly_public_playlists(client: TestCli
 
     hidden = client.get(f"/api/profiles/testuser/playlists/{private['id']}")
     assert hidden.status_code == 404
+
+
+def test_now_playing_is_live_playable_and_never_reveals_a_private_playlist(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    connect(client)
+    public = client.post("/api/local-playlists", json={"title": "Live mix", "isPublic": True}).json()
+    private = client.post("/api/local-playlists", json={"title": "Secret mix"}).json()
+    track = {
+        "id": "101", "title": "Test Signal", "artists": ["Fixture Artist"],
+        "durationMs": 201_000, "liked": True, "streamUrl": "/api/tracks/101/stream",
+    }
+    for playlist in (public, private):
+        assert client.post(f"/api/local-playlists/{playlist['id']}/tracks", json={"track": track}).status_code == 200
+
+    live = client.put("/api/presence/now-playing", json={"track": track, "playlistId": public["id"]})
+    assert live.status_code == 200
+    client.cookies.clear()
+
+    now_playing = client.get("/api/profiles/testuser/now-playing")
+    assert now_playing.status_code == 200
+    body = now_playing.json()
+    assert body["track"]["id"] == "101"
+    assert body["playlist"]["title"] == "Live mix"
+    assert "liked" not in body["track"]
+    stream = client.get(body["track"]["streamUrl"], follow_redirects=False)
+    assert stream.status_code == 307
+
+    assert client.post("/api/account/login", json={"username": "testuser", "password": "a-secure-test-password"}).status_code == 200
+    assert client.put("/api/presence/now-playing", json={"track": track, "playlistId": private["id"]}).status_code == 200
+    client.cookies.clear()
+    private_live = client.get("/api/profiles/testuser").json()["nowPlaying"]
+    assert private_live["track"]["id"] == "101"
+    assert "playlist" not in private_live
+
+    with sqlite3.connect(store.path) as connection:
+        connection.execute("UPDATE user_now_playing SET updated_at = updated_at - 1000")
+    assert client.get("/api/profiles/testuser/now-playing").json() is None
+
+    assert client.post("/api/account/login", json={"username": "testuser", "password": "a-secure-test-password"}).status_code == 200
+    assert client.delete("/api/presence/now-playing").status_code == 200
 
 
 def test_playlist_visibility_can_be_changed_by_owner(client: TestClient) -> None:

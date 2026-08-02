@@ -18,6 +18,7 @@ class CredentialStoreError(RuntimeError):
 
 LEGACY_USER_ID = "legacy-wizardjiocb911"
 ANONYMOUS_USER_ID = "anonymous"
+NOW_PLAYING_MAX_AGE_SECONDS = 90
 _current_user_id: ContextVar[str] = ContextVar("xedoc_play_user_id", default=ANONYMOUS_USER_ID)
 
 
@@ -214,6 +215,18 @@ class CredentialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_now_playing (
+                    user_id TEXT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+                    track_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    playlist_id TEXT,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_user_now_playing_updated ON user_now_playing(updated_at DESC)")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_public_share (
@@ -1066,7 +1079,7 @@ class CredentialStore:
             track.pop("streamUrl", None)
             top_tracks.append(track)
         playlists = [self._playlist_row(row) for row in playlist_rows]
-        return {
+        profile = {
             "username": str(user[1]),
             "displayName": str(user[2]),
             "memberSince": int(user[3]),
@@ -1079,6 +1092,83 @@ class CredentialStore:
             "topTracks": top_tracks,
             "playlists": playlists,
         }
+        now_playing = self.load_public_now_playing(str(user[1]))
+        if now_playing is not None:
+            profile["nowPlaying"] = now_playing[0]
+        return profile
+
+    def save_now_playing(self, track_id: str, payload: dict, playlist_id: str | None = None) -> None:
+        user_id = self.current_user_id()
+        if user_id == ANONYMOUS_USER_ID:
+            return
+        now = int(time.time())
+        public_playlist_id: str | None = None
+        with self._lock, self._connect() as connection:
+            if playlist_id:
+                visible = connection.execute(
+                    """
+                    SELECT 1 FROM local_playlist p
+                    JOIN local_playlist_track t ON t.playlist_id = p.id
+                    WHERE p.id = ? AND p.owner_id = ? AND p.is_public = 1 AND t.track_id = ?
+                    """,
+                    (playlist_id, user_id, track_id),
+                ).fetchone()
+                if visible is not None:
+                    public_playlist_id = playlist_id
+            connection.execute(
+                """
+                INSERT INTO user_now_playing(user_id, track_id, payload, playlist_id, updated_at)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    track_id = excluded.track_id,
+                    payload = excluded.payload,
+                    playlist_id = excluded.playlist_id,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, track_id, json.dumps(payload, ensure_ascii=False), public_playlist_id, now),
+            )
+
+    def clear_now_playing(self) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM user_now_playing WHERE user_id = ?", (self.current_user_id(),))
+
+    def load_public_now_playing(self, username: str) -> tuple[dict, str] | None:
+        cutoff = int(time.time()) - NOW_PLAYING_MAX_AGE_SECONDS
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT n.payload, n.track_id, n.updated_at, n.playlist_id, u.id
+                FROM user_now_playing n
+                JOIN app_user u ON u.id = n.user_id
+                WHERE u.username = ? COLLATE NOCASE AND n.updated_at >= ?
+                """,
+                (username, cutoff),
+            ).fetchone()
+            if row is None:
+                return None
+            playlist_row = None
+            if row[3]:
+                playlist_row = connection.execute(
+                    """
+                    SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
+                           COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0), p.is_public
+                    FROM local_playlist p
+                    JOIN local_playlist_track current_track ON current_track.playlist_id = p.id AND current_track.track_id = ?
+                    LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                    WHERE p.id = ? AND p.owner_id = ? AND p.is_public = 1
+                    GROUP BY p.id
+                    """,
+                    (str(row[1]), str(row[3]), str(row[4])),
+                ).fetchone()
+        try:
+            track = json.loads(row[0])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        track.pop("streamUrl", None)
+        value: dict = {"track": track, "updatedAt": int(row[2])}
+        if playlist_row is not None:
+            value["playlist"] = self._playlist_row(playlist_row)
+        return value, str(row[4])
 
     def load_public_playlist(self, username: str, playlist_id: str) -> tuple[dict, str] | None:
         with self._lock, self._connect() as connection:

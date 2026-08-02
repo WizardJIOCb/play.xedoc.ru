@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -118,6 +118,10 @@ export async function getPublicProfile(username: string): Promise<PublicProfile>
   return request<PublicProfile>(`/profiles/${encodeURIComponent(username)}`)
 }
 
+export async function getPublicNowPlaying(username: string): Promise<PublicNowPlaying | null> {
+  return request<PublicNowPlaying | null>(`/profiles/${encodeURIComponent(username)}/now-playing`)
+}
+
 export async function getPublicProfilePlaylist(username: string, playlistId: string): Promise<Playlist> {
   return request<Playlist>(`/profiles/${encodeURIComponent(username)}/playlists/${encodeURIComponent(playlistId)}`)
 }
@@ -173,6 +177,17 @@ export async function removeTrackFromLocalPlaylist(playlistId: string, trackId: 
 
 export async function recordListeningEvent(track: Track, listenedMs: number): Promise<void> {
   await request('/listening-events', { method: 'POST', body: JSON.stringify({ track, listenedMs, source: 'player' }) })
+}
+
+export async function updateNowPlaying(track: Track, playlistId?: string): Promise<void> {
+  await request('/presence/now-playing', {
+    method: 'PUT',
+    body: JSON.stringify({ track, ...(playlistId ? { playlistId } : {}) }),
+  })
+}
+
+export async function clearNowPlaying(): Promise<void> {
+  await request('/presence/now-playing', { method: 'DELETE' })
 }
 
 export async function buildSession(preferences: SessionPreferences): Promise<{ tracks: Track[] }> {

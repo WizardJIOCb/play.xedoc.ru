@@ -6,9 +6,9 @@ import type { Track } from '../types'
 import { PlayerBar } from './PlayerBar'
 import { TrackRow } from './TrackRow'
 
-const api = vi.hoisted(() => ({ toggleLike: vi.fn() }))
+const api = vi.hoisted(() => ({ toggleLike: vi.fn(), updateNowPlaying: vi.fn(), clearNowPlaying: vi.fn(), recordListeningEvent: vi.fn() }))
 
-vi.mock('../lib/api', () => ({ toggleLike: api.toggleLike }))
+vi.mock('../lib/api', () => api)
 
 class FakeAudio {
   preload = ''
@@ -37,6 +37,9 @@ describe('player like controls', () => {
   beforeEach(() => {
     window.localStorage.clear()
     api.toggleLike.mockReset().mockResolvedValue(undefined)
+    api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
+    api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
+    api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('Audio', FakeAudio)
   })
 

@@ -303,6 +303,7 @@ function linkifyDescription(text: string) {
 function PlaylistDetailView({ playlist, loading, error, onBack, onEdit }: { playlist: Playlist; loading: boolean; error?: string; onBack: () => void; onEdit: (playlist: Playlist) => void }) {
   const player = usePlayer()
   const tracks = playlist.tracks || []
+  const playbackSource = playlist.local ? { playlistId: playlist.id, playlistTitle: playlist.title } : undefined
   return (
     <section className="playlist-detail">
       <button className="playlist-detail__back" type="button" onClick={onBack}><ArrowLeft size={16} /> Назад к библиотеке</button>
@@ -313,12 +314,12 @@ function PlaylistDetailView({ playlist, loading, error, onBack, onEdit }: { play
           <h1>{playlist.title}</h1>
           <p className="playlist-description">{linkifyDescription(playlist.description || playlist.subtitle || 'Ваша коллекция в Яндекс Музыке')}</p>
           <span>{playlist.trackCount} треков{playlist.durationMinutes ? ` · ${Math.floor(playlist.durationMinutes / 60)} ч ${playlist.durationMinutes % 60} мин` : ''}</span>
-          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5))}><Shuffle size={17} /> Перемешать</button><ShareButton playlist={playlist} labeled />{playlist.local && <button className="secondary-button" type="button" onClick={() => onEdit(playlist)}><Pencil size={17} /> Редактировать</button>}</div>
+          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks, 0, playbackSource)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5), 0, playbackSource)}><Shuffle size={17} /> Перемешать</button><ShareButton playlist={playlist} labeled />{playlist.local && <button className="secondary-button" type="button" onClick={() => onEdit(playlist)}><Pencil size={17} /> Редактировать</button>}</div>
         </div>
       </header>
       <div className="playlist-detail__summary" data-tooltip="Краткий анализ разнообразия плейлиста"><span><Sparkles size={15} /> XEDOC-анализ</span><p><strong>{new Set(tracks.flatMap((track) => track.artists)).size || '—'} артистов</strong><i />повторы разведены по очереди<i />можно собрать сессию без треков последних 30 дней</p></div>
       {loading ? <div className="playlist-detail__loading"><LoaderCircle className="spin" size={23} /> Загружаем треки…</div> : error ? <div className="playlist-detail__loading form-error">{error}</div> : tracks.length ? (
-        <div className="track-table track-table--large">{tracks.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={tracks} index={index} />)}</div>
+        <div className="track-table track-table--large">{tracks.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={tracks} index={index} playbackSource={playbackSource} />)}</div>
       ) : <div className="playlist-detail__loading">В этом плейлисте пока нет треков.</div>}
     </section>
   )
@@ -463,13 +464,14 @@ function PrivateApp() {
   }, [])
 
   const playPlaylist = useCallback((playlist: Playlist) => {
+    const playbackSource = playlist.local ? { playlistId: playlist.id, playlistTitle: playlist.title } : undefined
     if (playlist.tracks?.length) {
-      player.playQueue(playlist.tracks)
+      player.playQueue(playlist.tracks, 0, playbackSource)
       return
     }
     void getPlaylist(playlist.id)
       .then((loaded) => {
-        if (loaded.tracks?.length) player.playQueue(loaded.tracks)
+        if (loaded.tracks?.length) player.playQueue(loaded.tracks, 0, loaded.local ? { playlistId: loaded.id, playlistTitle: loaded.title } : undefined)
         else setNotice('В этом плейлисте пока нет доступных треков')
       })
       .catch(() => setNotice('Не удалось запустить плейлист'))

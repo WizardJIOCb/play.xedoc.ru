@@ -41,6 +41,7 @@ from .models import (
     DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
     ListeningEventRequest,
+    NowPlayingRequest,
     ListeningStatsPayload,
     ListeningTopDTO,
     LikedTracksPayload,
@@ -52,6 +53,7 @@ from .models import (
     PlaylistDTO,
     ProfileSearchItemDTO,
     PublicProfileDTO,
+    PublicNowPlayingDTO,
     PublicShareDTO,
     RecommendationCollectionDTO,
     SearchPayload,
@@ -616,6 +618,34 @@ def create_app(
             )
         return ActionResponse()
 
+    @app.put("/api/presence/now-playing", response_model=ActionResponse)
+    async def update_now_playing(
+        body: NowPlayingRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ActionResponse:
+        require_app_user(request)
+        track = _sanitize_shared_track(body.track)
+        if track.id.startswith("demo-"):
+            store.clear_now_playing()
+            return ActionResponse()
+        playlist_id = _safe_local_playlist_id(body.playlist_id) if body.playlist_id else None
+        store.save_now_playing(
+            _safe_identifier(track.id),
+            track.model_dump(mode="json", by_alias=True, exclude_none=True),
+            playlist_id,
+        )
+        return ActionResponse()
+
+    @app.delete("/api/presence/now-playing", response_model=ActionResponse)
+    async def clear_now_playing(
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ActionResponse:
+        require_app_user(request)
+        store.clear_now_playing()
+        return ActionResponse()
+
     @app.post("/api/import/vk", response_model=VKImportResult, response_model_exclude_none=True)
     async def import_vk_collection(
         body: VKImportRequest,
@@ -888,7 +918,52 @@ def create_app(
         profile = store.load_public_profile(_safe_username(username))
         if profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
+        safe_username = _safe_username(username)
+        _decorate_public_now_playing(profile, safe_username)
         return PublicProfileDTO.model_validate(profile)
+
+    @app.get(
+        "/api/profiles/{username}/now-playing",
+        response_model=PublicNowPlayingDTO | None,
+        response_model_exclude_none=True,
+    )
+    async def public_now_playing(username: str, request: Request) -> PublicNowPlayingDTO | None:
+        await enforce_rate_limit(request, "public-now-playing", maximum=180, window_seconds=60)
+        safe_username = _safe_username(username)
+        loaded = store.load_public_now_playing(safe_username)
+        if loaded is None:
+            return None
+        value, _owner_id = loaded
+        _decorate_public_now_playing({"nowPlaying": value}, safe_username)
+        return PublicNowPlayingDTO.model_validate(value)
+
+    @app.get(
+        "/api/profiles/{username}/now-playing/tracks/{track_id}/stream",
+        response_class=RedirectResponse,
+    )
+    async def public_now_playing_stream(username: str, track_id: str, request: Request) -> RedirectResponse:
+        await enforce_rate_limit(request, "public-now-playing-stream", maximum=240, window_seconds=60)
+        safe_username = _safe_username(username)
+        track_identifier = _safe_identifier(track_id)
+        loaded = store.load_public_now_playing(safe_username)
+        if loaded is None or str(loaded[0].get("track", {}).get("id", "")) != track_identifier:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек уже не играет")
+        _value, owner_id = loaded
+        try:
+            credential = store.load_for_user(owner_id)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Музыка временно недоступна") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Владелец отключил музыкальную коллекцию")
+        try:
+            url = await gateway.stream_url(credential, track_identifier)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        return RedirectResponse(
+            url=url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, no-store, max-age=0", "Referrer-Policy": "no-referrer"},
+        )
 
     @app.get(
         "/api/profiles/{username}/playlists/{playlist_id}",
@@ -1462,6 +1537,20 @@ def _public_profile_stream_path(username: str, playlist_id: str, track_id: str) 
         f"/api/profiles/{quote(username, safe='')}/playlists/{quote(playlist_id, safe='')}"
         f"/tracks/{quote(track_id, safe='')}/stream"
     )
+
+
+def _public_now_playing_stream_path(username: str, track_id: str) -> str:
+    return f"/api/profiles/{quote(username, safe='')}/now-playing/tracks/{quote(track_id, safe='')}/stream"
+
+
+def _decorate_public_now_playing(profile: dict, username: str) -> None:
+    value = profile.get("nowPlaying")
+    if not isinstance(value, dict) or not isinstance(value.get("track"), dict):
+        return
+    track = value["track"]
+    track_id = str(track.get("id", ""))
+    if track_id:
+        track["streamUrl"] = _public_now_playing_stream_path(username, track_id)
 
 
 def _sanitize_shared_track(track: TrackDTO) -> TrackDTO:

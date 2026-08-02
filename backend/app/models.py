@@ -118,6 +118,12 @@ class PublicProfileStatsDTO(APIModel):
     total_listened_ms: int = 0
 
 
+class PublicNowPlayingDTO(APIModel):
+    track: TrackDTO
+    updated_at: int
+    playlist: PlaylistDTO | None = None
+
+
 class PublicProfileDTO(APIModel):
     username: str
     display_name: str
@@ -126,6 +132,7 @@ class PublicProfileDTO(APIModel):
     stats: PublicProfileStatsDTO = Field(default_factory=PublicProfileStatsDTO)
     top_tracks: list[TrackDTO] = Field(default_factory=list)
     playlists: list[PlaylistDTO] = Field(default_factory=list)
+    now_playing: PublicNowPlayingDTO | None = None
 
 
 class BootstrapPayload(APIModel):
@@ -256,6 +263,11 @@ class ListeningEventRequest(APIModel):
     track: TrackDTO
     listened_ms: int = Field(ge=10_000, le=86_400_000)
     source: Literal["player", "vk_seed"] = "player"
+
+
+class NowPlayingRequest(APIModel):
+    track: TrackDTO
+    playlist_id: str | None = Field(default=None, max_length=256)
 
 
 class ExternalTrackDTO(APIModel):

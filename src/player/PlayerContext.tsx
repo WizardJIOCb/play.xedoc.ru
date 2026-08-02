@@ -1,10 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { recordListeningEvent, toggleLike as persistTrackLike } from '../lib/api'
+import { clearNowPlaying, recordListeningEvent, toggleLike as persistTrackLike, updateNowPlaying } from '../lib/api'
 import type { Track } from '../types'
 
 export interface ListeningHistoryEntry {
   track: Track
   playedAt: number
+}
+
+export interface PlaybackSource {
+  playlistId: string
+  playlistTitle: string
 }
 
 interface PlayerContextValue {
@@ -20,8 +25,8 @@ interface PlayerContextValue {
   volume: number
   shuffle: boolean
   repeat: boolean
-  playTrack: (track: Track, context?: Track[], startIndex?: number) => void
-  playQueue: (tracks: Track[], startIndex?: number) => void
+  playTrack: (track: Track, context?: Track[], startIndex?: number, source?: PlaybackSource) => void
+  playQueue: (tracks: Track[], startIndex?: number, source?: PlaybackSource) => void
   togglePlayback: () => void
   next: () => void
   previous: () => void
@@ -138,10 +143,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const timerRef = useRef<number | null>(null)
   const nextRef = useRef<() => void>(() => undefined)
   const repeatRef = useRef(false)
+  const presenceActiveRef = useRef(false)
   const recordedSelectionRef = useRef<number>(-1)
   const [current, setCurrent] = useState<Track>()
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [queue, setQueue] = useState<Track[]>([])
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource>()
   const [historyEntries, setHistoryEntries] = useState<ListeningHistoryEntry[]>(readHistoryEntries)
   const [trackLikes, setTrackLikes] = useState<Record<string, boolean>>({})
   const [selectionVersion, setSelectionVersion] = useState(0)
@@ -195,6 +202,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [next, repeat])
 
   useEffect(() => {
+    const clearPresenceOnExit = () => {
+      if (!presenceActiveRef.current) return
+      void fetch('/api/presence/now-playing', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+      }).catch(() => undefined)
+    }
+    window.addEventListener('pagehide', clearPresenceOnExit)
+    return () => window.removeEventListener('pagehide', clearPresenceOnExit)
+  }, [])
+
+  useEffect(() => {
     const audio = new Audio()
     audio.preload = 'metadata'
     audio.volume = volume
@@ -242,6 +263,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }, 20_000)
     return () => window.clearTimeout(timeout)
   }, [current, isPlaying, selectionVersion])
+
+  useEffect(() => {
+    if (!current || !isPlaying || current.id.startsWith('demo-') || current.streamUrl?.startsWith('/api/shares/')) {
+      if (presenceActiveRef.current) {
+        presenceActiveRef.current = false
+        void clearNowPlaying().catch(() => undefined)
+      }
+      return
+    }
+    presenceActiveRef.current = true
+    const heartbeat = () => void updateNowPlaying(current, playbackSource?.playlistId).catch(() => undefined)
+    heartbeat()
+    const interval = window.setInterval(heartbeat, 15_000)
+    return () => window.clearInterval(interval)
+  }, [current, isPlaying, playbackSource?.playlistId, selectionVersion])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -296,7 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     navigator.mediaSession.setActionHandler('previoustrack', previous)
   }, [current, next, previous])
 
-  const playTrack = useCallback((track: Track, context: Track[] = [track], startIndex?: number) => {
+  const playTrack = useCallback((track: Track, context: Track[] = [track], startIndex?: number, source?: PlaybackSource) => {
     let tracks = normalizeQueue(context.length ? context : [track])
     let index = resolveTrackIndex(tracks, track, startIndex)
     if (index < 0) {
@@ -304,14 +340,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       index = 0
     }
     setQueue(tracks)
+    setPlaybackSource(source)
     selectTrackAt(tracks, index)
   }, [selectTrackAt])
 
-  const playQueue = useCallback((tracks: Track[], startIndex = 0) => {
+  const playQueue = useCallback((tracks: Track[], startIndex = 0, source?: PlaybackSource) => {
     if (!tracks.length) return
     const normalized = normalizeQueue(tracks)
     const index = Math.max(0, Math.min(Math.trunc(startIndex), normalized.length - 1))
     setQueue(normalized)
+    setPlaybackSource(source)
     selectTrackAt(normalized, index)
   }, [selectTrackAt])
 
@@ -379,6 +417,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent(undefined)
     setCurrentIndex(-1)
     setQueue([])
+    setPlaybackSource(undefined)
     setIsPlaying(false)
     setProgress(0)
     setDuration(0)

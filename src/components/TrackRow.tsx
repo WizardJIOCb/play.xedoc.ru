@@ -1,6 +1,6 @@
 import { Headphones, Heart, Pause, Play } from 'lucide-react'
 import { useState } from 'react'
-import { usePlayer } from '../player/PlayerContext'
+import { usePlayer, type PlaybackSource } from '../player/PlayerContext'
 import type { Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ShareButton } from './ShareButton'
@@ -11,7 +11,7 @@ function formatDuration(durationMs: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
-export function TrackRow({ track, context, index, compact = false, readonly = false }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean }) {
+export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource }) {
   const player = usePlayer()
   const contextIndex = context.findIndex((item) => item === track)
   const active = context === player.queue && contextIndex >= 0
@@ -34,7 +34,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
 
   return (
     <div className={`track-row ${active ? 'track-row--active' : ''} ${compact ? 'track-row--compact' : ''} ${readonly ? 'track-row--readonly' : ''}`}>
-      <button className="track-row__play" type="button" aria-label={active && player.isPlaying ? 'Пауза' : `Включить ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, context, contextIndex >= 0 ? contextIndex : index)}>
+      <button className="track-row__play" type="button" aria-label={active && player.isPlaying ? 'Пауза' : `Включить ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, context, contextIndex >= 0 ? contextIndex : index, playbackSource)}>
         <span className="track-row__index">{index === undefined ? <Play size={15} fill="currentColor" /> : index + 1}</span>
         <span className="track-row__control">{active && player.isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</span>
       </button>

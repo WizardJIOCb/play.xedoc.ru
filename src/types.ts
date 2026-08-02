@@ -161,6 +161,13 @@ export interface PublicProfile {
   stats: PublicProfileStats
   topTracks: Track[]
   playlists: Playlist[]
+  nowPlaying?: PublicNowPlaying
+}
+
+export interface PublicNowPlaying {
+  track: Track
+  updatedAt: number
+  playlist?: Playlist
 }
 
 export interface ShareLink {

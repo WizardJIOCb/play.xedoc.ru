@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Track } from '../types'
 import { PlayerProvider, usePlayer } from './PlayerContext'
 
-const api = vi.hoisted(() => ({ toggleLike: vi.fn() }))
+const api = vi.hoisted(() => ({ toggleLike: vi.fn(), updateNowPlaying: vi.fn(), clearNowPlaying: vi.fn(), recordListeningEvent: vi.fn() }))
 
-vi.mock('../lib/api', () => ({ toggleLike: api.toggleLike }))
+vi.mock('../lib/api', () => api)
 
 class FakeAudio {
   static instances: FakeAudio[] = []
@@ -53,6 +53,9 @@ describe('PlayerProvider state', () => {
     window.localStorage.clear()
     FakeAudio.instances = []
     api.toggleLike.mockReset().mockResolvedValue(undefined)
+    api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
+    api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
+    api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('Audio', FakeAudio)
   })
 
@@ -195,5 +198,16 @@ describe('PlayerProvider state', () => {
     })
     expect(player.isTrackLiked(player.current!)).toBe(false)
     expect(player.queue[0].liked).toBe(false)
+  })
+
+  it('publishes the active track with playlist context and clears it on pause', async () => {
+    const liveTrack = track('live', 'Live')
+    renderPlayer()
+
+    act(() => player.playQueue([liveTrack], 0, { playlistId: 'local-open', playlistTitle: 'Open mix' }))
+    await waitFor(() => expect(api.updateNowPlaying).toHaveBeenCalledWith(liveTrack, 'local-open'))
+
+    act(() => player.togglePlayback())
+    await waitFor(() => expect(api.clearNowPlaying).toHaveBeenCalled())
   })
 })
