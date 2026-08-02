@@ -1,4 +1,5 @@
 import { Play } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { CoverTone } from '../types'
 
 interface CoverArtProps {
@@ -11,6 +12,12 @@ interface CoverArtProps {
 }
 
 export function CoverArt({ title, url, tone = 'violet', className = '', playable = false, onPlay }: CoverArtProps) {
+  const imageUrl = url?.replace('%%', '400x400') || ''
+  const [imageFailed, setImageFailed] = useState(false)
+  const hasImage = Boolean(imageUrl && !imageFailed)
+
+  useEffect(() => setImageFailed(false), [imageUrl])
+
   const initials = title
     .split(/\s+/)
     .slice(0, 2)
@@ -18,8 +25,20 @@ export function CoverArt({ title, url, tone = 'violet', className = '', playable
     .join('')
 
   return (
-    <div className={`cover cover--${tone} ${className}`} style={url ? { backgroundImage: `url("${url.replace('%%', '400x400')}")` } : undefined}>
-      {!url && (
+    <div className={`cover cover--${tone} ${hasImage ? 'cover--has-image' : 'cover--fallback'} ${className}`}>
+      {hasImage && (
+        <img
+          className="cover__image"
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setImageFailed(true)}
+        />
+      )}
+      {!hasImage && (
         <>
           <span className="cover__orb" />
           <span className="cover__initials">{initials}</span>

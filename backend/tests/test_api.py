@@ -44,6 +44,8 @@ def test_access_gate_and_demo_bootstrap(client: TestClient) -> None:
     assert demo.json()["connected"] is False
     assert demo.json()["demo"] is True
     assert demo.json()["quickTracks"][0]["id"].startswith("demo-")
+    assert demo.json()["quickTracks"][0]["coverUrl"].startswith("/demo-covers/")
+    assert demo.json()["playlists"][0]["coverUrl"].startswith("/demo-covers/")
 
 
 def test_device_flow_connects_and_persists_encrypted_token(

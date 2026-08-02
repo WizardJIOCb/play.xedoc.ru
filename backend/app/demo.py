@@ -4,6 +4,15 @@ import random
 
 from .models import BootstrapPayload, PlaylistDTO, SearchPayload, SessionPayload, SessionPreferences, TrackDTO
 
+DEMO_COVERS = {
+    "violet": "/demo-covers/violet.jpg",
+    "amber": "/demo-covers/amber.jpg",
+    "blue": "/demo-covers/blue.jpg",
+    "lime": "/demo-covers/lime.jpg",
+    "coral": "/demo-covers/coral.jpg",
+    "mono": "/demo-covers/mono.jpg",
+}
+
 
 DEMO_TRACKS = [
     TrackDTO(id="demo-01", title="Neon River", artists=["Polaris"], album="Night Geometry", duration_ms=221_000, cover_tone="violet", liked=True),
@@ -19,6 +28,10 @@ DEMO_TRACKS = [
     TrackDTO(id="demo-11", title="Paper Satellites", artists=["Northbound"], album="Small Worlds", duration_ms=194_000, cover_tone="coral", liked=False),
     TrackDTO(id="demo-12", title="Тишина громче", artists=["Эхо комнат"], album="Контуры", duration_ms=226_000, cover_tone="mono", liked=True),
 ]
+DEMO_TRACKS = [
+    track.model_copy(update={"cover_url": DEMO_COVERS[track.cover_tone]})
+    for track in DEMO_TRACKS
+]
 
 
 DEMO_PLAYLISTS = [
@@ -27,6 +40,10 @@ DEMO_PLAYLISTS = [
     PlaylistDTO(id="demo-playlist-night", title="Город после полуночи", subtitle="Неон, воздух и редкие машины", track_count=22, duration_minutes=84, cover_tone="blue", tracks=DEMO_TRACKS[5:11]),
     PlaylistDTO(id="demo-playlist-sunday", title="Воскресенье без спешки", subtitle="Светлая и негромкая подборка", track_count=31, duration_minutes=116, cover_tone="amber", tracks=DEMO_TRACKS[1:7]),
     PlaylistDTO(id="demo-playlist-rediscover", title="Снова рядом", subtitle="Любимое, которое давно не звучало", track_count=19, duration_minutes=72, cover_tone="coral", tracks=DEMO_TRACKS[6:]),
+]
+DEMO_PLAYLISTS = [
+    playlist.model_copy(update={"cover_url": DEMO_COVERS[playlist.cover_tone]})
+    for playlist in DEMO_PLAYLISTS
 ]
 
 

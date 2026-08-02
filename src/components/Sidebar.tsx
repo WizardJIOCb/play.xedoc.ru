@@ -39,17 +39,17 @@ export function Sidebar({
         ))}
       </nav>
 
-      <button className="sidebar__session" type="button" onClick={onSession}>
+      <button className="sidebar__session" type="button" onClick={onSession} title={collapsed ? 'Собрать сессию' : undefined} aria-label="Собрать сессию">
         <Plus size={18} />
         <span>Собрать сессию</span>
       </button>
 
       <div className="sidebar__section">
         <p>Моя музыка</p>
-        <button className={view === 'liked' ? 'is-active' : ''} type="button" onClick={() => onView('liked')}>
+        <button className={view === 'liked' ? 'is-active' : ''} type="button" onClick={() => onView('liked')} title={collapsed ? 'Любимые' : undefined}>
           <Heart size={18} /> <span>Любимые</span>
         </button>
-        <button className={view === 'history' ? 'is-active' : ''} type="button" onClick={() => onView('history')}>
+        <button className={view === 'history' ? 'is-active' : ''} type="button" onClick={() => onView('history')} title={collapsed ? 'История' : undefined}>
           <History size={18} /> <span>История</span>
         </button>
       </div>

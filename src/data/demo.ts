@@ -1,6 +1,20 @@
 import type { BootstrapPayload, Playlist, Track } from '../types'
 
-export const demoTracks: Track[] = [
+const demoCovers = {
+  violet: '/demo-covers/violet.jpg',
+  amber: '/demo-covers/amber.jpg',
+  blue: '/demo-covers/blue.jpg',
+  lime: '/demo-covers/lime.jpg',
+  coral: '/demo-covers/coral.jpg',
+  mono: '/demo-covers/mono.jpg',
+} as const
+
+const withDemoCover = (track: Track): Track => ({
+  ...track,
+  coverUrl: demoCovers[track.coverTone ?? 'mono'],
+})
+
+const demoTrackSeeds: Track[] = [
   { id: 'demo-1', title: 'Afterglow', artists: ['Northern Lines'], album: 'Soft Focus', durationMs: 238000, coverTone: 'lime', liked: true },
   { id: 'demo-2', title: 'Тёплый воздух', artists: ['Море внутри'], album: 'Август', durationMs: 203000, coverTone: 'coral' },
   { id: 'demo-3', title: 'Parallel', artists: ['Lumen Field'], album: 'Night Transit', durationMs: 266000, coverTone: 'blue', liked: true },
@@ -13,8 +27,11 @@ export const demoTracks: Track[] = [
   { id: 'demo-10', title: 'Вне времени', artists: ['Линия берега'], album: 'Дальше', durationMs: 258000, coverTone: 'lime' },
 ]
 
+export const demoTracks: Track[] = demoTrackSeeds.map(withDemoCover)
+
 const playlist = (data: Omit<Playlist, 'tracks'> & { trackIds: number[] }): Playlist => ({
   ...data,
+  coverUrl: demoCovers[data.coverTone ?? 'mono'],
   tracks: data.trackIds.map((index) => demoTracks[index]),
 })
 
