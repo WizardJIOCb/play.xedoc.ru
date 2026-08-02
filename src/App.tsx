@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectModal } from './components/ConnectModal'
 import { AdminDashboardPage } from './components/AdminDashboardPage'
 import { AuthGate } from './components/AuthGate'
+import { ArtistLinks } from './components/ArtistLinks'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
 import { PlayerBar } from './components/PlayerBar'
@@ -69,12 +70,13 @@ const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/se
 function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
   const active = player.current?.id === track.id
+  const toggle = () => active ? player.togglePlayback() : player.playTrack(track, context)
   return (
-    <button className={`quick-track ${active ? 'is-active' : ''}`} type="button" onClick={() => active ? player.togglePlayback() : player.playTrack(track, context)}>
+    <div className={`quick-track ${active ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${active ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle() } }}>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="quick-track__cover" />
-      <span><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span>
+      <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
       <span className="quick-track__play"><Play size={16} fill="currentColor" /></span>
-    </button>
+    </div>
   )
 }
 
@@ -447,6 +449,7 @@ function PrivateApp() {
       setTopOpen(isTopPath())
       setAdminOpen(isAdminPath())
       setSearchOpen(isSearchPath())
+      setPlaylistEditorOpen(false)
       setView(isLikedPath() ? 'liked' : 'home')
     }
     window.addEventListener('popstate', onPopState)

@@ -5,6 +5,7 @@ import { trackGoal } from '../lib/analytics'
 import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
+import { ArtistLinks } from './ArtistLinks'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
@@ -20,6 +21,12 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
   useEffect(() => {
     trackGoal('search_opened')
     window.setTimeout(() => inputRef.current?.focus(), 40)
+  }, [])
+
+  useEffect(() => {
+    const syncQuery = () => setQuery(new URLSearchParams(window.location.search).get('q') || '')
+    window.addEventListener('popstate', syncQuery)
+    return () => window.removeEventListener('popstate', syncQuery)
   }, [])
 
   useEffect(() => {
@@ -103,11 +110,11 @@ export function SearchPalette({ suggestions, onPlaylistPlay }: { suggestions: Tr
           <div className="search-results">
             {tracks.slice(0, 12).map((track) => (
               <div key={track.id} className="search-result">
-                <button className="search-result__main" type="button" onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }}>
+                <div className="search-result__main" role="button" tabIndex={0} aria-label={`Включить ${track.title}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) } }}>
                   <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
-                  <span className="search-result__meta"><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span>
+                  <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
                   <Play size={17} fill="currentColor" />
-                </button>
+                </div>
                 <button className="search-result__next" type="button" aria-label={`Добавить ${track.title} следующим`} data-tooltip="Добавить следующим" onClick={() => player.addNext(track)}><ListPlus size={18} /></button>
               </div>
             ))}

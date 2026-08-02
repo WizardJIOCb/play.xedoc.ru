@@ -2,6 +2,7 @@ import { Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, SkipForward,
 import { useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
+import { ArtistLinks } from './ArtistLinks'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
 
@@ -32,7 +33,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
     <footer className={`player-bar ${track ? 'player-bar--ready' : ''} ${readonly ? 'player-bar--readonly' : ''}`}>
       <div className="player-bar__track">
         <CoverArt title={track?.title || 'XEDOC'} url={track?.coverUrl} tone={track?.coverTone || 'mono'} className="player-bar__cover" />
-        <div><strong>{track?.title || 'Выберите музыку'}</strong><span>{track?.artists.join(', ') || 'Плейлисты и рекомендации ждут вас'}</span></div>
+        <div><strong>{track?.title || 'Выберите музыку'}</strong>{track ? <ArtistLinks artists={track.artists} /> : <span>Плейлисты и рекомендации ждут вас</span>}</div>
         {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
       </div>
 

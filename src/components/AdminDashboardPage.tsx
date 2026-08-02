@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { getAdminDashboard } from '../lib/api'
 import type { AdminDashboard } from '../types'
 import { CoverArt } from './CoverArt'
+import { ArtistLinks } from './ArtistLinks'
 
 function listeningTime(milliseconds: number) {
   const hours = milliseconds / 3_600_000
@@ -76,7 +77,7 @@ export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
 
       <section className="admin-top-tracks">
         <header><div><span className="eyebrow"><Globe2 size={14} /> ПО ВСЕМУ СЕРВИСУ</span><h2>Самые прослушиваемые треки</h2></div><small>Суммарно по аккаунтам</small></header>
-        <div>{dashboard.topTracks.map((track, index) => <article key={track.id}><span>{index + 1}</span><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="admin-top-track-cover" /><p><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></p><em>{track.playCount || 0} просл.</em></article>)}</div>
+        <div>{dashboard.topTracks.map((track, index) => <article key={track.id}><span>{index + 1}</span><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="admin-top-track-cover" /><p><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></p><em>{track.playCount || 0} просл.</em></article>)}</div>
       </section>
     </section>
   )

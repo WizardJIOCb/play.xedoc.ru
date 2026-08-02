@@ -4,6 +4,7 @@ import { createLocalPlaylist, deleteLocalPlaylist, getPlaylist, removeTrackFromL
 import { trackGoal } from '../lib/analytics'
 import type { Playlist } from '../types'
 import { CoverArt } from './CoverArt'
+import { ArtistLinks } from './ArtistLinks'
 import { PLAYLISTS_CHANGED_EVENT } from './PlaylistPicker'
 
 async function imageDataUrl(file: File): Promise<string> {
@@ -128,7 +129,7 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
             </label>
           </form>
         </div>
-        {loaded && <div className="playlist-editor__tracks"><div><strong>Треки</strong><span>{loaded.tracks?.length || 0}</span></div>{loaded.tracks?.map((track) => <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span><button className="icon-button" type="button" disabled={busy} onClick={() => void remove(track.id)} aria-label={`Убрать ${track.title}`}><X size={17} /></button></div>)}</div>}
+        {loaded && <div className="playlist-editor__tracks"><div><strong>Треки</strong><span>{loaded.tracks?.length || 0}</span></div>{loaded.tracks?.map((track) => <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><button className="icon-button" type="button" disabled={busy} onClick={() => void remove(track.id)} aria-label={`Убрать ${track.title}`}><X size={17} /></button></div>)}</div>}
         {error && <div className="form-error playlist-editor__error">{error}</div>}
         <footer>{loaded ? <button className="playlist-editor__delete" type="button" disabled={busy} onClick={() => void destroy()}><Trash2 size={17} /> Удалить</button> : <span />}<div><button className="secondary-button" type="button" onClick={onClose}>Отмена</button><button className="primary-button" type="submit" form="playlist-editor-form" disabled={busy || !title.trim()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} Сохранить</button></div></footer>
       </section>

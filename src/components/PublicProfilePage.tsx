@@ -4,6 +4,7 @@ import { getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist } from 
 import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, PublicNowPlaying, PublicProfile } from '../types'
 import { CoverArt } from './CoverArt'
+import { ArtistLinks } from './ArtistLinks'
 import { PlayerBar } from './PlayerBar'
 import { TrackRow } from './TrackRow'
 
@@ -107,10 +108,10 @@ export function PublicProfilePage({ username }: { username: string }) {
             {nowPlaying && <section className="public-profile-now-playing" aria-label="Слушает сейчас">
               <div className="public-profile-now-playing__live"><span /><Radio size={16} /> СЛУШАЕТ СЕЙЧАС</div>
               <CoverArt title={nowPlaying.track.title} url={nowPlaying.track.coverUrl} tone={nowPlaying.track.coverTone} className="public-profile-now-playing__cover" />
-              <button className="public-profile-now-playing__track" type="button" onClick={() => player.playTrack(nowPlaying.track)}>
-                <span><strong>{nowPlaying.track.title}</strong><small>{nowPlaying.track.artists.join(', ')}</small></span>
+              <div className="public-profile-now-playing__track" role="button" tabIndex={0} aria-label={`Включить ${nowPlaying.track.title}`} onClick={() => player.playTrack(nowPlaying.track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); player.playTrack(nowPlaying.track) } }}>
+                <span><strong>{nowPlaying.track.title}</strong><ArtistLinks artists={nowPlaying.track.artists} /></span>
                 <span className="public-profile-now-playing__play"><Play size={19} fill="currentColor" /></span>
-              </button>
+              </div>
               {nowPlaying.playlist && <button className="public-profile-now-playing__playlist" type="button" onClick={() => void openPlaylist(nowPlaying.playlist!)}>
                 <ListMusic size={17} /><span><small>ИЗ ПЛЕЙЛИСТА</small><strong>{nowPlaying.playlist.title}</strong></span><ChevronRight size={16} />
               </button>}
@@ -136,7 +137,7 @@ export function PublicProfilePage({ username }: { username: string }) {
 
             {profile.topTracks.length > 0 && <section className="public-profile-section public-profile-top">
               <header><div><span className="eyebrow">СТАТИСТИКА ВКУСА</span><h2>Часто слушает</h2></div><small>Без раскрытия полной истории</small></header>
-              <div>{profile.topTracks.map((track, index) => <article key={track.id}><span>{index + 1}</span><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="public-profile-top-cover" /><span><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span><em>{track.playCount || 0} просл.</em></article>)}</div>
+              <div>{profile.topTracks.map((track, index) => <article key={track.id}><span>{index + 1}</span><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="public-profile-top-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><em>{track.playCount || 0} просл.</em></article>)}</div>
             </section>}
           </>
         )}
