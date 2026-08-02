@@ -206,6 +206,7 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_
     assert liked_tracks.status_code == 200
     assert liked_tracks.json()["total"] == 1
     assert liked_tracks.json()["tracks"][0]["id"] == "101"
+    assert liked_tracks.json()["tracks"][0]["liked"] is True
 
     discovery = client.get("/api/discovery-recommendations")
     assert discovery.status_code == 200

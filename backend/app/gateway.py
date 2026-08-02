@@ -229,9 +229,9 @@ class YandexMusicGateway:
         if not isinstance(feed_result, Exception) and feed_result is not None:
             recommendation_models = _extract_playlists(feed_result, limit=16)
 
-        quick_tracks = [map_track(track, liked_ids=liked_ids) for track in liked_tracks[:6]]
+        quick_tracks = [map_track(track, liked_ids=liked_ids).model_copy(update={"liked": True}) for track in liked_tracks[:6]]
         rediscover_source = liked_tracks[12:24] or liked_tracks[6:18] or list(reversed(liked_tracks[:12]))
-        rediscover = [map_track(track, liked_ids=liked_ids) for track in rediscover_source[:12]]
+        rediscover = [map_track(track, liked_ids=liked_ids).model_copy(update={"liked": True}) for track in rediscover_source[:12]]
         own_playlists = [map_playlist(item, include_tracks=False) for item in playlists[:100]]
         recommendations = [
             map_playlist(item, include_tracks=False)
@@ -245,7 +245,7 @@ class YandexMusicGateway:
             access_locked=False,
             user=UserProfileDTO(name=credential.user_name, avatar_url=credential.avatar_url),
             quick_tracks=quick_tracks,
-            liked_tracks=[map_track(track, liked_ids=liked_ids) for track in liked_tracks],
+            liked_tracks=[map_track(track, liked_ids=liked_ids).model_copy(update={"liked": True}) for track in liked_tracks],
             liked_count=len(liked_shorts),
             playlists=own_playlists,
             recommendations=recommendations,
@@ -288,7 +288,7 @@ class YandexMusicGateway:
         liked_ids = {_short_track_id(item) for item in shorts}
         liked_ids.discard(None)
         return LikedTracksPayload(
-            tracks=[map_track(track, liked_ids=liked_ids) for track in hydrated],
+            tracks=[map_track(track, liked_ids=liked_ids).model_copy(update={"liked": True}) for track in hydrated],
             total=len(shorts),
         )
 

@@ -326,21 +326,27 @@ function PlaylistDetailView({ playlist, loading, error, onBack, onEdit }: { play
   )
 }
 
+export function filterCollectionTracks(type: 'liked' | 'history', tracks: Track[], isTrackLiked: (track: Track) => boolean) {
+  return type === 'liked' ? tracks.filter(isTrackLiked) : tracks
+}
+
 function TrackCollectionView({ type, tracks, total, loading = false, error }: { type: 'liked' | 'history'; tracks: Track[]; total?: number; loading?: boolean; error?: string }) {
   const player = usePlayer()
+  const visibleTracks = filterCollectionTracks(type, tracks, player.isTrackLiked)
+  const visibleTotal = type === 'liked' ? visibleTracks.length : total ?? visibleTracks.length
   return (
     <section className="content-section content-section--first">
       <div className="collection-summary">
         <div className={`collection-summary__icon collection-summary__icon--${type}`}>{type === 'liked' ? <Heart size={34} fill="currentColor" /> : <History size={34} />}</div>
-        <div><span className="eyebrow">{type === 'liked' ? 'ВАША КОЛЛЕКЦИЯ' : 'НА ЭТОМ УСТРОЙСТВЕ'}</span><h2>{type === 'liked' ? `${total ?? tracks.length} любимых треков` : 'История прослушивания'}</h2><p>{type === 'liked' ? 'Показываем всю синхронизированную коллекцию без ограничений.' : 'История хранится локально и помогает убирать повторы.'}</p></div>
-        <button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button>
+        <div><span className="eyebrow">{type === 'liked' ? 'ВАША КОЛЛЕКЦИЯ' : 'НА ЭТОМ УСТРОЙСТВЕ'}</span><h2>{type === 'liked' ? `${visibleTotal} любимых треков` : 'История прослушивания'}</h2><p>{type === 'liked' ? 'Показываем всю синхронизированную коллекцию без ограничений.' : 'История хранится локально и помогает убирать повторы.'}</p></div>
+        <button className="primary-button" type="button" disabled={!visibleTracks.length} onClick={() => player.playQueue(visibleTracks)}><Play size={18} fill="currentColor" /> Слушать</button>
       </div>
       <div className="track-table track-table--large">
-        {tracks.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={tracks} index={index} />)}
+        {visibleTracks.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={visibleTracks} index={index} />)}
       </div>
       {loading && <div className="playlist-detail__loading"><LoaderCircle className="spin" size={21} /> Загружаем все любимые треки…</div>}
       {error && <div className="playlist-detail__loading form-error">{error}</div>}
-      {!loading && !error && !tracks.length && <div className="playlist-detail__loading">{type === 'history' ? 'Здесь появятся треки после первого прослушивания.' : 'В текущей выдаче пока нет любимых треков.'}</div>}
+      {!loading && !error && !visibleTracks.length && <div className="playlist-detail__loading">{type === 'history' ? 'Здесь появятся треки после первого прослушивания.' : 'В текущей выдаче пока нет любимых треков.'}</div>}
     </section>
   )
 }

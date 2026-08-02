@@ -83,3 +83,35 @@ def test_discovery_excludes_likes_playlists_and_listening_history(settings, monk
     assert result.seed_count == 2
     assert result.known_track_count == 4
     assert all(track.liked is False for track in result.tracks)
+
+
+def test_liked_collection_marks_hydrated_track_as_liked_when_short_id_contains_album(settings, monkeypatch) -> None:
+    gateway = YandexMusicGateway(settings)
+
+    class LikedClient:
+        async def users_likes_tracks(self, *, user_id):
+            return SimpleNamespace(tracks=[SimpleNamespace(track_id="liked-track:77")])
+
+        async def tracks(self, identifiers, *, with_positions):
+            assert identifiers == ["liked-track:77"]
+            assert with_positions is False
+            return [_track("liked-track", "liked-artist")]
+
+    async def authorized_client(_credential):
+        return LikedClient()
+
+    monkeypatch.setattr(gateway, "_authorized_client", authorized_client)
+    credential = Credential(
+        access_token="token",
+        refresh_token=None,
+        expires_at=None,
+        device_id="device",
+        user_uid="42",
+        user_name="Test",
+    )
+
+    result = asyncio.run(gateway.liked_tracks(credential))
+
+    assert result.total == 1
+    assert result.tracks[0].id == "liked-track"
+    assert result.tracks[0].liked is True
