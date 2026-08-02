@@ -629,7 +629,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .playlist-editor__body { padding: 24px 26px; display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 25px; }
 .playlist-editor__cover-wrap { display: grid; align-content: start; gap: 11px; }
 .playlist-editor__cover { width: 190px; height: 190px; border-radius: 16px; }
-.playlist-editor__cover-wrap label { cursor: pointer; }
+.playlist-editor__cover-wrap label { width: 100%; padding-inline: 12px; white-space: nowrap; cursor: pointer; }
 .playlist-editor__cover-wrap > small { color: var(--muted); font-size: var(--type-caption); text-align: center; }
 .playlist-editor form { display: grid; align-content: start; gap: 16px; }
 .playlist-editor form label { display: grid; gap: 7px; color: #cdd0d6; font-size: var(--type-label); font-weight: 700; }
