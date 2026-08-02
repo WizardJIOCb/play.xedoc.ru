@@ -161,8 +161,8 @@ function RecommendationsView({ data }: { data: BootstrapPayload }) {
   return (
     <section className="recommendations-page">
       <header className="recommendations-page__hero">
-        <div><span className="eyebrow"><TrendingUp size={15} /> ПЕРСОНАЛЬНАЯ ЛЕНТА XEDOC</span><h1>Ваши рекомендации.<br /><em>Одна постоянная ссылка.</em></h1><p>{data.recommendationInsight || 'Рекомендации станут точнее по мере прослушивания музыки.'}</p></div>
-        <div className="recommendations-page__signal" data-tooltip="Количество подтверждённых прослушиваний в выбранном периоде"><Sparkles size={25} /><strong>{selected?.signalCount || 0}</strong><span>прослушиваний<br />в выбранном периоде</span></div>
+        <div><span className="eyebrow"><TrendingUp size={15} /> ПЕРСОНАЛЬНАЯ ЛЕНТА XEDOC</span><h1>Ваши рекомендации.</h1><p>{data.recommendationInsight || 'Рекомендации станут точнее по мере прослушивания музыки.'}</p></div>
+        <div className="recommendations-page__signal" data-tooltip="Количество подтверждённых прослушиваний в выбранном периоде"><strong>{selected?.signalCount || 0}</strong><span>прослушиваний<br />в выбранном периоде</span></div>
       </header>
 
       <div className="recommendation-periods" aria-label="Период подборки">
