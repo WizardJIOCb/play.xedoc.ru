@@ -46,14 +46,16 @@ function buildCollector(destination: string) {
     badge.textContent = 'XEDOC: загружаем весь список VK…'
     let previous = -1
     let stable = 0
-    for (let index = 0; index < 600 && stable < 15; index += 1) {
+    for (let index = 0; index < 1200 && stable < 20; index += 1) {
       const section = document.querySelector('[data-testid="AudioCatalog_SectionTracks"]')
       const count = section?.querySelectorAll('[data-testid="MusicTrackRow"]').length ?? 0
       badge.textContent = `XEDOC: найдено ${count} треков…`
-      stable = count === previous ? stable + 1 : 0
+      const nearBottom = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight) < window.innerHeight * 1.5
+      stable = nearBottom && count === previous ? stable + 1 : 0
       previous = count
-      window.scrollTo(0, document.documentElement.scrollHeight)
-      await wait(1200)
+      window.scrollBy(0, Math.max(900, window.innerHeight * 0.85))
+      if (nearBottom) window.scrollTo(0, document.documentElement.scrollHeight)
+      await wait(450)
     }
     const rows = Array.from(document.querySelectorAll('[data-testid="AudioCatalog_SectionTracks"] [data-testid="MusicTrackRow"]'))
     const unique = new Map<string, { title: string; artist: string; duration?: string }>()
