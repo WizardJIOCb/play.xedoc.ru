@@ -784,6 +784,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .player-bar { grid-template-columns: minmax(170px,.7fr) minmax(320px,1.3fr) 150px; padding-inline: 15px; gap: 10px; }
   .volume-control { width: 92px; }
   .hero-session__copy { padding: 38px 32px; }
+  .recommendation-periods { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 
 @media (max-width: 930px) {
