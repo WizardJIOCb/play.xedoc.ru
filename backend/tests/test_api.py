@@ -35,13 +35,15 @@ def test_access_gate_and_demo_bootstrap(client: TestClient) -> None:
     assert locked.json()["quickTracks"] == []
     assert "access_locked" not in locked.json()
 
-    denied = client.post("/api/access/unlock", json={"key": "wrong"})
+    denied = client.post("/api/account/login", json={"username": "nobody", "password": "wrong-password"})
     assert denied.status_code == 401
 
     unlock(client)
     demo = client.get("/api/bootstrap")
     assert demo.status_code == 200
     assert demo.json()["accessLocked"] is False
+    assert demo.json()["authenticated"] is True
+    assert demo.json()["appUser"]["username"] == "testuser"
     assert demo.json()["connected"] is False
     assert demo.json()["demo"] is True
     assert demo.json()["quickTracks"][0]["id"].startswith("demo-")
@@ -65,11 +67,13 @@ def test_device_flow_connects_and_persists_encrypted_token(
     assert poll.status_code == 200
     assert poll.json() == {"connected": True}
 
-    encrypted = store.encrypted_payload()
+    user = store.user_by_username("testuser")
+    assert user is not None
+    encrypted = store.encrypted_payload(user.id)
     assert encrypted is not None
     assert TEST_CREDENTIAL.access_token.encode() not in encrypted
     assert TEST_CREDENTIAL.refresh_token.encode() not in encrypted
-    assert store.load() == TEST_CREDENTIAL
+    assert store.load_for_user(user.id) == TEST_CREDENTIAL
 
     bootstrap = client.get("/api/bootstrap")
     assert bootstrap.status_code == 200
@@ -290,24 +294,29 @@ def test_demo_search_session_and_playlist(client: TestClient) -> None:
 
 def test_logout_clears_music_session(client: TestClient, store: CredentialStore) -> None:
     connect(client)
-    assert store.load() is not None
+    user = store.user_by_username("testuser")
+    assert user is not None
+    assert store.load_for_user(user.id) is not None
     logout = client.post("/api/auth/logout")
     assert logout.status_code == 200
     assert logout.json() == {"ok": True}
-    assert store.load() is None
+    assert store.load_for_user(user.id) is None
     assert client.get("/api/bootstrap").json()["connected"] is False
 
 
-def test_old_music_cookie_cannot_reopen_a_new_session(client: TestClient) -> None:
+def test_account_logout_invalidates_app_session_without_deleting_music(client: TestClient, store: CredentialStore) -> None:
     connect(client)
-    old_cookie = client.cookies.get("xedoc_music_session")
-    assert old_cookie
-    assert client.post("/api/auth/logout").status_code == 200
-
-    connect(client)
+    user = store.user_by_username("testuser")
+    assert user is not None
+    assert client.post("/api/account/logout").status_code == 200
+    assert client.get("/api/bootstrap").json()["authenticated"] is False
+    assert store.load_for_user(user.id) is not None
+    logged_in = client.post(
+        "/api/account/login",
+        json={"username": "testuser", "password": "a-secure-test-password"},
+    )
+    assert logged_in.status_code == 200
     assert client.get("/api/bootstrap").json()["connected"] is True
-    client.cookies.set("xedoc_music_session", old_cookie)
-    assert client.get("/api/bootstrap").json()["connected"] is False
 
 
 def test_first_connected_yandex_uid_is_pinned(
@@ -328,6 +337,51 @@ def test_first_connected_yandex_uid_is_pinned(
 
 
 def test_private_endpoints_require_access(client: TestClient) -> None:
-    assert client.post("/api/auth/device/start").status_code == 403
-    assert client.get("/api/search", params={"q": "test"}).status_code == 403
-    assert client.put("/api/tracks/101/like").status_code == 403
+    assert client.post("/api/auth/device/start").status_code == 401
+    assert client.get("/api/search", params={"q": "test"}).status_code == 401
+    assert client.put("/api/tracks/101/like").status_code == 401
+
+
+def test_registration_login_and_tenant_isolation(client: TestClient, store: CredentialStore) -> None:
+    unlock(client)
+    first_user = store.user_by_username("testuser")
+    assert first_user is not None
+    playlist = client.post("/api/local-playlists", json={"title": "Only mine"})
+    assert playlist.status_code == 200
+
+    assert client.post("/api/account/logout").status_code == 200
+    registered = client.post(
+        "/api/account/register",
+        json={
+            "username": "second-user",
+            "displayName": "Second listener",
+            "password": "another-secure-password",
+        },
+    )
+    assert registered.status_code == 200
+    second_bootstrap = client.get("/api/bootstrap").json()
+    assert second_bootstrap["connected"] is False
+    assert second_bootstrap.get("localPlaylists", []) == []
+
+    assert client.post("/api/account/logout").status_code == 200
+    logged_in = client.post(
+        "/api/account/login",
+        json={"username": "testuser", "password": "a-secure-test-password"},
+    )
+    assert logged_in.status_code == 200
+    first_bootstrap = client.get("/api/bootstrap").json()
+    assert first_bootstrap["localPlaylists"][0]["title"] == "Only mine"
+
+
+def test_vk_taste_import_works_before_yandex_connection(client: TestClient) -> None:
+    unlock(client)
+    imported = client.post(
+        "/api/import/vk",
+        json={
+            "sourceUrl": "https://vk.ru/audios-example",
+            "tracks": [{"title": "Unmatched song", "artist": "Some artist"}],
+        },
+    )
+    assert imported.status_code == 200
+    assert imported.json()["matched"] == 0
+    assert imported.json()["unmatched"][0]["title"] == "Unmatched song"

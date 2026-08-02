@@ -1,4 +1,4 @@
-import type { BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track } from '../types'
+import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -26,8 +26,20 @@ export async function getBootstrap(): Promise<BootstrapPayload> {
   return request<BootstrapPayload>('/bootstrap')
 }
 
-export async function unlockAccess(key: string): Promise<void> {
-  await request('/access/unlock', { method: 'POST', body: JSON.stringify({ key }) })
+export async function registerAccount(username: string, displayName: string, password: string): Promise<AppUser> {
+  return request<AppUser>('/account/register', { method: 'POST', body: JSON.stringify({ username, displayName, password }) })
+}
+
+export async function loginAccount(username: string, password: string): Promise<AppUser> {
+  return request<AppUser>('/account/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+}
+
+export async function logoutAccount(): Promise<void> {
+  await request('/account/logout', { method: 'POST' })
+}
+
+export async function setAccountPassword(password: string): Promise<void> {
+  await request('/account/password', { method: 'PUT', body: JSON.stringify({ password }) })
 }
 
 export async function startDeviceAuth(): Promise<DeviceAuthStart> {
@@ -38,8 +50,12 @@ export async function pollDeviceAuth(deviceId: string): Promise<{ connected: boo
   return request('/auth/device/poll', { method: 'POST', body: JSON.stringify({ deviceId }) })
 }
 
-export async function logout(): Promise<void> {
+export async function disconnectYandex(): Promise<void> {
   await request('/auth/logout', { method: 'POST' })
+}
+
+export async function importVKTracks(sourceUrl: string, tracks: Array<{ title: string; artist: string; duration?: string }>): Promise<VKImportResult> {
+  return request<VKImportResult>('/import/vk', { method: 'POST', body: JSON.stringify({ sourceUrl, tracks }) })
 }
 
 export async function searchMusic(query: string): Promise<SearchPayload> {

@@ -383,6 +383,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setProgress(0)
     setDuration(0)
     setTrackLikes({})
+    setHistoryEntries([])
   }, [clearDemoTimer])
 
   const upNext = useMemo(() => {

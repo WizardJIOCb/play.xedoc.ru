@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     cookie_domain: str | None = None
     access_cookie_name: str = "xedoc_access"
     session_cookie_name: str = "xedoc_music_session"
+    user_cookie_name: str = "xedoc_user_session"
     access_ttl_hours: int = 24
     session_ttl_days: int = 30
+    registration_enabled: bool = True
 
     demo_fallback: bool = True
     yandex_allowed_uid: str | None = None

@@ -47,3 +47,40 @@ class CookieSigner:
             return False
         return payload.get("purpose") == purpose and expires >= int(time.time())
 
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    cost, block_size, parallel = 2**14, 8, 1
+    derived = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=cost,
+        r=block_size,
+        p=parallel,
+        dklen=32,
+    )
+    return f"scrypt${cost}${block_size}${parallel}${_b64encode(salt)}${_b64encode(derived)}"
+
+
+def verify_password(password: str, encoded: str | None) -> bool:
+    if not encoded:
+        return False
+    try:
+        algorithm, cost, block_size, parallel, salt, expected = encoded.split("$", 5)
+        if algorithm != "scrypt":
+            return False
+        derived = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=_b64decode(salt),
+            n=int(cost),
+            r=int(block_size),
+            p=int(parallel),
+            dklen=32,
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(_b64encode(derived), expected)
+
+
+def session_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

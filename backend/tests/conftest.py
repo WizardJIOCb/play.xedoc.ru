@@ -175,7 +175,16 @@ def client(
 
 
 def unlock(client: TestClient) -> None:
-    response = client.post("/api/access/unlock", json={"key": "test-access-key"})
+    if client.get("/api/bootstrap").json().get("authenticated"):
+        return
+    response = client.post(
+        "/api/account/register",
+        json={
+            "username": "testuser",
+            "displayName": "Rodion Test",
+            "password": "a-secure-test-password",
+        },
+    )
     assert response.status_code == 200
 
 

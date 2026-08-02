@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  CheckCircle2,
   ChevronRight,
   CalendarDays,
   Clock3,
@@ -9,7 +8,6 @@ import {
   Headphones,
   Heart,
   History,
-  KeyRound,
   ListMusic,
   LoaderCircle,
   LogOut,
@@ -28,9 +26,11 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ConnectModal } from './components/ConnectModal'
+import { AuthGate } from './components/AuthGate'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
 import { PlayerBar } from './components/PlayerBar'
+import { PasswordSetupModal } from './components/PasswordSetupModal'
 import { PlaylistCard } from './components/PlaylistCard'
 import { PlaylistEditor } from './components/PlaylistEditor'
 import { PLAYLISTS_CHANGED_EVENT } from './components/PlaylistPicker'
@@ -39,9 +39,10 @@ import { SearchPalette } from './components/SearchPalette'
 import { SessionBuilder } from './components/SessionBuilder'
 import { ShareButton } from './components/ShareButton'
 import { Sidebar } from './components/Sidebar'
+import { SourcesModal } from './components/SourcesModal'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
-import { getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logout, unlockAccess } from './lib/api'
+import { getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount } from './lib/api'
 import { usePlayer } from './player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
@@ -349,37 +350,6 @@ function QueuePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   )
 }
 
-function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
-  const [key, setKey] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setLoading(true)
-    setError('')
-    try {
-      await unlockAccess(key)
-      onUnlocked()
-    } catch {
-      setError('Ключ не подошёл')
-    } finally {
-      setLoading(false)
-    }
-  }
-  return (
-    <main className="access-gate">
-      <div className="access-gate__glow" />
-      <form onSubmit={(event) => void submit(event)}>
-        <span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY · PRIVATE BETA</span><h1>Музыка без лишнего.</h1><p>Введите ключ доступа к вашей персональной версии плеера.</p>
-        <label><KeyRound size={18} /><input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="Ключ доступа" autoFocus /></label>
-        <button className="primary-button" type="submit" disabled={!key || loading}>{loading ? <LoaderCircle className="spin" size={18} /> : 'Войти'} {!loading && <ChevronRight size={18} />}</button>
-        {error && <span className="form-error">{error}</span>}
-        <small>Доступ защищает подключённый аккаунт и личные рекомендации.</small>
-      </form>
-    </main>
-  )
-}
-
 function PrivateApp() {
   const [data, setData] = useState<BootstrapPayload>(() => ({ ...demoBootstrap, accessLocked: true }))
   const [loading, setLoading] = useState(true)
@@ -397,6 +367,7 @@ function PrivateApp() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [sessionOpen, setSessionOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>()
   const [playlistLoading, setPlaylistLoading] = useState(false)
@@ -416,6 +387,15 @@ function PrivateApp() {
   }, [])
 
   useEffect(refresh, [refresh])
+
+  useEffect(() => {
+    const userId = data.appUser?.id
+    if (!userId) return
+    const ownerKey = 'xedoc-play-history-owner-v1'
+    const previousOwner = window.localStorage.getItem(ownerKey)
+    if (previousOwner && previousOwner !== userId) player.clear()
+    window.localStorage.setItem(ownerKey, userId)
+  }, [data.appUser?.id, player])
 
   useEffect(() => {
     const onPopState = () => {
@@ -536,7 +516,7 @@ function PrivateApp() {
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
-  if (data.accessLocked) return <AccessGate onUnlocked={refresh} />
+  if (data.accessLocked) return <AuthGate onAuthenticated={refresh} />
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
@@ -546,17 +526,14 @@ function PrivateApp() {
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
-            {data.connected ? (
-              <div className="profile-chip" data-tooltip="Яндекс Музыка подключена и синхронизируется"><span className="profile-chip__avatar">{data.user?.name?.[0] || 'Я'}</span><span><strong>{data.user?.name || 'Моя музыка'}</strong><small><CheckCircle2 size={12} /> подключено</small></span><button className="icon-button" type="button" onClick={() => { player.clear(); void logout().then(refresh) }} aria-label="Отключить аккаунт"><LogOut size={16} /></button></div>
-            ) : (
-              <button className="connect-button" type="button" onClick={() => setConnectOpen(true)}><Headphones size={17} /> Подключить Яндекс Музыку</button>
-            )}
+            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
+            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><span className="profile-chip__avatar">{data.appUser?.displayName?.[0] || 'X'}</span><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
         <div className="page-content">
           {!selectedPlaylist && !recommendationsOpen && !topOpen && <header className="page-heading">
-            <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.user?.name ? `${title.title}, ${data.user.name.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
+            <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}
         </div>
@@ -567,6 +544,8 @@ function PrivateApp() {
       <SearchPalette open={searchOpen} suggestions={data.quickTracks} onClose={() => setSearchOpen(false)} onPlaylistPlay={playPlaylist} />
       <SessionBuilder open={sessionOpen} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
+      <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => setSourcesOpen(false)} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
+      <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />
       <PlaylistEditor
         open={playlistEditorOpen}
         playlist={editingPlaylist}

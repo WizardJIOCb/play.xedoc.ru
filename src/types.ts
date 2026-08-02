@@ -35,10 +35,19 @@ export interface UserProfile {
   avatarUrl?: string
 }
 
+export interface AppUser {
+  id: string
+  username: string
+  displayName: string
+  needsPassword: boolean
+}
+
 export interface BootstrapPayload {
   connected: boolean
   demo: boolean
   accessLocked: boolean
+  authenticated: boolean
+  appUser?: AppUser
   user?: UserProfile
   quickTracks: Track[]
   likedTracks: Track[]
@@ -114,6 +123,12 @@ export interface DeviceAuthStart {
   verificationUrl: string
   expiresIn: number
   interval: number
+}
+
+export interface VKImportResult {
+  playlist: Playlist
+  matched: number
+  unmatched: Array<{ title: string; artist: string; duration?: string }>
 }
 
 export type ViewId = 'home' | 'discover' | 'library' | 'liked' | 'history'

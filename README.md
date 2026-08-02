@@ -1,11 +1,13 @@
 # XEDOC Play
 
-Private, single-user web player for a Yandex Music library. The interface focuses on fast access to playlists, calm recommendations, search, a persistent queue and listening sessions without recent repeats.
+Multi-user web player that brings a Yandex Music library and VK taste signals into one personal account. The interface focuses on fast access to playlists, calm recommendations, search, a persistent queue and listening sessions without recent repeats.
 
 ## Highlights
 
-- Yandex Device Flow connection; the password never enters this application.
-- Encrypted server-side token storage and signed HttpOnly cookies.
+- XEDOC account registration and isolated playlists, listening statistics, recommendations and connections for every user.
+- Per-user Yandex Device Flow connection; the Yandex password never enters this application.
+- VK list import that matches playable tracks against the connected catalog and uses unmatched titles as recommendation signals.
+- Encrypted per-user token storage, scrypt password hashing and opaque HttpOnly sessions.
 - Personal playlists, recommendations, search, likes and audio streaming.
 - Editable XEDOC playlists with descriptions, links, custom covers and public sharing.
 - A separate recommendation layer that learns from listening signals while keeping Yandex recommendations intact.
@@ -40,4 +42,4 @@ The hardened nginx, systemd and atomic release templates are documented in [`dep
 
 ## Important
 
-This project is not affiliated with Yandex. It uses the community-maintained, reverse-engineered [`yandex-music`](https://github.com/MarshalX/yandex-music-api) client, so upstream changes can require adapter updates. Keep the application private and use a long access key. The first successfully connected Yandex UID is pinned in protected server storage; `PLAY_YANDEX_ALLOWED_UID` can additionally predeclare it.
+This project is not affiliated with Yandex or VK. It uses the community-maintained, reverse-engineered [`yandex-music`](https://github.com/MarshalX/yandex-music-api) client, so upstream changes can require adapter updates. VK credentials are never requested: XEDOC accepts an exported/pasted track list and only plays tracks available through a legally connected music catalog. The first successfully connected Yandex UID is pinned separately for every XEDOC account; `PLAY_YANDEX_ALLOWED_UID` can additionally predeclare a global allowlist UID.

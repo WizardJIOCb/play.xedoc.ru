@@ -5,6 +5,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from contextvars import ContextVar, Token
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -13,6 +14,20 @@ from cryptography.fernet import Fernet, InvalidToken
 
 class CredentialStoreError(RuntimeError):
     pass
+
+
+LEGACY_USER_ID = "legacy-wizardjiocb911"
+ANONYMOUS_USER_ID = "anonymous"
+_current_user_id: ContextVar[str] = ContextVar("xedoc_play_user_id", default=ANONYMOUS_USER_ID)
+
+
+@dataclass(slots=True)
+class AppUser:
+    id: str
+    username: str
+    display_name: str
+    password_hash: str | None
+    created_at: int
 
 
 @dataclass(slots=True)
@@ -39,10 +54,11 @@ class PublicShare:
     payload: dict
     owner_name: str
     created_at: int
+    owner_id: str = LEGACY_USER_ID
 
 
 class CredentialStore:
-    """Single-account encrypted credential storage backed by SQLite."""
+    """Encrypted multi-user storage backed by SQLite."""
 
     def __init__(self, database_path: Path, encryption_key: bytes):
         self.path = Path(database_path)
@@ -59,6 +75,29 @@ class CredentialStore:
 
     def _initialize(self) -> None:
         with self._lock, self._connect() as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_user (
+                    id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    display_name TEXT NOT NULL,
+                    password_hash TEXT,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_session (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    expires_at INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_app_session_expiry ON app_session(expires_at)")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS yandex_credential (
@@ -137,43 +176,215 @@ class CredentialStore:
                 )
                 """
             )
-            existing_stats = connection.execute("SELECT COUNT(*) FROM track_listening_stat").fetchone()[0]
+            self._ensure_column(connection, "local_playlist", "owner_id", f"TEXT NOT NULL DEFAULT '{LEGACY_USER_ID}'")
+            self._ensure_column(connection, "listening_event", "owner_id", f"TEXT NOT NULL DEFAULT '{LEGACY_USER_ID}'")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_local_playlist_owner ON local_playlist(owner_id, updated_at DESC)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_listening_owner_created ON listening_event(owner_id, created_at DESC)")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_yandex_credential (
+                    user_id TEXT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+                    encrypted_payload BLOB NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_yandex_binding (
+                    user_id TEXT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+                    user_uid TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_track_listening_stat (
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    track_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    play_count INTEGER NOT NULL,
+                    total_listened_ms INTEGER NOT NULL,
+                    last_played_at INTEGER NOT NULL,
+                    PRIMARY KEY(user_id, track_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_public_share (
+                    token TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL CHECK (kind IN ('track', 'playlist')),
+                    resource_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    owner_name TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(owner_id, kind, resource_id)
+                )
+                """
+            )
+            now = int(time.time())
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO app_user(id, username, display_name, password_hash, created_at)
+                VALUES(?, 'wizardjiocb911', 'wizardjiocb911', NULL, ?)
+                """,
+                (LEGACY_USER_ID, now),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO user_yandex_credential(user_id, encrypted_payload, updated_at)
+                SELECT ?, encrypted_payload, updated_at FROM yandex_credential WHERE singleton = 1
+                """,
+                (LEGACY_USER_ID,),
+            )
+            legacy_uid = connection.execute(
+                "SELECT value FROM app_state WHERE key = 'bound_user_uid'"
+            ).fetchone()
+            if legacy_uid:
+                connection.execute(
+                    "INSERT OR IGNORE INTO user_yandex_binding(user_id, user_uid) VALUES(?, ?)",
+                    (LEGACY_USER_ID, str(legacy_uid[0])),
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO user_track_listening_stat(user_id, track_id, payload, play_count, total_listened_ms, last_played_at)
+                SELECT ?, track_id, payload, play_count, total_listened_ms, last_played_at FROM track_listening_stat
+                """,
+                (LEGACY_USER_ID,),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO user_public_share(token, owner_id, kind, resource_id, payload, owner_name, created_at)
+                SELECT token, ?, kind, resource_id, payload, owner_name, created_at FROM public_share
+                """,
+                (LEGACY_USER_ID,),
+            )
+            existing_stats = connection.execute(
+                "SELECT COUNT(*) FROM user_track_listening_stat WHERE user_id = ?",
+                (LEGACY_USER_ID,),
+            ).fetchone()[0]
             if not existing_stats:
                 connection.execute(
                     """
-                    INSERT INTO track_listening_stat(track_id, payload, play_count, total_listened_ms, last_played_at)
-                    SELECT grouped.track_id,
+                    INSERT INTO user_track_listening_stat(user_id, track_id, payload, play_count, total_listened_ms, last_played_at)
+                    SELECT ?, grouped.track_id,
                            (SELECT recent.payload FROM listening_event recent
-                            WHERE recent.track_id = grouped.track_id AND recent.source = 'player'
+                            WHERE recent.owner_id = ? AND recent.track_id = grouped.track_id AND recent.source = 'player'
                             ORDER BY recent.created_at DESC, recent.id DESC LIMIT 1),
                            grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
                     FROM (
                         SELECT track_id, COUNT(*) AS play_count, SUM(listened_ms) AS total_listened_ms,
                                MAX(created_at) AS last_played_at
-                        FROM listening_event WHERE source = 'player' GROUP BY track_id
+                        FROM listening_event WHERE owner_id = ? AND source = 'player' GROUP BY track_id
                     ) grouped
-                    """
+                    """,
+                    (LEGACY_USER_ID, LEGACY_USER_ID, LEGACY_USER_ID),
                 )
 
+    @staticmethod
+    def _ensure_column(connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def set_current_user(self, user_id: str) -> Token[str]:
+        return _current_user_id.set(user_id)
+
+    def reset_current_user(self, token: Token[str]) -> None:
+        _current_user_id.reset(token)
+
+    def current_user_id(self) -> str:
+        return _current_user_id.get()
+
+    def create_user(self, username: str, display_name: str, password_hash: str) -> AppUser:
+        user = AppUser(
+            id=f"user-{secrets.token_urlsafe(18)}",
+            username=username.strip().casefold(),
+            display_name=display_name.strip(),
+            password_hash=password_hash,
+            created_at=int(time.time()),
+        )
+        try:
+            with self._lock, self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO app_user(id, username, display_name, password_hash, created_at) VALUES(?, ?, ?, ?, ?)",
+                    (user.id, user.username, user.display_name, user.password_hash, user.created_at),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise CredentialStoreError("Username is already registered") from exc
+        return user
+
+    def user_by_username(self, username: str) -> AppUser | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT id, username, display_name, password_hash, created_at FROM app_user WHERE username = ? COLLATE NOCASE",
+                (username.strip(),),
+            ).fetchone()
+        return AppUser(*row) if row else None
+
+    def user_by_id(self, user_id: str) -> AppUser | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT id, username, display_name, password_hash, created_at FROM app_user WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        return AppUser(*row) if row else None
+
+    def set_user_password(self, user_id: str, password_hash: str) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute("UPDATE app_user SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        return bool(cursor.rowcount)
+
+    def save_app_session(self, token_hash: str, user_id: str, expires_at: int) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM app_session WHERE expires_at < ?", (int(time.time()),))
+            connection.execute(
+                "INSERT INTO app_session(token_hash, user_id, expires_at, created_at) VALUES(?, ?, ?, ?)",
+                (token_hash, user_id, expires_at, int(time.time())),
+            )
+
+    def user_for_app_session(self, token_hash: str) -> AppUser | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at
+                FROM app_session s JOIN app_user u ON u.id = s.user_id
+                WHERE s.token_hash = ? AND s.expires_at >= ?
+                """,
+                (token_hash, int(time.time())),
+            ).fetchone()
+        return AppUser(*row) if row else None
+
+    def delete_app_session(self, token_hash: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM app_session WHERE token_hash = ?", (token_hash,))
+
     def save(self, credential: Credential) -> None:
+        user_id = self.current_user_id()
         payload = json.dumps(asdict(credential), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         encrypted = self._fernet.encrypt(payload)
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO yandex_credential(singleton, encrypted_payload, updated_at)
-                VALUES(1, ?, ?)
-                ON CONFLICT(singleton) DO UPDATE SET
+                INSERT INTO user_yandex_credential(user_id, encrypted_payload, updated_at)
+                VALUES(?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
                     encrypted_payload = excluded.encrypted_payload,
                     updated_at = excluded.updated_at
                 """,
-                (encrypted, int(time.time())),
+                (user_id, encrypted, int(time.time())),
             )
 
     def load(self) -> Credential | None:
+        return self.load_for_user(self.current_user_id())
+
+    def load_for_user(self, user_id: str) -> Credential | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT encrypted_payload FROM yandex_credential WHERE singleton = 1"
+                "SELECT encrypted_payload FROM user_yandex_credential WHERE user_id = ?",
+                (user_id,),
             ).fetchone()
         if row is None:
             return None
@@ -184,25 +395,31 @@ class CredentialStore:
             raise CredentialStoreError("Saved Yandex credential cannot be decrypted") from exc
 
     def delete(self) -> None:
+        user_id = self.current_user_id()
         with self._lock, self._connect() as connection:
-            connection.execute("DELETE FROM yandex_credential WHERE singleton = 1")
+            connection.execute("DELETE FROM user_yandex_credential WHERE user_id = ?", (user_id,))
 
     def bind_user_uid(self, user_uid: str) -> bool:
-        """Pin the first connected account and reject later replacements."""
+        user_id = self.current_user_id()
+        normalized_uid = str(user_uid)
         with self._lock, self._connect() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO app_state(key, value) VALUES('bound_user_uid', ?)",
-                (str(user_uid),),
-            )
-            row = connection.execute(
-                "SELECT value FROM app_state WHERE key = 'bound_user_uid'"
+            existing = connection.execute(
+                "SELECT user_uid FROM user_yandex_binding WHERE user_id = ?",
+                (user_id,),
             ).fetchone()
-        return row is not None and row[0] == str(user_uid)
+            if existing is not None:
+                return str(existing[0]) == normalized_uid
+            connection.execute(
+                "INSERT INTO user_yandex_binding(user_id, user_uid) VALUES(?, ?)",
+                (user_id, normalized_uid),
+            )
+        return True
 
     def bound_user_uid(self) -> str | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT value FROM app_state WHERE key = 'bound_user_uid'"
+                "SELECT user_uid FROM user_yandex_binding WHERE user_id = ?",
+                (self.current_user_id(),),
             ).fetchone()
         return str(row[0]) if row else None
 
@@ -213,11 +430,12 @@ class CredentialStore:
         except sqlite3.Error:
             return False
 
-    def encrypted_payload(self) -> bytes | None:
+    def encrypted_payload(self, user_id: str | None = None) -> bytes | None:
         """Test/diagnostic helper; never decrypts or logs the secret."""
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT encrypted_payload FROM yandex_credential WHERE singleton = 1"
+                "SELECT encrypted_payload FROM user_yandex_credential WHERE user_id = ?",
+                (user_id or self.current_user_id(),),
             ).fetchone()
         return row[0] if row else None
 
@@ -231,33 +449,34 @@ class CredentialStore:
     ) -> PublicShare:
         if kind not in {"track", "playlist"}:
             raise ValueError("Unsupported public share kind")
+        owner_id = self.current_user_id()
         serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
         created_at = int(time.time())
         with self._lock, self._connect() as connection:
             existing = connection.execute(
-                "SELECT token, created_at FROM public_share WHERE kind = ? AND resource_id = ?",
-                (kind, resource_id),
+                "SELECT token, created_at FROM user_public_share WHERE owner_id = ? AND kind = ? AND resource_id = ?",
+                (owner_id, kind, resource_id),
             ).fetchone()
             token = str(existing[0]) if existing else secrets.token_urlsafe(24)
             original_created_at = int(existing[1]) if existing else created_at
             connection.execute(
                 """
-                INSERT INTO public_share(token, kind, resource_id, payload, owner_name, created_at)
-                VALUES(?, ?, ?, ?, ?, ?)
-                ON CONFLICT(kind, resource_id) DO UPDATE SET
+                INSERT INTO user_public_share(token, owner_id, kind, resource_id, payload, owner_name, created_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(owner_id, kind, resource_id) DO UPDATE SET
                     payload = excluded.payload,
                     owner_name = excluded.owner_name
                 """,
-                (token, kind, resource_id, serialized, owner_name, original_created_at),
+                (token, owner_id, kind, resource_id, serialized, owner_name, original_created_at),
             )
-        return PublicShare(token, kind, resource_id, payload, owner_name, original_created_at)
+        return PublicShare(token, kind, resource_id, payload, owner_name, original_created_at, owner_id)
 
     def load_public_share(self, token: str) -> PublicShare | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT token, kind, resource_id, payload, owner_name, created_at
-                FROM public_share WHERE token = ?
+                SELECT token, kind, resource_id, payload, owner_name, created_at, owner_id
+                FROM user_public_share WHERE token = ?
                 """,
                 (token,),
             ).fetchone()
@@ -276,6 +495,7 @@ class CredentialStore:
             payload=payload,
             owner_name=str(row[4]),
             created_at=int(row[5]),
+            owner_id=str(row[6]),
         )
 
     def create_local_playlist(self, title: str, description: str = "") -> dict:
@@ -283,8 +503,8 @@ class CredentialStore:
         now = int(time.time())
         with self._lock, self._connect() as connection:
             connection.execute(
-                "INSERT INTO local_playlist(id, title, description, created_at, updated_at) VALUES(?, ?, ?, ?, ?)",
-                (playlist_id, title.strip(), description.strip(), now, now),
+                "INSERT INTO local_playlist(id, title, description, created_at, updated_at, owner_id) VALUES(?, ?, ?, ?, ?, ?)",
+                (playlist_id, title.strip(), description.strip(), now, now, self.current_user_id()),
             )
         return self.load_local_playlist(playlist_id) or {}
 
@@ -296,9 +516,11 @@ class CredentialStore:
                        COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
                 FROM local_playlist p
                 LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                WHERE p.owner_id = ?
                 GROUP BY p.id
                 ORDER BY p.updated_at DESC, p.created_at DESC
-                """
+                """,
+                (self.current_user_id(),),
             ).fetchall()
         return [self._playlist_row(row) for row in rows]
 
@@ -310,9 +532,9 @@ class CredentialStore:
                        COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
                 FROM local_playlist p
                 LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
-                WHERE p.id = ? GROUP BY p.id
+                WHERE p.id = ? AND p.owner_id = ? GROUP BY p.id
                 """,
-                (playlist_id,),
+                (playlist_id, self.current_user_id()),
             ).fetchone()
             if row is None:
                 return None
@@ -343,9 +565,9 @@ class CredentialStore:
             return self.load_local_playlist(playlist_id)
         fields.append("updated_at = ?")
         values.append(int(time.time()))
-        values.append(playlist_id)
+        values.extend((playlist_id, self.current_user_id()))
         with self._lock, self._connect() as connection:
-            cursor = connection.execute(f"UPDATE local_playlist SET {', '.join(fields)} WHERE id = ?", values)
+            cursor = connection.execute(f"UPDATE local_playlist SET {', '.join(fields)} WHERE id = ? AND owner_id = ?", values)
         return self.load_local_playlist(playlist_id) if cursor.rowcount else None
 
     def delete_local_playlist(self, playlist_id: str) -> dict | None:
@@ -354,14 +576,17 @@ class CredentialStore:
             return None
         with self._lock, self._connect() as connection:
             connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("DELETE FROM local_playlist WHERE id = ?", (playlist_id,))
+            connection.execute("DELETE FROM local_playlist WHERE id = ? AND owner_id = ?", (playlist_id, self.current_user_id()))
         return playlist
 
     def add_local_playlist_track(self, playlist_id: str, track_id: str, payload: dict) -> dict | None:
         serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
         now = int(time.time())
         with self._lock, self._connect() as connection:
-            exists = connection.execute("SELECT 1 FROM local_playlist WHERE id = ?", (playlist_id,)).fetchone()
+            exists = connection.execute(
+                "SELECT 1 FROM local_playlist WHERE id = ? AND owner_id = ?",
+                (playlist_id, self.current_user_id()),
+            ).fetchone()
             if exists is None:
                 return None
             position = connection.execute(
@@ -381,7 +606,10 @@ class CredentialStore:
 
     def remove_local_playlist_track(self, playlist_id: str, track_id: str) -> dict | None:
         with self._lock, self._connect() as connection:
-            exists = connection.execute("SELECT 1 FROM local_playlist WHERE id = ?", (playlist_id,)).fetchone()
+            exists = connection.execute(
+                "SELECT 1 FROM local_playlist WHERE id = ? AND owner_id = ?",
+                (playlist_id, self.current_user_id()),
+            ).fetchone()
             if exists is None:
                 return None
             connection.execute("DELETE FROM local_playlist_track WHERE playlist_id = ? AND track_id = ?", (playlist_id, track_id))
@@ -390,33 +618,40 @@ class CredentialStore:
 
     def save_listening_event(self, track_id: str, payload: dict, listened_ms: int, source: str = "player") -> None:
         serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        user_id = self.current_user_id()
         with self._lock, self._connect() as connection:
             connection.execute(
-                "INSERT INTO listening_event(track_id, payload, source, listened_ms, created_at) VALUES(?, ?, ?, ?, ?)",
-                (track_id, serialized, source, listened_ms, int(time.time())),
+                "INSERT INTO listening_event(track_id, payload, source, listened_ms, created_at, owner_id) VALUES(?, ?, ?, ?, ?, ?)",
+                (track_id, serialized, source, listened_ms, int(time.time()), user_id),
             )
             if source == "player":
                 connection.execute(
                     """
-                    INSERT INTO track_listening_stat(track_id, payload, play_count, total_listened_ms, last_played_at)
-                    VALUES(?, ?, 1, ?, ?)
-                    ON CONFLICT(track_id) DO UPDATE SET
+                    INSERT INTO user_track_listening_stat(user_id, track_id, payload, play_count, total_listened_ms, last_played_at)
+                    VALUES(?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(user_id, track_id) DO UPDATE SET
                         payload = excluded.payload,
-                        play_count = track_listening_stat.play_count + 1,
-                        total_listened_ms = track_listening_stat.total_listened_ms + excluded.total_listened_ms,
+                        play_count = user_track_listening_stat.play_count + 1,
+                        total_listened_ms = user_track_listening_stat.total_listened_ms + excluded.total_listened_ms,
                         last_played_at = excluded.last_played_at
                     """,
-                    (track_id, serialized, listened_ms, int(time.time())),
+                    (user_id, track_id, serialized, listened_ms, int(time.time())),
                 )
             connection.execute(
-                "DELETE FROM listening_event WHERE id NOT IN (SELECT id FROM listening_event ORDER BY created_at DESC, id DESC LIMIT 30000)"
+                """
+                DELETE FROM listening_event
+                WHERE owner_id = ? AND id NOT IN (
+                    SELECT id FROM listening_event WHERE owner_id = ? ORDER BY created_at DESC, id DESC LIMIT 30000
+                )
+                """,
+                (user_id, user_id),
             )
 
     def list_listening_events(self, limit: int = 1000) -> list[dict]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
-                "SELECT track_id, payload, source, listened_ms, created_at FROM listening_event ORDER BY created_at DESC, id DESC LIMIT ?",
-                (max(1, min(limit, 30000)),),
+                "SELECT track_id, payload, source, listened_ms, created_at FROM listening_event WHERE owner_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+                (self.current_user_id(), max(1, min(limit, 30000))),
             ).fetchall()
         events: list[dict] = []
         for row in rows:
@@ -430,7 +665,8 @@ class CredentialStore:
     def list_track_stats(self) -> dict[str, dict]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
-                "SELECT track_id, play_count, total_listened_ms, last_played_at FROM track_listening_stat"
+                "SELECT track_id, play_count, total_listened_ms, last_played_at FROM user_track_listening_stat WHERE user_id = ?",
+                (self.current_user_id(),),
             ).fetchall()
         return {
             str(row[0]): {
@@ -443,16 +679,18 @@ class CredentialStore:
 
     def top_tracks(self, *, days: int | None = None, limit: int = 200) -> list[dict]:
         limit = max(1, min(limit, 500))
+        user_id = self.current_user_id()
         with self._lock, self._connect() as connection:
             if days is None:
                 rows = connection.execute(
                     """
                     SELECT track_id, payload, play_count, total_listened_ms, last_played_at
-                    FROM track_listening_stat
+                    FROM user_track_listening_stat
+                    WHERE user_id = ?
                     ORDER BY play_count DESC, total_listened_ms DESC, last_played_at DESC
                     LIMIT ?
                     """,
-                    (limit,),
+                    (user_id, limit),
                 ).fetchall()
             else:
                 cutoff = int(time.time()) - max(1, days) * 86_400
@@ -460,20 +698,20 @@ class CredentialStore:
                     """
                     SELECT grouped.track_id,
                            (SELECT recent.payload FROM listening_event recent
-                            WHERE recent.track_id = grouped.track_id AND recent.source = 'player' AND recent.created_at >= ?
+                            WHERE recent.owner_id = ? AND recent.track_id = grouped.track_id AND recent.source = 'player' AND recent.created_at >= ?
                             ORDER BY recent.created_at DESC, recent.id DESC LIMIT 1),
                            grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
                     FROM (
                         SELECT track_id, COUNT(*) AS play_count, SUM(listened_ms) AS total_listened_ms,
                                MAX(created_at) AS last_played_at
                         FROM listening_event
-                        WHERE source = 'player' AND created_at >= ?
+                        WHERE owner_id = ? AND source = 'player' AND created_at >= ?
                         GROUP BY track_id
                     ) grouped
                     ORDER BY grouped.play_count DESC, grouped.total_listened_ms DESC, grouped.last_played_at DESC
                     LIMIT ?
                     """,
-                    (cutoff, cutoff, limit),
+                    (user_id, cutoff, user_id, cutoff, limit),
                 ).fetchall()
         result: list[dict] = []
         for row in rows:

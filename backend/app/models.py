@@ -62,10 +62,19 @@ class UserProfileDTO(APIModel):
     avatar_url: str | None = None
 
 
+class AppUserDTO(APIModel):
+    id: str
+    username: str
+    display_name: str
+    needs_password: bool = False
+
+
 class BootstrapPayload(APIModel):
     connected: bool
     demo: bool
     access_locked: bool
+    authenticated: bool = False
+    app_user: AppUserDTO | None = None
     user: UserProfileDTO | None = None
     quick_tracks: list[TrackDTO] = Field(default_factory=list)
     liked_tracks: list[TrackDTO] = Field(default_factory=list)
@@ -113,6 +122,21 @@ class ListeningStatsPayload(APIModel):
 
 class AccessUnlockRequest(APIModel):
     key: str = Field(min_length=1, max_length=512)
+
+
+class AccountRegisterRequest(APIModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
+    display_name: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=10, max_length=128)
+
+
+class AccountLoginRequest(APIModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AccountPasswordRequest(APIModel):
+    password: str = Field(min_length=10, max_length=128)
 
 
 class DeviceAuthStartDTO(APIModel):

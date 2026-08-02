@@ -27,8 +27,12 @@ from .gateway import (
     YandexMusicGateway,
 )
 from .models import (
+    AccountLoginRequest,
+    AccountPasswordRequest,
+    AccountRegisterRequest,
     AccessUnlockRequest,
     ActionResponse,
+    AppUserDTO,
     BootstrapPayload,
     DeviceAuthPollDTO,
     DeviceAuthPollRequest,
@@ -57,8 +61,8 @@ from .models import (
     VKImportRequest,
     VKImportResult,
 )
-from .security import CookieSigner
-from .store import Credential, CredentialStore, CredentialStoreError
+from .security import CookieSigner, hash_password, session_token_hash, verify_password
+from .store import ANONYMOUS_USER_ID, LEGACY_USER_ID, AppUser, Credential, CredentialStore, CredentialStoreError
 
 
 @dataclass(slots=True)
@@ -66,6 +70,7 @@ class PendingAuthorization:
     authorization: DeviceAuthorization
     expires_at: float
     next_poll_at: float
+    owner_id: str
 
 
 def create_app(
@@ -117,16 +122,49 @@ def create_app(
             samesite="strict",
         )
 
+    def issue_user_session(response: Response, user: AppUser) -> None:
+        raw_token = secrets.token_urlsafe(32)
+        ttl_seconds = settings.session_ttl_days * 86_400
+        store.save_app_session(session_token_hash(raw_token), user.id, int(time.time()) + ttl_seconds)
+        response.set_cookie(
+            key=settings.user_cookie_name,
+            value=raw_token,
+            max_age=ttl_seconds,
+            path="/",
+            domain=settings.cookie_domain,
+            secure=settings.cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
+
+    def app_user_dto(user: AppUser) -> AppUserDTO:
+        return AppUserDTO(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            needs_password=user.password_hash is None,
+        )
+
+    def optional_app_user(request: Request) -> AppUser | None:
+        return getattr(request.state, "app_user", None)
+
+    def require_app_user(request: Request) -> AppUser:
+        user = optional_app_user(request)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Войдите в XEDOC Play")
+        return user
+
     def is_access_unlocked(request: Request) -> bool:
         if not settings.access_key.get_secret_value():
             return True
         return signer.verify(request.cookies.get(settings.access_cookie_name), "access")
 
     def require_access(request: Request) -> None:
-        if not is_access_unlocked(request):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нужен ключ доступа")
+        require_app_user(request)
 
     def optional_credential(request: Request) -> Credential | None:
+        if optional_app_user(request) is None:
+            return None
         try:
             credential = store.load()
         except CredentialStoreError as exc:
@@ -134,13 +172,6 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Не удалось прочитать защищённую сессию",
             ) from exc
-        if credential is None or not credential.session_id:
-            return None
-        if not signer.verify(
-            request.cookies.get(settings.session_cookie_name),
-            f"music-session:{credential.session_id}",
-        ):
-            return None
         return credential
 
     def require_credential(request: Request) -> Credential:
@@ -176,18 +207,37 @@ def create_app(
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        raw_session = request.cookies.get(settings.user_cookie_name)
+        user = store.user_for_app_session(session_token_hash(raw_session)) if raw_session else None
+        migrated_legacy_session = False
+        if user is None and is_access_unlocked(request):
+            legacy_credential = store.load_for_user(LEGACY_USER_ID)
+            if legacy_credential and legacy_credential.session_id and signer.verify(
+                request.cookies.get(settings.session_cookie_name),
+                f"music-session:{legacy_credential.session_id}",
+            ):
+                user = store.user_by_id(LEGACY_USER_ID)
+                migrated_legacy_session = user is not None
+        request.state.app_user = user
+        tenant_token = store.set_current_user(user.id if user else ANONYMOUS_USER_ID)
         if settings.environment == "production" and request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("origin")
             if origin != settings.public_origin.rstrip("/"):
+                store.reset_current_user(tenant_token)
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
                     content={"detail": "Недопустимый источник запроса"},
                 )
-        response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("Referrer-Policy", "same-origin")
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        return response
+        try:
+            response = await call_next(request)
+            if migrated_legacy_session and user is not None:
+                issue_user_session(response, user)
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("Referrer-Policy", "same-origin")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            return response
+        finally:
+            store.reset_current_user(tenant_token)
 
     @app.get("/api/health")
     async def health(response: Response) -> dict[str, str | bool]:
@@ -197,28 +247,86 @@ def create_app(
         return {
             "status": "ok" if healthy else "degraded",
             "service": "play.xedoc.ru",
-            "mode": "private-beta",
+            "mode": "multi-user",
             "storage": "ok" if healthy else "error",
             "yandexConfigured": True,
         }
 
+    @app.post("/api/account/register", response_model=AppUserDTO)
+    async def register_account(
+        body: AccountRegisterRequest,
+        request: Request,
+        response: Response,
+    ) -> AppUserDTO:
+        if not settings.registration_enabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Регистрация временно закрыта")
+        await enforce_rate_limit(request, "account-register", maximum=5, window_seconds=900)
+        try:
+            user = store.create_user(body.username, body.display_name, hash_password(body.password))
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Такое имя пользователя уже занято") from exc
+        issue_user_session(response, user)
+        return app_user_dto(user)
+
+    @app.post("/api/account/login", response_model=AppUserDTO)
+    async def login_account(
+        body: AccountLoginRequest,
+        request: Request,
+        response: Response,
+    ) -> AppUserDTO:
+        await enforce_rate_limit(request, "account-login", maximum=10, window_seconds=900)
+        user = store.user_by_username(body.username)
+        if user is None or not verify_password(body.password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверное имя пользователя или пароль")
+        issue_user_session(response, user)
+        return app_user_dto(user)
+
+    @app.post("/api/account/logout", response_model=ActionResponse)
+    async def logout_account(request: Request, response: Response) -> ActionResponse:
+        raw_session = request.cookies.get(settings.user_cookie_name)
+        if raw_session:
+            store.delete_app_session(session_token_hash(raw_session))
+        clear_cookie(response, settings.user_cookie_name)
+        return ActionResponse()
+
+    @app.put("/api/account/password", response_model=ActionResponse)
+    async def set_account_password(
+        body: AccountPasswordRequest,
+        request: Request,
+    ) -> ActionResponse:
+        user = require_app_user(request)
+        store.set_user_password(user.id, hash_password(body.password))
+        return ActionResponse()
+
     @app.get("/api/bootstrap", response_model=BootstrapPayload, response_model_exclude_none=True)
-    async def bootstrap(request: Request, response: Response) -> BootstrapPayload:
-        if not is_access_unlocked(request):
-            return demo_bootstrap(access_locked=True)
+    async def bootstrap(request: Request) -> BootstrapPayload:
+        app_user = optional_app_user(request)
+        if app_user is None:
+            payload = demo_bootstrap(access_locked=True)
+            payload.authenticated = False
+            return payload
 
         credential = optional_credential(request)
         if credential is None:
-            return demo_bootstrap()
+            payload = demo_bootstrap()
+            payload.authenticated = True
+            payload.app_user = app_user_dto(app_user)
+            _attach_xedoc_library(payload, store)
+            return payload
         try:
             payload = await gateway.bootstrap(credential)
             payload.access_locked = False
+            payload.authenticated = True
+            payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
             return payload
         except GatewayUnauthorized:
             store.delete()
-            clear_cookie(response, settings.session_cookie_name)
-            return demo_bootstrap()
+            payload = demo_bootstrap()
+            payload.authenticated = True
+            payload.app_user = app_user_dto(app_user)
+            _attach_xedoc_library(payload, store)
+            return payload
         except GatewayError as exc:
             if not settings.demo_fallback:
                 raise _http_gateway_error(exc) from exc
@@ -226,6 +334,8 @@ def create_app(
             payload.connected = True
             payload.demo = True
             payload.user = UserProfileDTO(name=credential.user_name, avatar_url=credential.avatar_url)
+            payload.authenticated = True
+            payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
             return payload
 
@@ -239,7 +349,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
-        require_credential(request)
+        require_app_user(request)
         return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description))
 
     @app.patch("/api/local-playlists/{playlist_id}", response_model=PlaylistDTO, response_model_exclude_none=True)
@@ -249,7 +359,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
-        require_credential(request)
+        require_app_user(request)
         identifier = _safe_local_playlist_id(playlist_id)
         playlist = store.update_local_playlist(identifier, title=body.title, description=body.description)
         return _require_local_playlist(playlist)
@@ -260,7 +370,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> ActionResponse:
-        require_credential(request)
+        require_app_user(request)
         playlist = store.delete_local_playlist(_safe_local_playlist_id(playlist_id))
         _require_local_playlist(playlist)
         return ActionResponse()
@@ -272,7 +382,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
-        require_credential(request)
+        require_app_user(request)
         data_url = _safe_cover_data_url(body.data_url)
         playlist = store.update_local_playlist(_safe_local_playlist_id(playlist_id), cover_url=data_url, update_cover=True)
         return _require_local_playlist(playlist)
@@ -284,7 +394,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
-        require_credential(request)
+        require_app_user(request)
         track = body.track.model_copy(update={
             "stream_url": None,
             "play_count": None,
@@ -307,7 +417,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
-        require_credential(request)
+        require_app_user(request)
         playlist = store.remove_local_playlist_track(_safe_local_playlist_id(playlist_id), _safe_identifier(track_id))
         return _require_local_playlist(playlist)
 
@@ -334,10 +444,12 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> VKImportResult:
-        credential = require_credential(request)
+        credential = optional_credential(request)
         semaphore = asyncio.Semaphore(4)
 
         async def match(external: ExternalTrackDTO) -> tuple[ExternalTrackDTO, TrackDTO | None]:
+            if credential is None:
+                return external, None
             async with semaphore:
                 try:
                     result = await gateway.search(credential, f"{external.artist} {external.title}")
@@ -436,6 +548,7 @@ def create_app(
             authorization=authorization,
             expires_at=now + authorization.expires_in,
             next_poll_at=now + max(0, authorization.interval),
+            owner_id=require_app_user(request).id,
         )
         async with attempts_lock:
             expired = [key for key, value in attempts.items() if value.expires_at <= now]
@@ -457,13 +570,17 @@ def create_app(
     @app.post("/api/auth/device/poll", response_model=DeviceAuthPollDTO)
     async def poll_device_auth(
         body: DeviceAuthPollRequest,
+        request: Request,
         response: Response,
         _: None = Depends(require_access),
     ) -> DeviceAuthPollDTO:
+        app_user = require_app_user(request)
         now = time.monotonic()
         async with attempts_lock:
             pending = attempts.get(body.device_id)
             if pending is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Код подключения не найден")
+            if pending.owner_id != app_user.id:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Код подключения не найден")
             if pending.expires_at <= now:
                 attempts.pop(body.device_id, None)
@@ -489,7 +606,7 @@ def create_app(
                 attempts.pop(body.device_id, None)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="XEDOC Play уже привязан к другому Яндекс-аккаунту",
+                detail="Этот аккаунт XEDOC уже подключён к другому Яндекс-аккаунту",
             )
 
         credential.session_id = secrets.token_urlsafe(24)
@@ -505,10 +622,12 @@ def create_app(
         return DeviceAuthPollDTO(connected=True)
 
     @app.post("/api/auth/logout", response_model=ActionResponse)
-    async def logout(response: Response, _: None = Depends(require_access)) -> ActionResponse:
+    async def logout(request: Request, response: Response, _: None = Depends(require_access)) -> ActionResponse:
+        app_user = require_app_user(request)
         store.delete()
         async with attempts_lock:
-            attempts.clear()
+            for attempt_id in [key for key, value in attempts.items() if value.owner_id == app_user.id]:
+                attempts.pop(attempt_id, None)
         clear_cookie(response, settings.session_cookie_name)
         return ActionResponse()
 
@@ -750,7 +869,7 @@ def create_app(
         if identifier not in allowed_ids:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не входит в эту публичную ссылку")
         try:
-            credential = store.load()
+            credential = store.load_for_user(share.owner_id)
         except CredentialStoreError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Музыка временно недоступна") from exc
         if credential is None:
@@ -884,10 +1003,11 @@ def _discovery_context(store: CredentialStore) -> tuple[list[str], set[str]]:
         track_id = str(event.get("track_id") or "").strip()
         if not track_id:
             continue
-        known_track_ids.add(track_id)
+        if not track_id.startswith("vk-seed-"):
+            known_track_ids.add(track_id)
         if event.get("source") == "player" and track_id not in recent_player_ids:
             recent_player_ids.append(track_id)
-        elif track_id not in fallback_signal_ids:
+        elif not track_id.startswith("vk-seed-") and track_id not in fallback_signal_ids:
             fallback_signal_ids.append(track_id)
 
     for summary in store.list_local_playlists():
