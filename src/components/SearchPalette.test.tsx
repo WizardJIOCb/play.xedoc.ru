@@ -57,4 +57,16 @@ describe('content search page', () => {
     expect(screen.queryByText('Плейлисты')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Добавить Найденный трек в плейлист/ })).not.toBeInTheDocument()
   })
+
+  it('hands a selected playlist to the side-queue action', async () => {
+    const onPlaylistPlay = vi.fn()
+    api.searchMusic.mockResolvedValue({ tracks: [], playlists: [{ id: 'mix-1', title: 'Найденный плейлист', trackCount: 20 }], profiles: [] })
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={onPlaylistPlay} /></PlayerProvider>)
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Поисковый запрос' }), { target: { value: 'Микс' } })
+    expect(await screen.findByText('Найденный плейлист')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Найденный плейлист/ }))
+
+    expect(onPlaylistPlay).toHaveBeenCalledWith(expect.objectContaining({ id: 'mix-1', title: 'Найденный плейлист' }))
+  })
 })

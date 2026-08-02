@@ -352,15 +352,17 @@ function TrackCollectionView({ type, tracks, total, loading = false, error }: { 
   )
 }
 
-function QueuePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+function QueuePanel({ open, onClose, playlistTitle, loading = false, error = '' }: { open: boolean; onClose: () => void; playlistTitle?: string; loading?: boolean; error?: string }) {
   const player = usePlayer()
   if (!open) return null
   return (
     <aside className="queue-panel">
-      <header><div><span className="eyebrow">ДАЛЬШЕ</span><h2>Очередь</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть очередь"><X size={20} /></button></header>
-      {player.current && <div className="queue-panel__current"><small>Сейчас играет</small><TrackRow track={player.current} context={player.queue} compact /></div>}
-      <div className="queue-panel__list"><small>Следом</small>{player.upNext.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={player.queue} compact />)}</div>
-      {!player.queue.length && <div className="queue-panel__empty"><ListMusic size={28} /><p>Очередь пока пуста</p><span>Включите плейлист или добавьте трек следующим.</span></div>}
+      <header><div><span className="eyebrow">{playlistTitle ? 'ВЫБРАННЫЙ ПЛЕЙЛИСТ' : 'ДАЛЬШЕ'}</span><h2>{playlistTitle || 'Очередь'}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть очередь"><X size={20} /></button></header>
+      {loading ? <div className="queue-panel__empty"><LoaderCircle className="spin" size={28} /><p>Загружаем треки…</p><span>Собираем очередь выбранного плейлиста.</span></div> : error ? <div className="queue-panel__empty queue-panel__empty--error"><ListMusic size={28} /><p>Не удалось открыть плейлист</p><span>{error}</span></div> : <>
+        {player.current && <div className="queue-panel__current"><small>Сейчас играет</small><TrackRow track={player.current} context={player.queue} compact /></div>}
+        <div className="queue-panel__list"><small>Следом · {player.upNext.length} треков</small>{player.upNext.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={player.queue} compact />)}</div>
+        {!player.queue.length && <div className="queue-panel__empty"><ListMusic size={28} /><p>Очередь пока пуста</p><span>Включите плейлист или добавьте трек следующим.</span></div>}
+      </>}
     </aside>
   )
 }
@@ -387,6 +389,9 @@ function PrivateApp() {
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
   const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(window.location.search).has('vkImport'))
   const [queueOpen, setQueueOpen] = useState(false)
+  const [queuePlaylistTitle, setQueuePlaylistTitle] = useState('')
+  const [queueLoading, setQueueLoading] = useState(false)
+  const [queueError, setQueueError] = useState('')
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>()
   const [playlistLoading, setPlaylistLoading] = useState(false)
   const [playlistError, setPlaylistError] = useState('')
@@ -394,6 +399,7 @@ function PrivateApp() {
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist>()
   const [notice, setNotice] = useState('')
   const vkImportStarted = useRef(false)
+  const queueRequest = useRef(0)
   const player = usePlayer()
 
   useEffect(() => {
@@ -499,6 +505,36 @@ function PrivateApp() {
       .catch(() => setNotice('Не удалось запустить плейлист'))
   }, [player])
 
+  const playPlaylistInQueue = useCallback((playlist: Playlist) => {
+    const requestId = ++queueRequest.current
+    setQueuePlaylistTitle(playlist.title)
+    setQueueError('')
+    setQueueOpen(true)
+    const playLoaded = (loaded: Playlist) => {
+      if (requestId !== queueRequest.current) return
+      if (!loaded.tracks?.length) {
+        setQueueError('В этом плейлисте пока нет доступных треков.')
+        return
+      }
+      const playbackSource = loaded.local ? { playlistId: loaded.id, playlistTitle: loaded.title } : undefined
+      player.playQueue(loaded.tracks, 0, playbackSource)
+    }
+    if (playlist.tracks?.length) {
+      setQueueLoading(false)
+      playLoaded(playlist)
+      return
+    }
+    setQueueLoading(true)
+    void getPlaylist(playlist.id)
+      .then(playLoaded)
+      .catch(() => {
+        if (requestId === queueRequest.current) setQueueError('Не удалось загрузить треки. Попробуйте выбрать плейлист ещё раз.')
+      })
+      .finally(() => {
+        if (requestId === queueRequest.current) setQueueLoading(false)
+      })
+  }, [player])
+
   useEffect(() => {
     if (!notice) return
     const timeout = window.setTimeout(() => setNotice(''), 3200)
@@ -582,7 +618,7 @@ function PrivateApp() {
   }, [])
   const content = useMemo(() => {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
-    if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylist} />
+    if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
@@ -591,7 +627,7 @@ function PrivateApp() {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -618,8 +654,8 @@ function PrivateApp() {
         </div>
       </main>
 
-      <QueuePanel open={queueOpen} onClose={() => setQueueOpen(false)} />
-      <PlayerBar onQueue={() => setQueueOpen((value) => !value)} />
+      <QueuePanel open={queueOpen} playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} onClose={() => setQueueOpen(false)} />
+      <PlayerBar onQueue={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} />
       <SessionBuilder open={sessionOpen} initialDiscovery={sessionDiscovery} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
       <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />

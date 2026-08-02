@@ -733,6 +733,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .queue-panel__empty { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted-2); }
 .queue-panel__empty p { margin: 13px 0 5px; color: var(--muted); font-size: var(--type-control); }
 .queue-panel__empty span { max-width: 240px; font-size: var(--type-caption); line-height: 1.5; }
+.queue-panel__empty--error { color: #ff98a2; }
+.queue-panel__empty--error p { color: #ffb3ba; }
 @keyframes slide-in { from { transform: translateX(30px); opacity: 0; } }
 
 /* Search */
