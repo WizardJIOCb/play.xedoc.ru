@@ -32,6 +32,7 @@ from .models import (
     AccountRegisterRequest,
     AccessUnlockRequest,
     ActionResponse,
+    AdminDashboardDTO,
     AppUserDTO,
     BootstrapPayload,
     DeviceAuthPollDTO,
@@ -147,6 +148,7 @@ def create_app(
             username=user.username,
             display_name=user.display_name,
             needs_password=user.password_hash is None,
+            is_admin=user.is_admin,
         )
 
     def optional_app_user(request: Request) -> AppUser | None:
@@ -156,6 +158,12 @@ def create_app(
         user = optional_app_user(request)
         if user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Войдите в XEDOC Play")
+        return user
+
+    def require_admin(request: Request) -> AppUser:
+        user = require_app_user(request)
+        if not user.is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ только для администратора")
         return user
 
     def is_access_unlocked(request: Request) -> bool:
@@ -830,14 +838,16 @@ def create_app(
         query = q.strip()
         if not query:
             return SearchPayload()
-        profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(query)]
+        profile_query = query.removeprefix("@").strip()
+        profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(profile_query)]
+        music_query = profile_query if query.startswith("@") else query
         credential = optional_credential(request)
         if credential is None:
-            result = demo_search(query)
+            result = demo_search(music_query)
             result.profiles = profiles
             return result
         try:
-            result = await gateway.search(credential, query)
+            result = await gateway.search(credential, music_query)
             _decorate_tracks_with_stats(result.tracks, store)
             result.profiles = profiles
             return result
@@ -846,7 +856,7 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
         except GatewayError as exc:
             if settings.demo_fallback:
-                result = demo_search(query)
+                result = demo_search(music_query)
                 result.profiles = profiles
                 return result
             raise _http_gateway_error(exc) from exc
@@ -861,6 +871,16 @@ def create_app(
         if not query:
             return []
         return [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(query)]
+
+    @app.get("/api/admin/dashboard", response_model=AdminDashboardDTO, response_model_exclude_none=True)
+    async def admin_dashboard(
+        request: Request,
+        q: str = Query(default="", max_length=80),
+        limit: int = Query(default=100, ge=1, le=250),
+    ) -> AdminDashboardDTO:
+        require_admin(request)
+        await enforce_rate_limit(request, "admin-dashboard", maximum=120, window_seconds=60)
+        return AdminDashboardDTO.model_validate(store.admin_dashboard(q, limit))
 
     @app.get("/api/profiles/{username}", response_model=PublicProfileDTO, response_model_exclude_none=True)
     async def public_profile(username: str, request: Request) -> PublicProfileDTO:

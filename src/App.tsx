@@ -17,6 +17,7 @@ import {
   Pencil,
   Radio,
   Search,
+  ShieldCheck,
   Shuffle,
   Sparkles,
   TrendingUp,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectModal } from './components/ConnectModal'
+import { AdminDashboardPage } from './components/AdminDashboardPage'
 import { AuthGate } from './components/AuthGate'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
@@ -60,6 +62,7 @@ const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: 
 const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '') === '/recommendations'
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
 const isLikedPath = () => window.location.pathname.replace(/\/+$/, '') === '/liked'
+const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
 
 function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
@@ -360,6 +363,7 @@ function PrivateApp() {
   const [view, setView] = useState<ViewId>(() => isLikedPath() ? 'liked' : 'home')
   const [recommendationsOpen, setRecommendationsOpen] = useState(isRecommendationsPath)
   const [topOpen, setTopOpen] = useState(isTopPath)
+  const [adminOpen, setAdminOpen] = useState(isAdminPath)
   const [listeningStats, setListeningStats] = useState<ListeningStats>()
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState('')
@@ -421,6 +425,7 @@ function PrivateApp() {
       setSelectedPlaylist(undefined)
       setRecommendationsOpen(isRecommendationsPath())
       setTopOpen(isTopPath())
+      setAdminOpen(isAdminPath())
       setView(isLikedPath() ? 'liked' : 'home')
     }
     window.addEventListener('popstate', onPopState)
@@ -480,6 +485,7 @@ function PrivateApp() {
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(false)
+    setAdminOpen(false)
     const nextPath = nextView === 'liked' ? '/liked' : '/'
     if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
     setView(nextView)
@@ -489,6 +495,7 @@ function PrivateApp() {
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(true)
     setTopOpen(false)
+    setAdminOpen(false)
     if (!isRecommendationsPath()) window.history.pushState(null, '', '/recommendations')
   }, [])
 
@@ -496,8 +503,17 @@ function PrivateApp() {
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(true)
+    setAdminOpen(false)
     setListeningStats(undefined)
     if (!isTopPath()) window.history.pushState(null, '', '/top')
+  }, [])
+
+  const openAdmin = useCallback(() => {
+    setSelectedPlaylist(undefined)
+    setRecommendationsOpen(false)
+    setTopOpen(false)
+    setAdminOpen(true)
+    if (!isAdminPath()) window.history.pushState(null, '', '/admin')
   }, [])
 
   useEffect(() => {
@@ -524,6 +540,7 @@ function PrivateApp() {
   const title = viewTitles[view]
   const content = useMemo(() => {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
+    if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
     if (view === 'home') return <HomeView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
@@ -531,7 +548,7 @@ function PrivateApp() {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -542,16 +559,16 @@ function PrivateApp() {
       <Sidebar view={view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
       <main className="main-view">
         <header className="topbar">
-          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
+          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
-            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
         <div className="page-content">
-          {!selectedPlaylist && !recommendationsOpen && !topOpen && <header className="page-heading">
+          {!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}

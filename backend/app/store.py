@@ -28,6 +28,7 @@ class AppUser:
     display_name: str
     password_hash: str | None
     created_at: int
+    is_admin: bool = False
 
 
 @dataclass(slots=True)
@@ -87,6 +88,7 @@ class CredentialStore:
                 )
                 """
             )
+            self._ensure_column(connection, "app_user", "is_admin", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_session (
@@ -338,6 +340,7 @@ class CredentialStore:
             display_name=display_name.strip(),
             password_hash=password_hash,
             created_at=int(time.time()),
+            is_admin=False,
         )
         try:
             with self._lock, self._connect() as connection:
@@ -352,7 +355,7 @@ class CredentialStore:
     def user_by_username(self, username: str) -> AppUser | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, username, display_name, password_hash, created_at FROM app_user WHERE username = ? COLLATE NOCASE",
+                "SELECT id, username, display_name, password_hash, created_at, is_admin FROM app_user WHERE username = ? COLLATE NOCASE",
                 (username.strip(),),
             ).fetchone()
         return AppUser(*row) if row else None
@@ -360,7 +363,7 @@ class CredentialStore:
     def user_by_id(self, user_id: str) -> AppUser | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, username, display_name, password_hash, created_at FROM app_user WHERE id = ?",
+                "SELECT id, username, display_name, password_hash, created_at, is_admin FROM app_user WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return AppUser(*row) if row else None
@@ -368,6 +371,14 @@ class CredentialStore:
     def set_user_password(self, user_id: str, password_hash: str) -> bool:
         with self._lock, self._connect() as connection:
             cursor = connection.execute("UPDATE app_user SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        return bool(cursor.rowcount)
+
+    def set_user_admin(self, username: str, is_admin: bool) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE app_user SET is_admin = ? WHERE username = ? COLLATE NOCASE",
+                (int(is_admin), username.strip().removeprefix("@")),
+            )
         return bool(cursor.rowcount)
 
     def save_app_session(self, token_hash: str, user_id: str, expires_at: int) -> None:
@@ -382,7 +393,7 @@ class CredentialStore:
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at
+                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at, u.is_admin
                 FROM app_session s JOIN app_user u ON u.id = s.user_id
                 WHERE s.token_hash = ? AND s.expires_at >= ?
                 """,
@@ -883,7 +894,7 @@ class CredentialStore:
         return result
 
     def search_users(self, query: str, limit: int = 8) -> list[dict]:
-        value = query.strip()
+        value = query.strip().removeprefix("@").strip()
         if not value:
             return []
         escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -909,6 +920,103 @@ class CredentialStore:
             {"username": str(row[0]), "displayName": str(row[1]), "publicPlaylistCount": int(row[2] or 0)}
             for row in rows
         ]
+
+    def admin_dashboard(self, query: str = "", limit: int = 100) -> dict:
+        value = query.strip().removeprefix("@").strip()
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            summary_row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM app_user WHERE id <> ?),
+                    (SELECT COUNT(*) FROM app_user WHERE id <> ? AND created_at >= ?),
+                    (SELECT COUNT(DISTINCT owner_id) FROM listening_event WHERE owner_id <> ? AND source = 'player' AND created_at >= ?),
+                    (SELECT COUNT(*) FROM user_yandex_credential WHERE user_id <> ?),
+                    (SELECT COUNT(*) FROM local_playlist),
+                    (SELECT COUNT(*) FROM local_playlist WHERE is_public = 1),
+                    (SELECT COUNT(*) FROM local_playlist_track),
+                    (SELECT COALESCE(SUM(play_count), 0) FROM user_track_listening_stat),
+                    (SELECT COUNT(DISTINCT track_id) FROM user_track_listening_stat),
+                    (SELECT COALESCE(SUM(total_listened_ms), 0) FROM user_track_listening_stat),
+                    (SELECT COUNT(*) FROM user_public_share)
+                """,
+                (LEGACY_USER_ID, LEGACY_USER_ID, now - 7 * 86_400, LEGACY_USER_ID, now - 30 * 86_400, LEGACY_USER_ID),
+            ).fetchone()
+            user_rows = connection.execute(
+                """
+                SELECT u.username, u.display_name, u.is_admin, u.created_at,
+                       EXISTS(SELECT 1 FROM user_yandex_credential c WHERE c.user_id = u.id),
+                       (SELECT COUNT(*) FROM local_playlist p WHERE p.owner_id = u.id),
+                       (SELECT COUNT(*) FROM local_playlist p WHERE p.owner_id = u.id AND p.is_public = 1),
+                       (SELECT COUNT(*) FROM local_playlist_track t JOIN local_playlist p ON p.id = t.playlist_id WHERE p.owner_id = u.id),
+                       COALESCE(SUM(s.play_count), 0), COUNT(s.track_id),
+                       COALESCE(SUM(s.total_listened_ms), 0), MAX(s.last_played_at)
+                FROM app_user u
+                LEFT JOIN user_track_listening_stat s ON s.user_id = u.id
+                WHERE u.id <> ? AND (? = '' OR u.username LIKE ? ESCAPE '\\' COLLATE NOCASE OR u.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE)
+                GROUP BY u.id
+                ORDER BY u.is_admin DESC, MAX(s.last_played_at) DESC, u.created_at DESC
+                LIMIT ?
+                """,
+                (LEGACY_USER_ID, value, pattern, pattern, max(1, min(limit, 250))),
+            ).fetchall()
+            top_rows = connection.execute(
+                """
+                SELECT track_id, payload, SUM(play_count), SUM(total_listened_ms), MAX(last_played_at)
+                FROM user_track_listening_stat
+                GROUP BY track_id
+                ORDER BY SUM(play_count) DESC, SUM(total_listened_ms) DESC, MAX(last_played_at) DESC
+                LIMIT 12
+                """
+            ).fetchall()
+        top_tracks: list[dict] = []
+        for row in top_rows:
+            try:
+                track = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            track.update({
+                "playCount": int(row[2] or 0),
+                "totalListenedMs": int(row[3] or 0),
+                "lastPlayedAt": int(row[4] or 0),
+            })
+            track.pop("streamUrl", None)
+            top_tracks.append(track)
+        return {
+            "summary": {
+                "usersTotal": int(summary_row[0] or 0),
+                "newUsers7d": int(summary_row[1] or 0),
+                "activeUsers30d": int(summary_row[2] or 0),
+                "yandexConnected": int(summary_row[3] or 0),
+                "playlistsTotal": int(summary_row[4] or 0),
+                "publicPlaylists": int(summary_row[5] or 0),
+                "playlistTracks": int(summary_row[6] or 0),
+                "totalPlays": int(summary_row[7] or 0),
+                "uniqueTracks": int(summary_row[8] or 0),
+                "totalListenedMs": int(summary_row[9] or 0),
+                "publicShares": int(summary_row[10] or 0),
+            },
+            "users": [
+                {
+                    "username": str(row[0]),
+                    "displayName": str(row[1]),
+                    "isAdmin": bool(row[2]),
+                    "createdAt": int(row[3]),
+                    "yandexConnected": bool(row[4]),
+                    "playlists": int(row[5] or 0),
+                    "publicPlaylists": int(row[6] or 0),
+                    "playlistTracks": int(row[7] or 0),
+                    "totalPlays": int(row[8] or 0),
+                    "uniqueTracks": int(row[9] or 0),
+                    "totalListenedMs": int(row[10] or 0),
+                    "lastPlayedAt": int(row[11]) if row[11] is not None else None,
+                }
+                for row in user_rows
+            ],
+            "topTracks": top_tracks,
+        }
 
     def load_public_profile(self, username: str) -> dict | None:
         with self._lock, self._connect() as connection:

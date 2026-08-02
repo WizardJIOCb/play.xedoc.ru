@@ -68,6 +68,42 @@ class AppUserDTO(APIModel):
     username: str
     display_name: str
     needs_password: bool = False
+    is_admin: bool = False
+
+
+class AdminSummaryDTO(APIModel):
+    users_total: int = 0
+    new_users_7d: int = 0
+    active_users_30d: int = 0
+    yandex_connected: int = 0
+    playlists_total: int = 0
+    public_playlists: int = 0
+    playlist_tracks: int = 0
+    total_plays: int = 0
+    unique_tracks: int = 0
+    total_listened_ms: int = 0
+    public_shares: int = 0
+
+
+class AdminUserDTO(APIModel):
+    username: str
+    display_name: str
+    is_admin: bool = False
+    created_at: int
+    yandex_connected: bool = False
+    playlists: int = 0
+    public_playlists: int = 0
+    playlist_tracks: int = 0
+    total_plays: int = 0
+    unique_tracks: int = 0
+    total_listened_ms: int = 0
+    last_played_at: int | None = None
+
+
+class AdminDashboardDTO(APIModel):
+    summary: AdminSummaryDTO
+    users: list[AdminUserDTO] = Field(default_factory=list)
+    top_tracks: list[TrackDTO] = Field(default_factory=list)
 
 
 class ProfileSearchItemDTO(APIModel):

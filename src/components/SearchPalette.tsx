@@ -66,10 +66,11 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
               if (event.key !== 'Enter') return
               if (tracks[0]) player.playTrack(tracks[0], tracks)
               else if (results.playlists[0]) onPlaylistPlay(results.playlists[0])
+              else if (results.profiles?.[0]) window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}`
               else return
               onClose()
             }}
-            placeholder="Трек, артист, альбом или плейлист"
+            placeholder="Трек, артист, плейлист или @профиль"
           />
           <kbd>ESC</kbd>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><X size={19} /></button>
@@ -91,7 +92,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
                 <button className="search-result__next" type="button" aria-label={`Добавить ${track.title} следующим`} onClick={() => player.addNext(track)}><ListPlus size={18} /></button>
               </div>
             ))}
-            {query && !loading && tracks.length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Попробуйте другое написание.</p></div>}
+            {query && !loading && tracks.length === 0 && results.playlists.length === 0 && (results.profiles || []).length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Проверьте имя, логин или название музыки.</p></div>}
           </div>
 
           {results.playlists.length > 0 && (

@@ -1,4 +1,4 @@
-import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -120,6 +120,11 @@ export async function getPublicProfile(username: string): Promise<PublicProfile>
 
 export async function getPublicProfilePlaylist(username: string, playlistId: string): Promise<Playlist> {
   return request<Playlist>(`/profiles/${encodeURIComponent(username)}/playlists/${encodeURIComponent(playlistId)}`)
+}
+
+export async function getAdminDashboard(query = ''): Promise<AdminDashboard> {
+  const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''
+  return request<AdminDashboard>(`/admin/dashboard${suffix}`)
 }
 
 export async function getAllLikedTracks(): Promise<LikedTracksPayload> {

@@ -41,6 +41,42 @@ export interface AppUser {
   username: string
   displayName: string
   needsPassword: boolean
+  isAdmin: boolean
+}
+
+export interface AdminSummary {
+  usersTotal: number
+  newUsers7d: number
+  activeUsers30d: number
+  yandexConnected: number
+  playlistsTotal: number
+  publicPlaylists: number
+  playlistTracks: number
+  totalPlays: number
+  uniqueTracks: number
+  totalListenedMs: number
+  publicShares: number
+}
+
+export interface AdminUser {
+  username: string
+  displayName: string
+  isAdmin: boolean
+  createdAt: number
+  yandexConnected: boolean
+  playlists: number
+  publicPlaylists: number
+  playlistTracks: number
+  totalPlays: number
+  uniqueTracks: number
+  totalListenedMs: number
+  lastPlayedAt?: number
+}
+
+export interface AdminDashboard {
+  summary: AdminSummary
+  users: AdminUser[]
+  topTracks: Track[]
 }
 
 export interface BootstrapPayload {

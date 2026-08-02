@@ -52,6 +52,47 @@ def test_access_gate_and_demo_bootstrap(client: TestClient) -> None:
     assert demo.json()["playlists"][0]["coverUrl"].startswith("/demo-covers/")
 
 
+def test_profile_search_accepts_at_username(client: TestClient, fake_gateway: FakeGateway) -> None:
+    connect(client)
+    response = client.get("/api/search", params={"q": "@testuser"})
+    assert response.status_code == 200
+    assert response.json()["profiles"][0]["username"] == "testuser"
+    assert fake_gateway.search_queries[-1] == "testuser"
+
+
+def test_admin_dashboard_requires_role_and_aggregates_service_data(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    connect(client)
+    denied = client.get("/api/admin/dashboard")
+    assert denied.status_code == 403
+
+    assert store.set_user_admin("@testuser", True) is True
+    created = client.post("/api/local-playlists", json={"title": "Admin fixture", "isPublic": True})
+    assert created.status_code == 200
+    listened = client.post("/api/listening-events", json={
+        "track": {"id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000},
+        "listenedMs": 20_000,
+    })
+    assert listened.status_code == 200
+
+    dashboard = client.get("/api/admin/dashboard")
+    assert dashboard.status_code == 200
+    body = dashboard.json()
+    assert body["summary"]["usersTotal"] == 1
+    assert body["summary"]["yandexConnected"] == 1
+    assert body["summary"]["playlistsTotal"] == 1
+    assert body["summary"]["publicPlaylists"] == 1
+    assert body["summary"]["totalPlays"] == 1
+    assert body["users"][0]["username"] == "testuser"
+    assert body["users"][0]["isAdmin"] is True
+    assert body["topTracks"][0]["id"] == "101"
+
+    filtered = client.get("/api/admin/dashboard", params={"q": "@testuser"})
+    assert [user["username"] for user in filtered.json()["users"]] == ["testuser"]
+
+
 def test_device_flow_connects_and_persists_encrypted_token(
     client: TestClient,
     store: CredentialStore,
