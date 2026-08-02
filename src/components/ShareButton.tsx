@@ -21,8 +21,11 @@ async function copyText(value: string) {
     field.style.opacity = '0'
     document.body.appendChild(field)
     field.select()
-    document.execCommand('copy')
-    field.remove()
+    try {
+      if (!document.execCommand('copy')) throw new Error('Clipboard copy was rejected')
+    } finally {
+      field.remove()
+    }
   }
 }
 
@@ -45,18 +48,6 @@ export function ShareButton({ track, playlist, labeled = false, className = '' }
       const link = track ? await createTrackShare(track) : await createPlaylistShare(playlist!.id)
       trackGoal('share_created', { resourceType: track ? 'track' : 'playlist' })
       const url = new URL(link.path, window.location.origin).toString()
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: `${title} — XEDOC Play`, text: `Послушайте «${title}»`, url })
-          setState('done')
-          return
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            setState('idle')
-            return
-          }
-        }
-      }
       await copyText(url)
       setState('done')
     } catch {
@@ -67,9 +58,9 @@ export function ShareButton({ track, playlist, labeled = false, className = '' }
   const label = state === 'loading'
     ? 'Создаём ссылку…'
     : state === 'done'
-      ? 'Ссылка готова'
+      ? 'Ссылка скопирована'
       : state === 'error'
-        ? 'Не удалось'
+        ? 'Не удалось скопировать'
         : 'Поделиться'
   const buttonLabel = unavailable ? 'Доступно после подключения Яндекс Музыки' : label
 
@@ -80,10 +71,12 @@ export function ShareButton({ track, playlist, labeled = false, className = '' }
       onClick={(event) => void share(event)}
       aria-label={`${buttonLabel}: ${title}`}
       title={buttonLabel}
+      data-tooltip={state === 'idle' ? buttonLabel : undefined}
       disabled={state === 'loading' || unavailable}
     >
       {state === 'loading' ? <LoaderCircle className="spin" size={17} /> : state === 'done' ? <Check size={17} /> : <Share2 size={17} />}
       {labeled && <span>{unavailable ? 'Поделиться' : label}</span>}
+      {(state === 'done' || state === 'error') && <span className={`share-button__feedback ${state === 'error' ? 'share-button__feedback--error' : ''}`} role="status">{label}</span>}
     </button>
   )
 }
