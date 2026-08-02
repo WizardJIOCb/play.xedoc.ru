@@ -374,6 +374,31 @@ def test_registration_login_and_tenant_isolation(client: TestClient, store: Cred
     assert first_bootstrap["localPlaylists"][0]["title"] == "Only mine"
 
 
+def test_password_change_requires_current_password(client: TestClient) -> None:
+    unlock(client)
+    missing = client.put("/api/account/password", json={"password": "new-secure-password"})
+    assert missing.status_code == 400
+    wrong = client.put(
+        "/api/account/password",
+        json={"currentPassword": "wrong-password", "password": "new-secure-password"},
+    )
+    assert wrong.status_code == 400
+    changed = client.put(
+        "/api/account/password",
+        json={"currentPassword": "a-secure-test-password", "password": "new-secure-password"},
+    )
+    assert changed.status_code == 200
+    assert client.post("/api/account/logout").status_code == 200
+    assert client.post(
+        "/api/account/login",
+        json={"username": "testuser", "password": "a-secure-test-password"},
+    ).status_code == 401
+    assert client.post(
+        "/api/account/login",
+        json={"username": "testuser", "password": "new-secure-password"},
+    ).status_code == 200
+
+
 def test_vk_taste_import_works_before_yandex_connection(client: TestClient) -> None:
     unlock(client)
     imported = client.post(

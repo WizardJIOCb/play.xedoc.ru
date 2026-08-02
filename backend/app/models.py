@@ -137,6 +137,7 @@ class AccountLoginRequest(APIModel):
 
 class AccountPasswordRequest(APIModel):
     password: str = Field(min_length=10, max_length=128)
+    current_password: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class DeviceAuthStartDTO(APIModel):

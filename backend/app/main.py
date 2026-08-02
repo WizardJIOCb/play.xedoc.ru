@@ -456,6 +456,8 @@ def create_app(
         request: Request,
     ) -> ActionResponse:
         user = require_app_user(request)
+        if user.password_hash is not None and not verify_password(body.current_password or "", user.password_hash):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Текущий пароль указан неверно")
         store.set_user_password(user.id, hash_password(body.password))
         return ActionResponse()
 

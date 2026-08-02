@@ -307,6 +307,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .profile-chip small { display: flex; align-items: center; gap: 3px; color: var(--muted); font-size: var(--type-micro); }
 .profile-chip small svg { color: var(--acid); }
 .profile-chip .icon-button { width: 30px; height: 30px; }
+.profile-chip .icon-button + .icon-button { margin-left: -4px; }
 
 .page-content { width: min(100%, 1500px); margin: 0 auto; padding: 26px 38px 70px; }
 .page-heading { min-height: 112px; display: flex; align-items: flex-start; justify-content: space-between; }
@@ -826,7 +827,8 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
 .vk-manual-import textarea { margin-top: 9px; }
 .vk-manual-import .source-card__import { margin-top: 9px; }
 .form-success { margin: 0; padding: 10px 12px; border-radius: 9px; background: rgba(217,255,99,.08); color: var(--acid); font-size: var(--type-caption); }
-.password-modal { width: min(440px,100%); padding: 34px; display: grid; justify-items: center; gap: 12px; border: 1px solid var(--line-strong); border-radius: 22px; background: #111319; box-shadow: var(--shadow); text-align: center; }
+.password-modal { width: min(440px,100%); padding: 34px; position: relative; display: grid; justify-items: center; gap: 12px; border: 1px solid var(--line-strong); border-radius: 22px; background: #111319; box-shadow: var(--shadow); text-align: center; }
+.password-modal__close { position: absolute; top: 12px; right: 12px; }
 .password-modal h2 { margin: 0; font-size: 27px; letter-spacing: -.04em; }
 .password-modal p { margin: 0 0 8px; color: var(--muted); font-size: var(--type-body); line-height: 1.55; }
 .password-modal label { width: 100%; position: relative; }

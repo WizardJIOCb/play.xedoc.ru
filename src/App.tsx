@@ -8,6 +8,7 @@ import {
   Headphones,
   Heart,
   History,
+  KeyRound,
   ListMusic,
   LoaderCircle,
   LogOut,
@@ -31,6 +32,7 @@ import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
+import { PasswordChangeModal } from './components/PasswordChangeModal'
 import { PlaylistCard } from './components/PlaylistCard'
 import { PlaylistEditor } from './components/PlaylistEditor'
 import { PLAYLISTS_CHANGED_EVENT } from './components/PlaylistPicker'
@@ -367,6 +369,7 @@ function PrivateApp() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [sessionOpen, setSessionOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
   const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(window.location.search).has('vkImport'))
   const [queueOpen, setQueueOpen] = useState(false)
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>()
@@ -542,7 +545,7 @@ function PrivateApp() {
           <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
-            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><span className="profile-chip__avatar">{data.appUser?.displayName?.[0] || 'X'}</span><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><span className="profile-chip__avatar">{data.appUser?.displayName?.[0] || 'X'}</span><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
@@ -561,6 +564,7 @@ function PrivateApp() {
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
       <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
       <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />
+      <PasswordChangeModal open={passwordChangeOpen} onClose={() => setPasswordChangeOpen(false)} />
       <PlaylistEditor
         open={playlistEditorOpen}
         playlist={editingPlaylist}

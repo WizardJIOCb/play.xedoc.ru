@@ -38,8 +38,8 @@ export async function logoutAccount(): Promise<void> {
   await request('/account/logout', { method: 'POST' })
 }
 
-export async function setAccountPassword(password: string): Promise<void> {
-  await request('/account/password', { method: 'PUT', body: JSON.stringify({ password }) })
+export async function setAccountPassword(password: string, currentPassword?: string): Promise<void> {
+  await request('/account/password', { method: 'PUT', body: JSON.stringify({ password, ...(currentPassword ? { currentPassword } : {}) }) })
 }
 
 export async function startDeviceAuth(): Promise<DeviceAuthStart> {
