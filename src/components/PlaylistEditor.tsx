@@ -1,4 +1,4 @@
-import { Camera, LoaderCircle, Save, Trash2, X } from 'lucide-react'
+import { Camera, Globe2, LoaderCircle, LockKeyhole, Save, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createLocalPlaylist, deleteLocalPlaylist, getPlaylist, removeTrackFromLocalPlaylist, updateLocalPlaylist, updateLocalPlaylistCover } from '../lib/api'
 import type { Playlist } from '../types'
@@ -22,6 +22,7 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
   const [loaded, setLoaded] = useState<Playlist | undefined>(playlist)
   const [title, setTitle] = useState(playlist?.title || '')
   const [description, setDescription] = useState(playlist?.description || playlist?.subtitle || '')
+  const [isPublic, setIsPublic] = useState(Boolean(playlist?.isPublic))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,11 +31,13 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     setLoaded(playlist)
     setTitle(playlist?.title || '')
     setDescription(playlist?.description || playlist?.subtitle || '')
+    setIsPublic(Boolean(playlist?.isPublic))
     setError('')
     if (playlist?.id && !playlist.tracks) void getPlaylist(playlist.id).then((value) => {
       setLoaded(value)
       setTitle(value.title)
       setDescription(value.description || value.subtitle || '')
+      setIsPublic(Boolean(value.isPublic))
     }).catch(() => setError('Не удалось загрузить плейлист'))
   }, [open, playlist])
 
@@ -47,8 +50,8 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     setError('')
     try {
       const value = loaded?.id
-        ? await updateLocalPlaylist(loaded.id, { title: title.trim(), description: description.trim() })
-        : await createLocalPlaylist(title.trim(), description.trim())
+        ? await updateLocalPlaylist(loaded.id, { title: title.trim(), description: description.trim(), isPublic })
+        : await createLocalPlaylist(title.trim(), description.trim(), isPublic)
       setLoaded(value)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       onSaved(value)
@@ -115,6 +118,12 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
             <label>Название<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="Например, Вечер без спешки" autoFocus /></label>
             <label>Описание<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={4000} rows={5} placeholder="О чём этот плейлист? Ссылки https://… станут кликабельными." /></label>
             <small>{description.length}/4000 · ссылки в описании распознаются автоматически</small>
+            <label className={`playlist-visibility ${isPublic ? 'is-public' : ''}`}>
+              <input type="checkbox" checked={isPublic} onChange={(event) => setIsPublic(event.target.checked)} />
+              <span className="playlist-visibility__icon">{isPublic ? <Globe2 size={19} /> : <LockKeyhole size={19} />}</span>
+              <span><strong>{isPublic ? 'Публичный плейлист' : 'Приватный плейлист'}</strong><small>{isPublic ? 'Его увидят в вашем профиле и смогут послушать без регистрации.' : 'Плейлист виден только вам.'}</small></span>
+              <i aria-hidden="true" />
+            </label>
           </form>
         </div>
         {loaded && <div className="playlist-editor__tracks"><div><strong>Треки</strong><span>{loaded.tracks?.length || 0}</span></div>{loaded.tracks?.map((track) => <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><small>{track.artists.join(', ')}</small></span><button className="icon-button" type="button" disabled={busy} onClick={() => void remove(track.id)} aria-label={`Убрать ${track.title}`}><X size={17} /></button></div>)}</div>}

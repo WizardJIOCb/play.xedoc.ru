@@ -45,6 +45,7 @@ class PlaylistDTO(APIModel):
     tracks: list[TrackDTO] | None = None
     description: str | None = None
     local: bool = False
+    is_public: bool = False
 
 
 class RecommendationCollectionDTO(APIModel):
@@ -69,6 +70,28 @@ class AppUserDTO(APIModel):
     needs_password: bool = False
 
 
+class ProfileSearchItemDTO(APIModel):
+    username: str
+    display_name: str
+    public_playlist_count: int = 0
+
+
+class PublicProfileStatsDTO(APIModel):
+    total_plays: int = 0
+    unique_tracks: int = 0
+    total_listened_ms: int = 0
+
+
+class PublicProfileDTO(APIModel):
+    username: str
+    display_name: str
+    member_since: int
+    public_playlist_count: int = 0
+    stats: PublicProfileStatsDTO = Field(default_factory=PublicProfileStatsDTO)
+    top_tracks: list[TrackDTO] = Field(default_factory=list)
+    playlists: list[PlaylistDTO] = Field(default_factory=list)
+
+
 class BootstrapPayload(APIModel):
     connected: bool
     demo: bool
@@ -91,6 +114,7 @@ class BootstrapPayload(APIModel):
 class SearchPayload(APIModel):
     tracks: list[TrackDTO] = Field(default_factory=list)
     playlists: list[PlaylistDTO] = Field(default_factory=list)
+    profiles: list[ProfileSearchItemDTO] = Field(default_factory=list)
 
 
 class LikedTracksPayload(APIModel):
@@ -175,11 +199,13 @@ class ActionResponse(APIModel):
 class LocalPlaylistCreateRequest(APIModel):
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=4000)
+    is_public: bool = False
 
 
 class LocalPlaylistUpdateRequest(APIModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=4000)
+    is_public: bool | None = None
 
 
 class PlaylistCoverRequest(APIModel):

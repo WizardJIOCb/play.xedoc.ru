@@ -1,4 +1,4 @@
-import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
+import type { AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -105,8 +105,21 @@ export async function getLatestVKImportJob(): Promise<VKImportJob | null> {
 }
 
 export async function searchMusic(query: string): Promise<SearchPayload> {
-  if (!query.trim()) return { tracks: [], playlists: [] }
+  if (!query.trim()) return { tracks: [], playlists: [], profiles: [] }
   return request<SearchPayload>(`/search?q=${encodeURIComponent(query)}`)
+}
+
+export async function searchProfiles(query: string): Promise<ProfileSummary[]> {
+  if (!query.trim()) return []
+  return request<ProfileSummary[]>(`/profiles/search?q=${encodeURIComponent(query)}`)
+}
+
+export async function getPublicProfile(username: string): Promise<PublicProfile> {
+  return request<PublicProfile>(`/profiles/${encodeURIComponent(username)}`)
+}
+
+export async function getPublicProfilePlaylist(username: string, playlistId: string): Promise<Playlist> {
+  return request<Playlist>(`/profiles/${encodeURIComponent(username)}/playlists/${encodeURIComponent(playlistId)}`)
 }
 
 export async function getAllLikedTracks(): Promise<LikedTracksPayload> {
@@ -125,15 +138,15 @@ export async function getPlaylist(playlistId: string): Promise<Playlist> {
   return request<Playlist>(`/playlists/${encodeURIComponent(playlistId)}`)
 }
 
-export async function createLocalPlaylist(title: string, description = ''): Promise<Playlist> {
-  return request<Playlist>('/local-playlists', { method: 'POST', body: JSON.stringify({ title, description }) })
+export async function createLocalPlaylist(title: string, description = '', isPublic = false): Promise<Playlist> {
+  return request<Playlist>('/local-playlists', { method: 'POST', body: JSON.stringify({ title, description, isPublic }) })
 }
 
 export async function getLocalPlaylists(): Promise<Playlist[]> {
   return request<Playlist[]>('/local-playlists')
 }
 
-export async function updateLocalPlaylist(playlistId: string, changes: { title?: string; description?: string }): Promise<Playlist> {
+export async function updateLocalPlaylist(playlistId: string, changes: { title?: string; description?: string; isPublic?: boolean }): Promise<Playlist> {
   return request<Playlist>(`/local-playlists/${encodeURIComponent(playlistId)}`, { method: 'PATCH', body: JSON.stringify(changes) })
 }
 

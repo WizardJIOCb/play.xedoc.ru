@@ -37,6 +37,7 @@ import { PlaylistCard } from './components/PlaylistCard'
 import { PlaylistEditor } from './components/PlaylistEditor'
 import { PLAYLISTS_CHANGED_EVENT } from './components/PlaylistPicker'
 import { PublicSharePage } from './components/PublicSharePage'
+import { PublicProfilePage } from './components/PublicProfilePage'
 import { SearchPalette } from './components/SearchPalette'
 import { SessionBuilder } from './components/SessionBuilder'
 import { ShareButton } from './components/ShareButton'
@@ -545,7 +546,7 @@ function PrivateApp() {
           <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
-            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><span className="profile-chip__avatar">{data.appUser?.displayName?.[0] || 'X'}</span><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span><button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
@@ -591,5 +592,6 @@ function PrivateApp() {
 
 export default function App() {
   const shareMatch = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
-  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : <PrivateApp />}<GlobalTooltip /></>
+  const profileMatch = window.location.pathname.match(/^\/users\/([A-Za-z0-9_.-]{3,32})\/?$/)
+  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : profileMatch ? <PublicProfilePage username={profileMatch[1]} /> : <PrivateApp />}<GlobalTooltip /></>
 }

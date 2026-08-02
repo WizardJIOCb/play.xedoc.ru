@@ -177,8 +177,10 @@ class CredentialStore:
                 """
             )
             self._ensure_column(connection, "local_playlist", "owner_id", f"TEXT NOT NULL DEFAULT '{LEGACY_USER_ID}'")
+            self._ensure_column(connection, "local_playlist", "is_public", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(connection, "listening_event", "owner_id", f"TEXT NOT NULL DEFAULT '{LEGACY_USER_ID}'")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_local_playlist_owner ON local_playlist(owner_id, updated_at DESC)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_local_playlist_public ON local_playlist(owner_id, is_public, updated_at DESC)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_listening_owner_created ON listening_event(owner_id, created_at DESC)")
             connection.execute(
                 """
@@ -648,13 +650,13 @@ class CredentialStore:
             owner_id=str(row[6]),
         )
 
-    def create_local_playlist(self, title: str, description: str = "") -> dict:
+    def create_local_playlist(self, title: str, description: str = "", is_public: bool = False) -> dict:
         playlist_id = f"local-{secrets.token_urlsafe(10)}"
         now = int(time.time())
         with self._lock, self._connect() as connection:
             connection.execute(
-                "INSERT INTO local_playlist(id, title, description, created_at, updated_at, owner_id) VALUES(?, ?, ?, ?, ?, ?)",
-                (playlist_id, title.strip(), description.strip(), now, now, self.current_user_id()),
+                "INSERT INTO local_playlist(id, title, description, created_at, updated_at, owner_id, is_public) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                (playlist_id, title.strip(), description.strip(), now, now, self.current_user_id(), int(is_public)),
             )
         return self.load_local_playlist(playlist_id) or {}
 
@@ -663,7 +665,7 @@ class CredentialStore:
             rows = connection.execute(
                 """
                 SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
-                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0), p.is_public
                 FROM local_playlist p
                 LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
                 WHERE p.owner_id = ?
@@ -679,7 +681,7 @@ class CredentialStore:
             row = connection.execute(
                 """
                 SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
-                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0), p.is_public
                 FROM local_playlist p
                 LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
                 WHERE p.id = ? AND p.owner_id = ? GROUP BY p.id
@@ -699,7 +701,7 @@ class CredentialStore:
             raise CredentialStoreError("Saved playlist track is invalid") from exc
         return playlist
 
-    def update_local_playlist(self, playlist_id: str, *, title: str | None = None, description: str | None = None, cover_url: str | None = None, update_cover: bool = False) -> dict | None:
+    def update_local_playlist(self, playlist_id: str, *, title: str | None = None, description: str | None = None, is_public: bool | None = None, cover_url: str | None = None, update_cover: bool = False) -> dict | None:
         fields: list[str] = []
         values: list[object] = []
         if title is not None:
@@ -708,6 +710,9 @@ class CredentialStore:
         if description is not None:
             fields.append("description = ?")
             values.append(description.strip())
+        if is_public is not None:
+            fields.append("is_public = ?")
+            values.append(int(is_public))
         if update_cover:
             fields.append("cover_url = ?")
             values.append(cover_url)
@@ -877,6 +882,124 @@ class CredentialStore:
             })
         return result
 
+    def search_users(self, query: str, limit: int = 8) -> list[dict]:
+        value = query.strip()
+        if not value:
+            return []
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        contains = f"%{escaped}%"
+        prefix = f"{escaped}%"
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT u.username, u.display_name, COUNT(p.id)
+                FROM app_user u
+                LEFT JOIN local_playlist p ON p.owner_id = u.id AND p.is_public = 1
+                WHERE u.username LIKE ? ESCAPE '\\' COLLATE NOCASE
+                   OR u.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+                GROUP BY u.id
+                ORDER BY (u.username = ? COLLATE NOCASE) DESC,
+                         (u.username LIKE ? ESCAPE '\\' COLLATE NOCASE) DESC,
+                         COUNT(p.id) DESC, u.username COLLATE NOCASE
+                LIMIT ?
+                """,
+                (contains, contains, value, prefix, max(1, min(limit, 20))),
+            ).fetchall()
+        return [
+            {"username": str(row[0]), "displayName": str(row[1]), "publicPlaylistCount": int(row[2] or 0)}
+            for row in rows
+        ]
+
+    def load_public_profile(self, username: str) -> dict | None:
+        with self._lock, self._connect() as connection:
+            user = connection.execute(
+                "SELECT id, username, display_name, created_at FROM app_user WHERE username = ? COLLATE NOCASE",
+                (username,),
+            ).fetchone()
+            if user is None:
+                return None
+            user_id = str(user[0])
+            stats = connection.execute(
+                """
+                SELECT COALESCE(SUM(play_count), 0), COUNT(*), COALESCE(SUM(total_listened_ms), 0)
+                FROM user_track_listening_stat WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+            playlist_rows = connection.execute(
+                """
+                SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0), p.is_public
+                FROM local_playlist p
+                LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                WHERE p.owner_id = ? AND p.is_public = 1
+                GROUP BY p.id
+                ORDER BY p.updated_at DESC, p.created_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
+            top_rows = connection.execute(
+                """
+                SELECT payload, play_count, total_listened_ms, last_played_at
+                FROM user_track_listening_stat
+                WHERE user_id = ?
+                ORDER BY play_count DESC, total_listened_ms DESC, last_played_at DESC
+                LIMIT 5
+                """,
+                (user_id,),
+            ).fetchall()
+        top_tracks: list[dict] = []
+        for row in top_rows:
+            try:
+                track = json.loads(row[0])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            track.update({"playCount": int(row[1]), "totalListenedMs": int(row[2]), "lastPlayedAt": int(row[3])})
+            track.pop("streamUrl", None)
+            top_tracks.append(track)
+        playlists = [self._playlist_row(row) for row in playlist_rows]
+        return {
+            "username": str(user[1]),
+            "displayName": str(user[2]),
+            "memberSince": int(user[3]),
+            "publicPlaylistCount": len(playlists),
+            "stats": {
+                "totalPlays": int(stats[0] or 0),
+                "uniqueTracks": int(stats[1] or 0),
+                "totalListenedMs": int(stats[2] or 0),
+            },
+            "topTracks": top_tracks,
+            "playlists": playlists,
+        }
+
+    def load_public_playlist(self, username: str, playlist_id: str) -> tuple[dict, str] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0), p.is_public,
+                       u.id
+                FROM local_playlist p
+                JOIN app_user u ON u.id = p.owner_id
+                LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                WHERE u.username = ? COLLATE NOCASE AND p.id = ? AND p.is_public = 1
+                GROUP BY p.id
+                """,
+                (username, playlist_id),
+            ).fetchone()
+            if row is None:
+                return None
+            track_rows = connection.execute(
+                "SELECT payload FROM local_playlist_track WHERE playlist_id = ? ORDER BY position, added_at",
+                (playlist_id,),
+            ).fetchall()
+        playlist = self._playlist_row(row)
+        try:
+            playlist["tracks"] = [json.loads(item[0]) for item in track_rows]
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise CredentialStoreError("Saved playlist track is invalid") from exc
+        return playlist, str(row[9])
+
     @staticmethod
     def _playlist_row(row: tuple) -> dict:
         duration_ms = int(row[7] or 0)
@@ -891,4 +1014,5 @@ class CredentialStore:
             "trackCount": int(row[6] or 0),
             "durationMinutes": round(duration_ms / 60_000) if duration_ms else None,
             "local": True,
+            "isPublic": bool(row[8]) if len(row) > 8 else False,
         }

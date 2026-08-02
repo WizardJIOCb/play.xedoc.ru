@@ -49,6 +49,8 @@ from .models import (
     PlaylistShareRequest,
     PlaylistTrackRequest,
     PlaylistDTO,
+    ProfileSearchItemDTO,
+    PublicProfileDTO,
     PublicShareDTO,
     RecommendationCollectionDTO,
     SearchPayload,
@@ -513,7 +515,7 @@ def create_app(
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
         require_app_user(request)
-        return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description))
+        return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description, body.is_public))
 
     @app.patch("/api/local-playlists/{playlist_id}", response_model=PlaylistDTO, response_model_exclude_none=True)
     async def update_local_playlist(
@@ -524,7 +526,12 @@ def create_app(
     ) -> PlaylistDTO:
         require_app_user(request)
         identifier = _safe_local_playlist_id(playlist_id)
-        playlist = store.update_local_playlist(identifier, title=body.title, description=body.description)
+        playlist = store.update_local_playlist(
+            identifier,
+            title=body.title,
+            description=body.description,
+            is_public=body.is_public,
+        )
         return _require_local_playlist(playlist)
 
     @app.delete("/api/local-playlists/{playlist_id}", response_model=ActionResponse)
@@ -823,20 +830,101 @@ def create_app(
         query = q.strip()
         if not query:
             return SearchPayload()
+        profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(query)]
         credential = optional_credential(request)
         if credential is None:
-            return demo_search(query)
+            result = demo_search(query)
+            result.profiles = profiles
+            return result
         try:
             result = await gateway.search(credential, query)
             _decorate_tracks_with_stats(result.tracks, store)
+            result.profiles = profiles
             return result
         except GatewayUnauthorized as exc:
             store.delete()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
         except GatewayError as exc:
             if settings.demo_fallback:
-                return demo_search(query)
+                result = demo_search(query)
+                result.profiles = profiles
+                return result
             raise _http_gateway_error(exc) from exc
+
+    @app.get("/api/profiles/search", response_model=list[ProfileSearchItemDTO])
+    async def search_public_profiles(
+        request: Request,
+        q: str = Query(min_length=1, max_length=80),
+    ) -> list[ProfileSearchItemDTO]:
+        await enforce_rate_limit(request, "profile-search", maximum=120, window_seconds=60)
+        query = q.strip()
+        if not query:
+            return []
+        return [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(query)]
+
+    @app.get("/api/profiles/{username}", response_model=PublicProfileDTO, response_model_exclude_none=True)
+    async def public_profile(username: str, request: Request) -> PublicProfileDTO:
+        await enforce_rate_limit(request, "public-profile", maximum=120, window_seconds=60)
+        profile = store.load_public_profile(_safe_username(username))
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
+        return PublicProfileDTO.model_validate(profile)
+
+    @app.get(
+        "/api/profiles/{username}/playlists/{playlist_id}",
+        response_model=PlaylistDTO,
+        response_model_exclude_none=True,
+    )
+    async def public_profile_playlist(username: str, playlist_id: str, request: Request) -> PlaylistDTO:
+        await enforce_rate_limit(request, "public-profile-playlist", maximum=120, window_seconds=60)
+        safe_username = _safe_username(username)
+        identifier = _safe_local_playlist_id(playlist_id)
+        loaded = store.load_public_playlist(safe_username, identifier)
+        if loaded is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публичный плейлист не найден")
+        playlist, _owner_id = loaded
+        dto = PlaylistDTO.model_validate(playlist)
+        dto.tracks = [
+            track.model_copy(update={"stream_url": _public_profile_stream_path(safe_username, identifier, track.id)})
+            for track in (dto.tracks or [])
+        ]
+        return dto
+
+    @app.get(
+        "/api/profiles/{username}/playlists/{playlist_id}/tracks/{track_id}/stream",
+        response_class=RedirectResponse,
+    )
+    async def public_profile_playlist_stream(
+        username: str,
+        playlist_id: str,
+        track_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        await enforce_rate_limit(request, "public-profile-stream", maximum=240, window_seconds=60)
+        safe_username = _safe_username(username)
+        identifier = _safe_local_playlist_id(playlist_id)
+        track_identifier = _safe_identifier(track_id)
+        loaded = store.load_public_playlist(safe_username, identifier)
+        if loaded is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публичный плейлист не найден")
+        playlist, owner_id = loaded
+        if track_identifier not in {str(track.get("id", "")) for track in playlist.get("tracks", [])}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не входит в публичный плейлист")
+        try:
+            credential = store.load_for_user(owner_id)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Музыка временно недоступна") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Владелец отключил музыкальную коллекцию")
+        try:
+            url = await gateway.stream_url(credential, track_identifier)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        return RedirectResponse(
+            url=url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, no-store, max-age=0", "Referrer-Policy": "no-referrer"},
+        )
 
     @app.get("/api/liked-tracks", response_model=LikedTracksPayload, response_model_exclude_none=True)
     async def liked_tracks(
@@ -1141,6 +1229,13 @@ def _safe_local_playlist_id(value: str) -> str:
     return identifier
 
 
+def _safe_username(value: str) -> str:
+    username = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
+    return username
+
+
 def _require_local_playlist(value: dict | None) -> PlaylistDTO:
     if value is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Плейлист XEDOC не найден")
@@ -1340,6 +1435,13 @@ def _load_public_share(store: CredentialStore, token: str):
 
 def _public_stream_path(token: str, track_id: str) -> str:
     return f"/api/shares/{quote(token, safe='')}/tracks/{quote(track_id, safe='')}/stream"
+
+
+def _public_profile_stream_path(username: str, playlist_id: str, track_id: str) -> str:
+    return (
+        f"/api/profiles/{quote(username, safe='')}/playlists/{quote(playlist_id, safe='')}"
+        f"/tracks/{quote(track_id, safe='')}/stream"
+    )
 
 
 def _sanitize_shared_track(track: TrackDTO) -> TrackDTO:

@@ -179,6 +179,66 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_
     assert client.delete(f"/api/local-playlists/{playlist_id}").json() == {"ok": True}
 
 
+def test_public_profile_exposes_only_explicitly_public_playlists(client: TestClient) -> None:
+    connect(client)
+    private = client.post("/api/local-playlists", json={"title": "Private notes"}).json()
+    public = client.post(
+        "/api/local-playlists",
+        json={"title": "Open signals", "description": "For everyone", "isPublic": True},
+    ).json()
+    assert private["isPublic"] is False
+    assert public["isPublic"] is True
+
+    added = client.post(f"/api/local-playlists/{public['id']}/tracks", json={"track": {
+        "id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000,
+    }})
+    assert added.status_code == 200
+    listened = client.post("/api/listening-events", json={
+        "track": {"id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000},
+        "listenedMs": 20_000,
+    })
+    assert listened.status_code == 200
+
+    client.cookies.clear()
+    search = client.get("/api/profiles/search", params={"q": "test"})
+    assert search.status_code == 200
+    assert search.json()[0] == {
+        "username": "testuser", "displayName": "Rodion Test", "publicPlaylistCount": 1,
+    }
+
+    profile = client.get("/api/profiles/testuser")
+    assert profile.status_code == 200
+    body = profile.json()
+    assert body["publicPlaylistCount"] == 1
+    assert [item["title"] for item in body["playlists"]] == ["Open signals"]
+    assert body["stats"] == {"totalPlays": 1, "uniqueTracks": 1, "totalListenedMs": 20_000}
+    assert body["topTracks"][0]["playCount"] == 1
+    assert "streamUrl" not in body["topTracks"][0]
+
+    playlist = client.get(f"/api/profiles/testuser/playlists/{public['id']}")
+    assert playlist.status_code == 200
+    stream_path = playlist.json()["tracks"][0]["streamUrl"]
+    stream = client.get(stream_path, follow_redirects=False)
+    assert stream.status_code == 307
+    assert stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
+
+    hidden = client.get(f"/api/profiles/testuser/playlists/{private['id']}")
+    assert hidden.status_code == 404
+
+
+def test_playlist_visibility_can_be_changed_by_owner(client: TestClient) -> None:
+    unlock(client)
+    created = client.post("/api/local-playlists", json={"title": "Visibility"}).json()
+    assert client.get("/api/profiles/testuser").json()["publicPlaylistCount"] == 0
+    updated = client.patch(f"/api/local-playlists/{created['id']}", json={"isPublic": True})
+    assert updated.status_code == 200
+    assert updated.json()["isPublic"] is True
+    assert client.get("/api/profiles/testuser").json()["publicPlaylistCount"] == 1
+    hidden = client.patch(f"/api/local-playlists/{created['id']}", json={"isPublic": False})
+    assert hidden.json()["isPublic"] is False
+    assert client.get("/api/profiles/testuser").json()["publicPlaylistCount"] == 0
+
+
 def test_vk_import_matches_catalog_and_seeds_preferences(client: TestClient) -> None:
     connect(client)
     imported = client.post("/api/import/vk", json={

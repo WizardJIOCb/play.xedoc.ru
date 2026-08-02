@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Clock3, Command, CornerDownLeft, ListPlus, LoaderCircle, Play, Search, X } from 'lucide-react'
+import { ArrowDownToLine, Clock3, Command, CornerDownLeft, ListPlus, LoaderCircle, Play, Search, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
@@ -9,7 +9,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<SearchPayload>({ tracks: [], playlists: [] })
+  const [results, setResults] = useState<SearchPayload>({ tracks: [], playlists: [], profiles: [] })
   const requestRef = useRef(0)
   const player = usePlayer()
 
@@ -25,7 +25,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
   useEffect(() => {
     if (!query.trim()) {
       requestRef.current += 1
-      setResults({ tracks: [], playlists: [] })
+      setResults({ tracks: [], playlists: [], profiles: [] })
       setLoading(false)
       return
     }
@@ -34,7 +34,7 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
     const timeout = window.setTimeout(() => {
       void searchMusic(query)
         .then((payload) => requestId === requestRef.current && setResults(payload))
-        .catch(() => requestId === requestRef.current && setResults({ tracks: [], playlists: [] }))
+        .catch(() => requestId === requestRef.current && setResults({ tracks: [], playlists: [], profiles: [] }))
         .finally(() => requestId === requestRef.current && setLoading(false))
     }, 240)
     return () => {
@@ -103,6 +103,20 @@ export function SearchPalette({ open, suggestions, onClose, onPlaylistPlay }: { 
                     <CoverArt title={playlist.title} url={playlist.coverUrl} tone={playlist.coverTone} className="search-playlist-row__cover" />
                     <span><strong>{playlist.title}</strong><small>{playlist.trackCount} треков</small></span>
                   </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(results.profiles || []).length > 0 && (
+            <div className="search-palette__profiles">
+              <div className="search-palette__caption"><span>Профили</span></div>
+              <div className="search-profile-row">
+                {results.profiles.slice(0, 6).map((profile) => (
+                  <a key={profile.username} href={`/users/${encodeURIComponent(profile.username)}`} onClick={onClose}>
+                    <span className="search-profile-row__avatar"><UserRound size={20} /></span>
+                    <span><strong>{profile.displayName}</strong><small>@{profile.username} · {profile.publicPlaylistCount} публичных плейлистов</small></span>
+                  </a>
                 ))}
               </div>
             </div>

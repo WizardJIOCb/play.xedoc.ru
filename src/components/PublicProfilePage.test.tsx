@@ -1,0 +1,31 @@
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { PlayerProvider } from '../player/PlayerContext'
+import { PublicProfilePage } from './PublicProfilePage'
+
+vi.mock('../lib/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/api')>()
+  return {
+    ...original,
+    getPublicProfile: vi.fn().mockResolvedValue({
+      username: 'listener',
+      displayName: 'Music Listener',
+      memberSince: 1_700_000_000,
+      publicPlaylistCount: 1,
+      stats: { totalPlays: 42, uniqueTracks: 9, totalListenedMs: 7_200_000 },
+      topTracks: [],
+      playlists: [{ id: 'local-open', title: 'Open mix', trackCount: 8, isPublic: true }],
+    }),
+  }
+})
+
+describe('PublicProfilePage', () => {
+  it('shows public identity, aggregate stats and public playlists', async () => {
+    render(<PlayerProvider><PublicProfilePage username="listener" /></PlayerProvider>)
+
+    expect(await screen.findByRole('heading', { name: 'Music Listener' })).toBeInTheDocument()
+    expect(screen.getByText('@listener')).toBeInTheDocument()
+    expect(screen.getByText('42')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open mix/ })).toBeInTheDocument()
+  })
+})

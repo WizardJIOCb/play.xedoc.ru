@@ -28,6 +28,7 @@ export interface Playlist {
   tracks?: Track[]
   description?: string
   local?: boolean
+  isPublic?: boolean
 }
 
 export interface UserProfile {
@@ -100,6 +101,29 @@ export interface DiscoveryRecommendations {
 
 export interface SearchPayload {
   tracks: Track[]
+  playlists: Playlist[]
+  profiles: ProfileSummary[]
+}
+
+export interface ProfileSummary {
+  username: string
+  displayName: string
+  publicPlaylistCount: number
+}
+
+export interface PublicProfileStats {
+  totalPlays: number
+  uniqueTracks: number
+  totalListenedMs: number
+}
+
+export interface PublicProfile {
+  username: string
+  displayName: string
+  memberSince: number
+  publicPlaylistCount: number
+  stats: PublicProfileStats
+  topTracks: Track[]
   playlists: Playlist[]
 }
 
