@@ -11,6 +11,9 @@ export interface Track {
   liked?: boolean
   explicit?: boolean
   streamUrl?: string
+  playCount?: number
+  totalListenedMs?: number
+  lastPlayedAt?: number
 }
 
 export interface Playlist {
@@ -57,6 +60,26 @@ export interface RecommendationCollection {
   signalCount: number
   fallback: boolean
   tracks: Track[]
+}
+
+export interface ListeningTop {
+  id: string
+  title: string
+  periodDays?: 1 | 3 | 7 | 30
+  totalPlays: number
+  tracks: Track[]
+}
+
+export interface ListeningStats {
+  totalPlays: number
+  uniqueTracks: number
+  totalListenedMs: number
+  top: ListeningTop[]
+}
+
+export interface LikedTracksPayload {
+  tracks: Track[]
+  total: number
 }
 
 export interface SearchPayload {

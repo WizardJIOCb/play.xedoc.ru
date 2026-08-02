@@ -1,4 +1,4 @@
-import { Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from 'lucide-react'
+import { BarChart3, Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
@@ -13,8 +13,10 @@ export function Sidebar({
   playlists,
   collapsed,
   recommendationsActive,
+  topActive,
   onView,
   onRecommendations,
+  onTop,
   onToggle,
   onSession,
 }: {
@@ -22,8 +24,10 @@ export function Sidebar({
   playlists: Playlist[]
   collapsed: boolean
   recommendationsActive: boolean
+  topActive: boolean
   onView: (view: ViewId) => void
   onRecommendations: () => void
+  onTop: () => void
   onToggle: () => void
   onSession: () => void
 }) {
@@ -36,7 +40,7 @@ export function Sidebar({
 
       <nav className="sidebar__nav" aria-label="Основная навигация">
         {navigation.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={!recommendationsActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} title={collapsed ? label : undefined}>
+          <button key={id} className={!recommendationsActive && !topActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} title={collapsed ? label : undefined}>
             <Icon size={20} />
             <span>{label}</span>
           </button>
@@ -44,6 +48,10 @@ export function Sidebar({
         <button className={recommendationsActive ? 'is-active' : ''} type="button" onClick={onRecommendations} title={collapsed ? 'Рекомендации' : undefined}>
           <Sparkles size={20} />
           <span>Рекомендации</span>
+        </button>
+        <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} title={collapsed ? 'Топ треков' : undefined}>
+          <BarChart3 size={20} />
+          <span>Топ треков</span>
         </button>
       </nav>
 
@@ -73,7 +81,7 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__footer">
-        {!collapsed && <span><Clock3 size={15} /> Без повторов: 30 дней</span>}
+        {!collapsed && <span data-tooltip="Сессии могут исключать треки, которые звучали последние 30 дней"><Clock3 size={15} /> Без повторов: 30 дней</span>}
         <button className="icon-button" type="button" onClick={onToggle} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
           {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
         </button>

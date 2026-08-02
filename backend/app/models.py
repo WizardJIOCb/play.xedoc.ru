@@ -28,6 +28,9 @@ class TrackDTO(APIModel):
     liked: bool | None = None
     explicit: bool | None = None
     stream_url: str | None = None
+    play_count: int | None = None
+    total_listened_ms: int | None = None
+    last_played_at: int | None = None
 
 
 class PlaylistDTO(APIModel):
@@ -79,6 +82,26 @@ class BootstrapPayload(APIModel):
 class SearchPayload(APIModel):
     tracks: list[TrackDTO] = Field(default_factory=list)
     playlists: list[PlaylistDTO] = Field(default_factory=list)
+
+
+class LikedTracksPayload(APIModel):
+    tracks: list[TrackDTO] = Field(default_factory=list)
+    total: int = 0
+
+
+class ListeningTopDTO(APIModel):
+    id: str
+    title: str
+    period_days: Literal[1, 3, 7, 30] | None = None
+    total_plays: int = 0
+    tracks: list[TrackDTO] = Field(default_factory=list)
+
+
+class ListeningStatsPayload(APIModel):
+    total_plays: int = 0
+    unique_tracks: int = 0
+    total_listened_ms: int = 0
+    top: list[ListeningTopDTO] = Field(default_factory=list)
 
 
 class AccessUnlockRequest(APIModel):

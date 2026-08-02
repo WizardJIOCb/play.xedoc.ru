@@ -35,6 +35,9 @@ from .models import (
     DeviceAuthStartDTO,
     ExternalTrackDTO,
     ListeningEventRequest,
+    ListeningStatsPayload,
+    ListeningTopDTO,
+    LikedTracksPayload,
     LocalPlaylistCreateRequest,
     LocalPlaylistUpdateRequest,
     PlaylistCoverRequest,
@@ -281,7 +284,12 @@ def create_app(
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
         require_credential(request)
-        track = body.track.model_copy(update={"stream_url": None})
+        track = body.track.model_copy(update={
+            "stream_url": None,
+            "play_count": None,
+            "total_listened_ms": None,
+            "last_played_at": None,
+        })
         if track.id.startswith("demo-"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Демо-трек нельзя сохранить")
         playlist = store.add_local_playlist_track(
@@ -516,7 +524,9 @@ def create_app(
         if credential is None:
             return demo_search(query)
         try:
-            return await gateway.search(credential, query)
+            result = await gateway.search(credential, query)
+            _decorate_tracks_with_stats(result.tracks, store)
+            return result
         except GatewayUnauthorized as exc:
             store.delete()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
@@ -524,6 +534,64 @@ def create_app(
             if settings.demo_fallback:
                 return demo_search(query)
             raise _http_gateway_error(exc) from exc
+
+    @app.get("/api/liked-tracks", response_model=LikedTracksPayload, response_model_exclude_none=True)
+    async def liked_tracks(
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> LikedTracksPayload:
+        credential = optional_credential(request)
+        if credential is None:
+            demo = demo_bootstrap()
+            return LikedTracksPayload(tracks=demo.liked_tracks, total=demo.liked_count)
+        try:
+            result = await gateway.liked_tracks(credential)
+            _decorate_tracks_with_stats(result.tracks, store)
+            return result
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+
+    @app.get("/api/listening-stats", response_model=ListeningStatsPayload, response_model_exclude_none=True)
+    async def listening_stats(
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ListeningStatsPayload:
+        require_credential(request)
+        periods: list[tuple[str, str, int | None]] = [
+            ("day", "За день", 1),
+            ("three-days", "За 3 дня", 3),
+            ("week", "За неделю", 7),
+            ("month", "За месяц", 30),
+            ("all-time", "За всё время", None),
+        ]
+        top: list[ListeningTopDTO] = []
+        for identifier, title, days in periods:
+            tracks: list[TrackDTO] = []
+            rows = store.top_tracks(days=days, limit=200)
+            for row in rows:
+                try:
+                    track = TrackDTO.model_validate(row["track"])
+                except ValueError:
+                    continue
+                tracks.append(track.model_copy(update={
+                    "play_count": row["play_count"],
+                    "total_listened_ms": row["total_listened_ms"],
+                    "last_played_at": row["last_played_at"],
+                }))
+            top.append(ListeningTopDTO(
+                id=identifier,
+                title=title,
+                period_days=days,
+                total_plays=sum(track.play_count or 0 for track in tracks),
+                tracks=tracks,
+            ))
+        all_stats = store.list_track_stats()
+        return ListeningStatsPayload(
+            total_plays=sum(item["play_count"] for item in all_stats.values()),
+            unique_tracks=len(all_stats),
+            total_listened_ms=sum(item["total_listened_ms"] for item in all_stats.values()),
+            top=top,
+        )
 
     @app.put("/api/tracks/{track_id}/like", response_model=ActionResponse)
     async def like_track(
@@ -581,9 +649,7 @@ def create_app(
         track_id = _safe_identifier(body.track.id)
         if track_id.startswith("demo-"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Демо-трек нельзя опубликовать")
-        track = body.track.model_copy(
-            update={"id": track_id, "liked": None, "stream_url": None},
-        )
+        track = _sanitize_shared_track(body.track.model_copy(update={"id": track_id}))
         share = store.save_public_share(
             kind="track",
             resource_id=track_id,
@@ -693,7 +759,9 @@ def create_app(
     ) -> PlaylistDTO:
         identifier = _safe_identifier(playlist_id)
         if identifier.startswith("local-"):
-            return _require_local_playlist(store.load_local_playlist(_safe_local_playlist_id(identifier)))
+            playlist = _require_local_playlist(store.load_local_playlist(_safe_local_playlist_id(identifier)))
+            _decorate_tracks_with_stats(playlist.tracks or [], store)
+            return playlist
         credential = optional_credential(request)
         if credential is None:
             demo = next((item for item in DEMO_PLAYLISTS if item.id == identifier), None)
@@ -701,7 +769,9 @@ def create_app(
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Плейлист не найден")
             return demo
         try:
-            return await gateway.playlist(credential, identifier)
+            playlist = await gateway.playlist(credential, identifier)
+            _decorate_tracks_with_stats(playlist.tracks or [], store)
+            return playlist
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
 
@@ -715,7 +785,9 @@ def create_app(
         if credential is None:
             return demo_session(preferences)
         try:
-            return await gateway.build_session(credential, preferences)
+            session = await gateway.build_session(credential, preferences)
+            _decorate_tracks_with_stats(session.tracks, store)
+            return session
         except GatewayUnauthorized as exc:
             store.delete()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
@@ -772,8 +844,19 @@ def _safe_cover_data_url(value: str) -> str:
     return value
 
 
+def _decorate_tracks_with_stats(tracks: list[TrackDTO], store: CredentialStore) -> None:
+    stats = store.list_track_stats()
+    for track in tracks:
+        item = stats.get(track.id)
+        if item:
+            track.play_count = item["play_count"]
+            track.total_listened_ms = item["total_listened_ms"]
+            track.last_played_at = item["last_played_at"]
+
+
 def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> None:
     payload.local_playlists = [PlaylistDTO.model_validate(item) for item in store.list_local_playlists()]
+    _decorate_tracks_with_stats([*payload.quick_tracks, *payload.liked_tracks, *payload.rediscover], store)
     candidates: dict[str, TrackDTO] = {}
     for track in [*payload.quick_tracks, *payload.liked_tracks, *payload.rediscover]:
         candidates.setdefault(track.id, track)
@@ -784,6 +867,7 @@ def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> 
                 track = TrackDTO.model_validate(item)
             except ValueError:
                 continue
+            _decorate_tracks_with_stats([track], store)
             candidates.setdefault(track.id, track)
 
     events = store.list_listening_events(3000)
@@ -897,7 +981,13 @@ def _public_stream_path(token: str, track_id: str) -> str:
 
 
 def _sanitize_shared_track(track: TrackDTO) -> TrackDTO:
-    return track.model_copy(update={"liked": None, "stream_url": None})
+    return track.model_copy(update={
+        "liked": None,
+        "stream_url": None,
+        "play_count": None,
+        "total_listened_ms": None,
+        "last_played_at": None,
+    })
 
 
 def _sanitize_shared_playlist(playlist: PlaylistDTO) -> PlaylistDTO:

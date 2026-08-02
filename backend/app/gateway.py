@@ -11,6 +11,7 @@ from urllib.parse import quote, urlparse
 from .config import Settings
 from .models import (
     BootstrapPayload,
+    LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
     SessionPayload,
@@ -84,6 +85,8 @@ class MusicGateway(Protocol):
     async def bootstrap(self, credential: Credential) -> BootstrapPayload: ...
 
     async def search(self, credential: Credential, query: str) -> SearchPayload: ...
+
+    async def liked_tracks(self, credential: Credential) -> LikedTracksPayload: ...
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None: ...
 
@@ -261,6 +264,23 @@ class YandexMusicGateway:
         return SearchPayload(
             tracks=[map_track(track, liked_ids=liked_ids) for track in tracks],
             playlists=[map_playlist(item, include_tracks=False) for item in playlists],
+        )
+
+    async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
+        client = await self._authorized_client(credential)
+        try:
+            result = await client.users_likes_tracks(user_id=_number_or_text(credential.user_uid))
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("Yandex Music likes are temporarily unavailable") from exc
+        shorts = list(getattr(result, "tracks", None) or [])
+        hydrated = await self._hydrate_shorts(client, shorts[:2000])
+        liked_ids = {_short_track_id(item) for item in shorts}
+        liked_ids.discard(None)
+        return LikedTracksPayload(
+            tracks=[map_track(track, liked_ids=liked_ids) for track in hydrated],
+            total=len(shorts),
         )
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None:

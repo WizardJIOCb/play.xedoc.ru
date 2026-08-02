@@ -126,6 +126,34 @@ class CredentialStore:
                 """
             )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_listening_event_created ON listening_event(created_at DESC)")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS track_listening_stat (
+                    track_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    play_count INTEGER NOT NULL,
+                    total_listened_ms INTEGER NOT NULL,
+                    last_played_at INTEGER NOT NULL
+                )
+                """
+            )
+            existing_stats = connection.execute("SELECT COUNT(*) FROM track_listening_stat").fetchone()[0]
+            if not existing_stats:
+                connection.execute(
+                    """
+                    INSERT INTO track_listening_stat(track_id, payload, play_count, total_listened_ms, last_played_at)
+                    SELECT grouped.track_id,
+                           (SELECT recent.payload FROM listening_event recent
+                            WHERE recent.track_id = grouped.track_id AND recent.source = 'player'
+                            ORDER BY recent.created_at DESC, recent.id DESC LIMIT 1),
+                           grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
+                    FROM (
+                        SELECT track_id, COUNT(*) AS play_count, SUM(listened_ms) AS total_listened_ms,
+                               MAX(created_at) AS last_played_at
+                        FROM listening_event WHERE source = 'player' GROUP BY track_id
+                    ) grouped
+                    """
+                )
 
     def save(self, credential: Credential) -> None:
         payload = json.dumps(asdict(credential), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -367,15 +395,28 @@ class CredentialStore:
                 "INSERT INTO listening_event(track_id, payload, source, listened_ms, created_at) VALUES(?, ?, ?, ?, ?)",
                 (track_id, serialized, source, listened_ms, int(time.time())),
             )
+            if source == "player":
+                connection.execute(
+                    """
+                    INSERT INTO track_listening_stat(track_id, payload, play_count, total_listened_ms, last_played_at)
+                    VALUES(?, ?, 1, ?, ?)
+                    ON CONFLICT(track_id) DO UPDATE SET
+                        payload = excluded.payload,
+                        play_count = track_listening_stat.play_count + 1,
+                        total_listened_ms = track_listening_stat.total_listened_ms + excluded.total_listened_ms,
+                        last_played_at = excluded.last_played_at
+                    """,
+                    (track_id, serialized, listened_ms, int(time.time())),
+                )
             connection.execute(
-                "DELETE FROM listening_event WHERE id NOT IN (SELECT id FROM listening_event ORDER BY created_at DESC, id DESC LIMIT 3000)"
+                "DELETE FROM listening_event WHERE id NOT IN (SELECT id FROM listening_event ORDER BY created_at DESC, id DESC LIMIT 30000)"
             )
 
     def list_listening_events(self, limit: int = 1000) -> list[dict]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
                 "SELECT track_id, payload, source, listened_ms, created_at FROM listening_event ORDER BY created_at DESC, id DESC LIMIT ?",
-                (max(1, min(limit, 3000)),),
+                (max(1, min(limit, 30000)),),
             ).fetchall()
         events: list[dict] = []
         for row in rows:
@@ -385,6 +426,68 @@ class CredentialStore:
                 continue
             events.append({"track_id": row[0], "track": payload, "source": row[2], "listened_ms": row[3], "created_at": row[4]})
         return events
+
+    def list_track_stats(self) -> dict[str, dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT track_id, play_count, total_listened_ms, last_played_at FROM track_listening_stat"
+            ).fetchall()
+        return {
+            str(row[0]): {
+                "play_count": int(row[1]),
+                "total_listened_ms": int(row[2]),
+                "last_played_at": int(row[3]),
+            }
+            for row in rows
+        }
+
+    def top_tracks(self, *, days: int | None = None, limit: int = 200) -> list[dict]:
+        limit = max(1, min(limit, 500))
+        with self._lock, self._connect() as connection:
+            if days is None:
+                rows = connection.execute(
+                    """
+                    SELECT track_id, payload, play_count, total_listened_ms, last_played_at
+                    FROM track_listening_stat
+                    ORDER BY play_count DESC, total_listened_ms DESC, last_played_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                cutoff = int(time.time()) - max(1, days) * 86_400
+                rows = connection.execute(
+                    """
+                    SELECT grouped.track_id,
+                           (SELECT recent.payload FROM listening_event recent
+                            WHERE recent.track_id = grouped.track_id AND recent.source = 'player' AND recent.created_at >= ?
+                            ORDER BY recent.created_at DESC, recent.id DESC LIMIT 1),
+                           grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
+                    FROM (
+                        SELECT track_id, COUNT(*) AS play_count, SUM(listened_ms) AS total_listened_ms,
+                               MAX(created_at) AS last_played_at
+                        FROM listening_event
+                        WHERE source = 'player' AND created_at >= ?
+                        GROUP BY track_id
+                    ) grouped
+                    ORDER BY grouped.play_count DESC, grouped.total_listened_ms DESC, grouped.last_played_at DESC
+                    LIMIT ?
+                    """,
+                    (cutoff, cutoff, limit),
+                ).fetchall()
+        result: list[dict] = []
+        for row in rows:
+            try:
+                payload = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            result.append({
+                "track": payload,
+                "play_count": int(row[2]),
+                "total_listened_ms": int(row[3]),
+                "last_played_at": int(row[4]),
+            })
+        return result
 
     @staticmethod
     def _playlist_row(row: tuple) -> dict:

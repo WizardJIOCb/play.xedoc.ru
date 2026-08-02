@@ -1,4 +1,4 @@
-import type { BootstrapPayload, DeviceAuthStart, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track } from '../types'
+import type { BootstrapPayload, DeviceAuthStart, LikedTracksPayload, ListeningStats, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -45,6 +45,14 @@ export async function logout(): Promise<void> {
 export async function searchMusic(query: string): Promise<SearchPayload> {
   if (!query.trim()) return { tracks: [], playlists: [] }
   return request<SearchPayload>(`/search?q=${encodeURIComponent(query)}`)
+}
+
+export async function getAllLikedTracks(): Promise<LikedTracksPayload> {
+  return request<LikedTracksPayload>('/liked-tracks')
+}
+
+export async function getListeningStats(): Promise<ListeningStats> {
+  return request<ListeningStats>('/listening-stats')
 }
 
 export async function getPlaylist(playlistId: string): Promise<Playlist> {

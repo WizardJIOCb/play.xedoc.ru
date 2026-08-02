@@ -141,11 +141,24 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient) -> No
     bootstrap = client.get("/api/bootstrap").json()
     assert bootstrap["localPlaylists"][0]["id"] == playlist_id
     assert bootstrap["xedocRecommendations"][0]["id"] == "101"
+    assert bootstrap["xedocRecommendations"][0]["playCount"] == 1
     assert "сигналов" in bootstrap["recommendationInsight"]
     assert [item["periodDays"] for item in bootstrap["xedocCollections"]] == [1, 3, 7, 30]
     assert bootstrap["xedocCollections"][0]["signalCount"] == 1
     assert bootstrap["xedocCollections"][0]["fallback"] is False
     assert bootstrap["xedocCollections"][0]["tracks"][0]["id"] == "101"
+
+    stats = client.get("/api/listening-stats")
+    assert stats.status_code == 200
+    assert stats.json()["totalPlays"] == 1
+    assert stats.json()["uniqueTracks"] == 1
+    assert stats.json()["top"][0]["tracks"][0]["playCount"] == 1
+    assert stats.json()["top"][-1]["id"] == "all-time"
+
+    liked_tracks = client.get("/api/liked-tracks")
+    assert liked_tracks.status_code == 200
+    assert liked_tracks.json()["total"] == 1
+    assert liked_tracks.json()["tracks"][0]["id"] == "101"
 
     shared = client.post("/api/shares/playlists", json={"playlistId": playlist_id})
     assert shared.status_code == 200

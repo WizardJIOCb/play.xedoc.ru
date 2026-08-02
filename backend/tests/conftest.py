@@ -12,6 +12,7 @@ from app.gateway import DeviceAuthorization
 from app.main import create_app
 from app.models import (
     BootstrapPayload,
+    LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
     SessionPayload,
@@ -91,6 +92,9 @@ class FakeGateway:
     async def search(self, credential: Credential, query: str) -> SearchPayload:
         self.search_queries.append(query)
         return SearchPayload(tracks=[TEST_TRACK], playlists=[TEST_PLAYLIST])
+
+    async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
+        return LikedTracksPayload(tracks=[TEST_TRACK], total=1)
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None:
         self.likes.append((track_id, liked))

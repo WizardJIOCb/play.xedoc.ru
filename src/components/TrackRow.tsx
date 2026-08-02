@@ -1,4 +1,4 @@
-import { Heart, Pause, Play } from 'lucide-react'
+import { Headphones, Heart, Pause, Play } from 'lucide-react'
 import { useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import type { Track } from '../types'
@@ -40,7 +40,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       </button>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="track-row__cover" />
       <div className="track-row__meta">
-        <strong>{track.title}</strong>
+        <span className="track-row__title-line"><strong>{track.title}</strong>{Boolean(track.playCount) && <span className="track-row__plays" data-tooltip={`${track.playCount} прослушиваний · учтено после 20 секунд воспроизведения`}><Headphones size={11} /> {track.playCount}</span>}</span>
         <span>{track.artists.join(', ')}</span>
       </div>
       {!compact && <span className="track-row__album">{track.album}</span>}
