@@ -142,6 +142,10 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient) -> No
     assert bootstrap["localPlaylists"][0]["id"] == playlist_id
     assert bootstrap["xedocRecommendations"][0]["id"] == "101"
     assert "сигналов" in bootstrap["recommendationInsight"]
+    assert [item["periodDays"] for item in bootstrap["xedocCollections"]] == [1, 3, 7, 30]
+    assert bootstrap["xedocCollections"][0]["signalCount"] == 1
+    assert bootstrap["xedocCollections"][0]["fallback"] is False
+    assert bootstrap["xedocCollections"][0]["tracks"][0]["id"] == "101"
 
     shared = client.post("/api/shares/playlists", json={"playlistId": playlist_id})
     assert shared.status_code == 200
@@ -164,6 +168,7 @@ def test_vk_import_matches_catalog_and_seeds_preferences(client: TestClient) -> 
     assert body["playlist"]["tracks"][0]["id"] == "101"
     bootstrap = client.get("/api/bootstrap").json()
     assert "сигналов" in bootstrap["recommendationInsight"]
+    assert bootstrap["xedocCollections"][0]["fallback"] is True
 
 
 def test_track_share_is_public_and_only_streams_the_shared_track(

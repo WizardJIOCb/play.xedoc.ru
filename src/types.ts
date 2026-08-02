@@ -46,6 +46,17 @@ export interface BootstrapPayload {
   localPlaylists: Playlist[]
   xedocRecommendations: Track[]
   recommendationInsight?: string
+  xedocCollections: RecommendationCollection[]
+}
+
+export interface RecommendationCollection {
+  id: string
+  title: string
+  subtitle: string
+  periodDays: 1 | 3 | 7 | 30
+  signalCount: number
+  fallback: boolean
+  tracks: Track[]
 }
 
 export interface SearchPayload {

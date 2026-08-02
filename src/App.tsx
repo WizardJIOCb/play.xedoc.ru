@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
+  CalendarDays,
   Clock3,
   Command,
   Flame,
@@ -19,6 +20,7 @@ import {
   Search,
   Shuffle,
   Sparkles,
+  TrendingUp,
   WandSparkles,
   X,
   Zap,
@@ -39,7 +41,7 @@ import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
 import { getBootstrap, getPlaylist, logout, unlockAccess } from './lib/api'
 import { usePlayer } from './player/PlayerContext'
-import type { BootstrapPayload, Playlist, Track, ViewId } from './types'
+import type { BootstrapPayload, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
 const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: string }> = {
   home: { eyebrow: 'ВОСКРЕСЕНЬЕ · ВАШ РИТМ', title: 'Добрый день', description: 'Музыка, которая подходит именно сейчас.' },
@@ -48,6 +50,8 @@ const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: 
   liked: { eyebrow: 'МНЕ НРАВИТСЯ', title: 'Любимые треки', description: 'Музыка, к которой хочется возвращаться.' },
   history: { eyebrow: 'ИСТОРИЯ', title: 'Недавно слушали', description: 'Вернуться ровно туда, где остановились.' },
 }
+
+const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '') === '/recommendations'
 
 function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
@@ -70,7 +74,7 @@ function SectionHeader({ title, hint, action, onAction }: { title: string; hint?
   )
 }
 
-function HomeView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: BootstrapPayload; onSession: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void }) {
+function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendations }: { data: BootstrapPayload; onSession: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onRecommendations: () => void }) {
   const player = usePlayer()
   return (
     <>
@@ -109,7 +113,7 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: Boots
       </section>
 
       <section className="content-section xedoc-recommendations">
-        <SectionHeader title="XEDOC рекомендует" hint={data.recommendationInsight || 'Персональная выдача учится на ваших прослушиваниях'} />
+        <SectionHeader title="XEDOC рекомендует" hint={data.recommendationInsight || 'Персональная выдача учится на ваших прослушиваниях'} action="Все рекомендации" onAction={onRecommendations} />
         <div className="track-table">
           {data.xedocRecommendations.slice(0, 8).map((track, index) => <TrackRow key={`xedoc-${track.id}`} track={track} context={data.xedocRecommendations} index={index} />)}
         </div>
@@ -122,6 +126,38 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: Boots
         </div>
       </section>
     </>
+  )
+}
+
+function RecommendationsView({ data }: { data: BootstrapPayload }) {
+  const player = usePlayer()
+  const [selectedId, setSelectedId] = useState(data.xedocCollections[0]?.id || '')
+  useEffect(() => {
+    if (!data.xedocCollections.some((item) => item.id === selectedId)) setSelectedId(data.xedocCollections[0]?.id || '')
+  }, [data.xedocCollections, selectedId])
+  const selected = data.xedocCollections.find((item) => item.id === selectedId) || data.xedocCollections[0]
+
+  return (
+    <section className="recommendations-page">
+      <header className="recommendations-page__hero">
+        <div><span className="eyebrow"><TrendingUp size={15} /> ПЕРСОНАЛЬНАЯ ЛЕНТА XEDOC</span><h1>Ваши рекомендации.<br /><em>Одна постоянная ссылка.</em></h1><p>{data.recommendationInsight || 'Рекомендации станут точнее по мере прослушивания музыки.'}</p></div>
+        <div className="recommendations-page__signal"><Sparkles size={25} /><strong>{selected?.signalCount || 0}</strong><span>прослушиваний<br />в выбранном периоде</span></div>
+      </header>
+
+      <div className="recommendation-periods" aria-label="Период подборки">
+        {data.xedocCollections.map((collection: RecommendationCollection) => <button key={collection.id} className={collection.id === selected?.id ? 'is-active' : ''} type="button" onClick={() => setSelectedId(collection.id)}><CalendarDays size={18} /><span><strong>{collection.title}</strong><small>{collection.signalCount ? `${collection.signalCount} сигналов` : 'формируется'}</small></span></button>)}
+      </div>
+
+      {selected ? <section className="recommendation-period-detail">
+        <header><div><span className="eyebrow">ОБНОВЛЯЕТСЯ АВТОМАТИЧЕСКИ</span><h2>{selected.title}</h2><p>{selected.subtitle}</p>{selected.fallback && <small>Пока в этом периоде мало прослушиваний — подборка заполнена треками, близкими вашему вкусу.</small>}</div><button className="primary-button" type="button" disabled={!selected.tracks.length} onClick={() => player.playQueue(selected.tracks)}><Play size={18} fill="currentColor" /> Слушать подборку</button></header>
+        {selected.tracks.length ? <div className="track-table track-table--large">{selected.tracks.map((track, index) => <TrackRow key={`${selected.id}-${track.id}`} track={track} context={selected.tracks} index={index} />)}</div> : <div className="playlist-detail__loading">Послушайте несколько треков — здесь появится ваша подборка.</div>}
+      </section> : <div className="playlist-detail__loading">Подборки появятся после подключения коллекции.</div>}
+
+      <section className="content-section">
+        <SectionHeader title="Для вас прямо сейчас" hint="Отдельная модель XEDOC: вкус, новизна и защита от недавних повторов" />
+        <div className="track-table">{data.xedocRecommendations.map((track, index) => <TrackRow key={`adaptive-${track.id}`} track={track} context={data.xedocRecommendations} index={index} />)}</div>
+      </section>
+    </section>
   )
 }
 
@@ -286,6 +322,7 @@ function PrivateApp() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [view, setView] = useState<ViewId>('home')
+  const [recommendationsOpen, setRecommendationsOpen] = useState(isRecommendationsPath)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [sessionOpen, setSessionOpen] = useState(false)
@@ -309,6 +346,15 @@ function PrivateApp() {
   }, [])
 
   useEffect(refresh, [refresh])
+
+  useEffect(() => {
+    const onPopState = () => {
+      setSelectedPlaylist(undefined)
+      setRecommendationsOpen(isRecommendationsPath())
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   useEffect(() => {
     window.addEventListener(PLAYLISTS_CHANGED_EVENT, refresh)
@@ -347,7 +393,15 @@ function PrivateApp() {
 
   const changeView = useCallback((nextView: ViewId) => {
     setSelectedPlaylist(undefined)
+    setRecommendationsOpen(false)
+    if (isRecommendationsPath()) window.history.pushState(null, '', '/')
     setView(nextView)
+  }, [])
+
+  const openRecommendations = useCallback(() => {
+    setSelectedPlaylist(undefined)
+    setRecommendationsOpen(true)
+    if (!isRecommendationsPath()) window.history.pushState(null, '', '/recommendations')
   }, [])
 
   useEffect(() => {
@@ -374,12 +428,13 @@ function PrivateApp() {
   const title = viewTitles[view]
   const content = useMemo(() => {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
-    if (view === 'home') return <HomeView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
+    if (recommendationsOpen) return <RecommendationsView data={data} />
+    if (view === 'home') return <HomeView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
     if (view === 'discover') return <DiscoverView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={data.likedTracks} total={data.likedCount} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [data, openPlaylist, playPlaylist, player.history, playlistError, playlistLoading, selectedPlaylist, view])
+  }, [data, openPlaylist, openRecommendations, playPlaylist, player.history, playlistError, playlistLoading, recommendationsOpen, selectedPlaylist, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -387,10 +442,10 @@ function PrivateApp() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
-      <Sidebar view={view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} onView={changeView} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
+      <Sidebar view={view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} onView={changeView} onRecommendations={openRecommendations} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
       <main className="main-view">
         <header className="topbar">
-          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist} onClick={() => setSelectedPlaylist(undefined)}><ArrowLeft size={18} /></button></div>
+          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <button className="topbar__search" type="button" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
             {data.connected ? (
@@ -402,7 +457,7 @@ function PrivateApp() {
         </header>
 
         <div className="page-content">
-          {!selectedPlaylist && <header className="page-heading">
+          {!selectedPlaylist && !recommendationsOpen && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.user?.name ? `${title.title}, ${data.user.name.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}
@@ -428,7 +483,7 @@ function PrivateApp() {
       <nav className="mobile-nav" aria-label="Мобильная навигация">
         {[['home', Headphones, 'Главная'], ['discover', Radio, 'Обзор'], ['library', ListMusic, 'Библиотека'], ['liked', Heart, 'Любимые'], ['history', History, 'История']].map(([id, Icon, label]) => {
           const IconComponent = Icon as typeof Headphones
-          return <button key={id as string} className={view === id ? 'is-active' : ''} type="button" onClick={() => changeView(id as ViewId)}><IconComponent size={20} /><span>{label as string}</span></button>
+          return <button key={id as string} className={!recommendationsOpen && view === id ? 'is-active' : ''} type="button" onClick={() => changeView(id as ViewId)}><IconComponent size={20} /><span>{label as string}</span></button>
         })}
       </nav>
 

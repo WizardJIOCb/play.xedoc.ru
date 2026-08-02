@@ -376,6 +376,42 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .note--bottom { bottom: 54px; left: 12px; }
 @keyframes orbit-spin { to { transform: rotate(360deg); } }
 
+/* Personal recommendations */
+.recommendations-page { padding-top: 5px; }
+.recommendations-page__hero {
+  min-height: 270px;
+  padding: 38px 42px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 220px;
+  align-items: center;
+  gap: 36px;
+  border: 1px solid rgba(159,122,234,.22);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 82% 28%, rgba(159,122,234,.24), transparent 28%), linear-gradient(125deg, rgba(23,29,20,.96), rgba(19,17,29,.96));
+  overflow: hidden;
+}
+.recommendations-page__hero h1 { margin: 15px 0 12px; font-size: clamp(38px,4.2vw,62px); line-height: .98; letter-spacing: -.055em; }
+.recommendations-page__hero h1 em { color: var(--acid); font-style: normal; }
+.recommendations-page__hero p { max-width: 720px; margin: 0; color: #acb0ba; font-size: var(--type-control); line-height: 1.55; }
+.recommendations-page__signal { width: 190px; height: 190px; justify-self: end; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid rgba(217,255,99,.2); border-radius: 50%; background: rgba(7,9,12,.67); box-shadow: 0 0 0 12px rgba(217,255,99,.025), 0 0 80px rgba(159,122,234,.2); text-align: center; }
+.recommendations-page__signal svg { color: var(--acid); }
+.recommendations-page__signal strong { margin-top: 8px; color: var(--acid); font-size: 38px; line-height: 1; }
+.recommendations-page__signal span { margin-top: 7px; color: var(--muted); font-size: var(--type-caption); line-height: 1.35; }
+.recommendation-periods { margin-top: 18px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; }
+.recommendation-periods button { min-width: 0; min-height: 76px; padding: 12px 14px; display: flex; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025); color: var(--muted); text-align: left; cursor: pointer; transition: .16s ease; }
+.recommendation-periods button:hover { border-color: var(--line-strong); background: rgba(255,255,255,.05); color: var(--text); }
+.recommendation-periods button.is-active { border-color: rgba(217,255,99,.3); background: rgba(217,255,99,.075); color: var(--acid); }
+.recommendation-periods button > span { min-width: 0; display: grid; gap: 4px; }
+.recommendation-periods strong, .recommendation-periods small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recommendation-periods strong { color: var(--text); font-size: var(--type-body); }
+.recommendation-periods small { color: var(--muted); font-size: var(--type-caption); }
+.recommendation-period-detail { margin-top: 34px; }
+.recommendation-period-detail > header { min-height: 112px; margin-bottom: 15px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.recommendation-period-detail h2 { margin: 9px 0 5px; font-size: 31px; letter-spacing: -.035em; }
+.recommendation-period-detail p { margin: 0; color: var(--muted); font-size: var(--type-body); }
+.recommendation-period-detail header small { display: block; margin-top: 8px; color: #b6a4d8; font-size: var(--type-caption); }
+.recommendation-period-detail > header .primary-button { flex: 0 0 auto; }
+
 /* Content cards */
 .quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .quick-track { min-width: 0; height: 68px; padding: 6px 9px 6px 6px; display: grid; grid-template-columns: 54px minmax(0,1fr) 34px; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.027); text-align: left; cursor: pointer; transition: .16s ease; }
@@ -774,6 +810,9 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .player-bar__tools { display: none; }
   .app-shell--queue .main-view, .app-shell--queue .player-bar { margin-right: 0; }
   .queue-panel { z-index: 80; }
+  .recommendation-periods { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .recommendations-page__hero { grid-template-columns: minmax(0,1fr) 160px; padding: 30px; }
+  .recommendations-page__signal { width: 150px; height: 150px; }
 }
 
 @media (max-width: 720px) {
@@ -801,6 +840,18 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus-visib
   .hero-session__copy { padding: 30px 24px; }
   .hero-session h2 { font-size: 31px; }
   .hero-session__actions { flex-direction: column; align-items: stretch; }
+  .recommendations-page__hero { min-height: 0; padding: 28px 23px; display: block; }
+  .recommendations-page__hero h1 { font-size: 37px; }
+  .recommendations-page__signal { width: auto; height: auto; margin-top: 24px; padding: 14px 16px; flex-direction: row; justify-content: flex-start; gap: 10px; border-radius: 14px; text-align: left; }
+  .recommendations-page__signal strong { margin: 0; font-size: 28px; }
+  .recommendations-page__signal span { margin: 0; }
+  .recommendation-periods { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .recommendation-periods button { min-height: 68px; padding: 9px; gap: 7px; }
+  .recommendation-periods button > svg { display: none; }
+  .recommendation-period-detail { margin-top: 25px; }
+  .recommendation-period-detail > header { min-height: 0; align-items: stretch; flex-direction: column; }
+  .recommendation-period-detail h2 { font-size: 26px; }
+  .recommendation-period-detail > header .primary-button { width: 100%; }
   .content-section { margin-top: 34px; }
   .section-header h2 { font-size: 22px; }
   .section-header p { display: none; }

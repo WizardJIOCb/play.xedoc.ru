@@ -42,6 +42,7 @@ from .models import (
     PlaylistTrackRequest,
     PlaylistDTO,
     PublicShareDTO,
+    RecommendationCollectionDTO,
     SearchPayload,
     ShareLinkDTO,
     SessionPayload,
@@ -785,7 +786,7 @@ def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> 
                 continue
             candidates.setdefault(track.id, track)
 
-    events = store.list_listening_events()
+    events = store.list_listening_events(3000)
     artist_affinity: dict[str, float] = {}
     recent_track_ids: set[str] = set()
     now = int(time.time())
@@ -827,6 +828,54 @@ def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> 
         payload.recommendation_insight = f"Учли {len(events)} сигналов прослушивания · больше знакомого, меньше недавних повторов"
     else:
         payload.recommendation_insight = "Начинаем с вашей коллекции и станем точнее после первых прослушиваний"
+
+    periods: list[tuple[int, str, str]] = [
+        (1, "Лучшее за день", "Ваш ритм за последние 24 часа"),
+        (3, "Главное за 3 дня", "Треки, к которым вы возвращались последние 72 часа"),
+        (7, "Неделя в музыке", "Самое заметное за последние семь дней"),
+        (30, "Лучшее за месяц", "Ваша музыкальная картина за последние 30 дней"),
+    ]
+    player_events = [event for event in events if event["source"] == "player"]
+    collections: list[RecommendationCollectionDTO] = []
+    for period_index, (days, title, subtitle) in enumerate(periods):
+        cutoff = now - days * 86_400
+        period_events = [event for event in player_events if int(event["created_at"]) >= cutoff]
+        by_track: dict[str, dict] = {}
+        for event in period_events:
+            track_id = str(event["track_id"])
+            bucket = by_track.setdefault(
+                track_id,
+                {"track": event["track"], "plays": 0, "listened_ms": 0, "latest": 0},
+            )
+            bucket["plays"] += 1
+            bucket["listened_ms"] += int(event["listened_ms"])
+            bucket["latest"] = max(bucket["latest"], int(event["created_at"]))
+        ranked: list[tuple[float, TrackDTO]] = []
+        for item in by_track.values():
+            try:
+                track = TrackDTO.model_validate(item["track"])
+            except ValueError:
+                continue
+            age_hours = max(0, (now - item["latest"]) / 3600)
+            score = item["plays"] * 4 + min(4, item["listened_ms"] / 60_000) + math.exp(-age_hours / max(24, days * 12))
+            ranked.append((score, track))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        period_tracks = [track for _, track in ranked[:20]]
+        fallback = not period_tracks
+        if fallback and recommendations:
+            offset = (period_index * 3) % len(recommendations)
+            period_tracks = (recommendations[offset:] + recommendations[:offset])[:12]
+            subtitle = f"{subtitle} · пока дополняем рекомендациями по вашему вкусу"
+        collections.append(RecommendationCollectionDTO(
+            id=f"xedoc-best-{days}d",
+            title=title,
+            subtitle=subtitle,
+            period_days=days,
+            signal_count=len(period_events),
+            fallback=fallback,
+            tracks=period_tracks,
+        ))
+    payload.xedoc_collections = collections
 
 
 def _safe_share_token(value: str) -> str:

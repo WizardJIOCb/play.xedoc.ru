@@ -44,6 +44,16 @@ class PlaylistDTO(APIModel):
     local: bool = False
 
 
+class RecommendationCollectionDTO(APIModel):
+    id: str
+    title: str
+    subtitle: str
+    period_days: Literal[1, 3, 7, 30]
+    signal_count: int = 0
+    fallback: bool = False
+    tracks: list[TrackDTO] = Field(default_factory=list)
+
+
 class UserProfileDTO(APIModel):
     name: str
     avatar_url: str | None = None
@@ -63,6 +73,7 @@ class BootstrapPayload(APIModel):
     local_playlists: list[PlaylistDTO] = Field(default_factory=list)
     xedoc_recommendations: list[TrackDTO] = Field(default_factory=list)
     recommendation_insight: str | None = None
+    xedoc_collections: list[RecommendationCollectionDTO] = Field(default_factory=list)
 
 
 class SearchPayload(APIModel):

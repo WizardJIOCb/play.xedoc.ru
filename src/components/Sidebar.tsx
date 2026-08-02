@@ -1,4 +1,4 @@
-import { Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
+import { Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
@@ -12,14 +12,18 @@ export function Sidebar({
   view,
   playlists,
   collapsed,
+  recommendationsActive,
   onView,
+  onRecommendations,
   onToggle,
   onSession,
 }: {
   view: ViewId
   playlists: Playlist[]
   collapsed: boolean
+  recommendationsActive: boolean
   onView: (view: ViewId) => void
+  onRecommendations: () => void
   onToggle: () => void
   onSession: () => void
 }) {
@@ -32,11 +36,15 @@ export function Sidebar({
 
       <nav className="sidebar__nav" aria-label="Основная навигация">
         {navigation.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} title={collapsed ? label : undefined}>
+          <button key={id} className={!recommendationsActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} title={collapsed ? label : undefined}>
             <Icon size={20} />
             <span>{label}</span>
           </button>
         ))}
+        <button className={recommendationsActive ? 'is-active' : ''} type="button" onClick={onRecommendations} title={collapsed ? 'Рекомендации' : undefined}>
+          <Sparkles size={20} />
+          <span>Рекомендации</span>
+        </button>
       </nav>
 
       <button className="sidebar__session" type="button" onClick={onSession} title={collapsed ? 'Собрать сессию' : undefined} aria-label="Собрать сессию">

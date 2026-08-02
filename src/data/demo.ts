@@ -57,4 +57,5 @@ export const demoBootstrap: BootstrapPayload = {
   localPlaylists: [],
   xedocRecommendations: [],
   recommendationInsight: 'Подключите коллекцию — рекомендации XEDOC будут учиться на прослушиваниях.',
+  xedocCollections: [],
 }
