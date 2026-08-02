@@ -5,9 +5,11 @@ type TooltipState = { text: string; anchorX: number; x: number; y: number; place
 const selector = 'button, [role="button"], [data-tooltip], input[type="range"]'
 
 function tooltipText(element: HTMLElement) {
-  const explicit = element.dataset.tooltip || element.getAttribute('aria-label') || element.getAttribute('title')
-  const raw = explicit || (element.matches('button, [role="button"]') ? (element.innerText || element.textContent || '') : '')
-  return raw.replace(/\s+/g, ' ').trim().slice(0, 120)
+  const explicit = element.dataset.tooltip
+  if (explicit) return explicit.replace(/\s+/g, ' ').trim().slice(0, 120)
+  const visibleText = (element.innerText ?? element.textContent ?? '').replace(/\s+/g, ' ').trim()
+  if (visibleText) return ''
+  return (element.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 120)
 }
 
 export function clampTooltipX(anchorX: number, tooltipWidth: number, viewportWidth: number, padding = 10) {
@@ -33,7 +35,8 @@ export function GlobalTooltip() {
   useEffect(() => {
     const migrateTitles = (root: ParentNode) => {
       root.querySelectorAll<HTMLElement>('[title]').forEach((element) => {
-        if (!element.dataset.tooltip) element.dataset.tooltip = element.title
+        const visibleText = (element.innerText ?? element.textContent ?? '').replace(/\s+/g, ' ').trim()
+        if (!visibleText && !element.dataset.tooltip) element.dataset.tooltip = element.title
         element.removeAttribute('title')
       })
     }
@@ -41,7 +44,8 @@ export function GlobalTooltip() {
     const observer = new MutationObserver((mutations) => mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
       if (node instanceof HTMLElement) {
         if (node.title) {
-          node.dataset.tooltip ||= node.title
+          const visibleText = (node.innerText ?? node.textContent ?? '').replace(/\s+/g, ' ').trim()
+          if (!visibleText) node.dataset.tooltip ||= node.title
           node.removeAttribute('title')
         }
         migrateTitles(node)

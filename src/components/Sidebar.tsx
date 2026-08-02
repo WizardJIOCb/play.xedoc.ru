@@ -42,32 +42,32 @@ export function Sidebar({
 
       <nav className="sidebar__nav" aria-label="Основная навигация">
         {navigation.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={!recommendationsActive && !topActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} title={collapsed ? label : undefined}>
+          <button key={id} className={!recommendationsActive && !topActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} aria-label={label}>
             <Icon size={20} />
             <span>{label}</span>
           </button>
         ))}
-        <button className={recommendationsActive ? 'is-active' : ''} type="button" onClick={onRecommendations} title={collapsed ? 'Рекомендации' : undefined}>
+        <button className={recommendationsActive ? 'is-active' : ''} type="button" onClick={onRecommendations} aria-label="Рекомендации">
           <Sparkles size={20} />
           <span>Рекомендации</span>
         </button>
-        <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} title={collapsed ? 'Топ треков' : undefined}>
+        <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} aria-label="Топ треков">
           <BarChart3 size={20} />
           <span>Топ треков</span>
         </button>
       </nav>
 
-      <button className="sidebar__session" type="button" onClick={onSession} title={collapsed ? 'Собрать сессию' : undefined} aria-label="Собрать сессию">
+      <button className="sidebar__session" type="button" onClick={onSession} aria-label="Собрать сессию">
         <Plus size={18} />
         <span>Собрать сессию</span>
       </button>
 
       <div className="sidebar__section">
         <p>Моя музыка</p>
-        <button className={view === 'liked' ? 'is-active' : ''} type="button" onClick={() => onView('liked')} title={collapsed ? 'Любимые' : undefined}>
+        <button className={view === 'liked' ? 'is-active' : ''} type="button" onClick={() => onView('liked')} aria-label="Любимые">
           <Heart size={18} /> <span>Любимые</span>
         </button>
-        <button className={view === 'history' ? 'is-active' : ''} type="button" onClick={() => onView('history')} title={collapsed ? 'История' : undefined}>
+        <button className={view === 'history' ? 'is-active' : ''} type="button" onClick={() => onView('history')} aria-label="История">
           <History size={18} /> <span>История</span>
         </button>
       </div>

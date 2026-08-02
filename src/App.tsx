@@ -33,6 +33,7 @@ import { AuthGate } from './components/AuthGate'
 import { ArtistLinks } from './components/ArtistLinks'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
+import { MoodMap } from './components/MoodMap'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
 import { PasswordChangeModal } from './components/PasswordChangeModal'
@@ -234,27 +235,9 @@ function ListeningTopView({ stats, loading, error }: { stats?: ListeningStats; l
 }
 
 function DiscoverView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: BootstrapPayload; onSession: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void }) {
-  const [mood, setMood] = useState('deep')
   return (
     <>
-      <section className="mood-map">
-        <div className="mood-map__intro">
-          <span className="eyebrow">КАРТА НАСТРОЕНИЯ</span>
-          <h2>Куда повернём сегодня?</h2>
-          <p>Это не жанры. Это направление для рекомендаций.</p>
-          <div className="mood-map__choices">
-            {[['deep', 'Глубже'], ['fresh', 'Совсем новое'], ['bright', 'Больше энергии'], ['calm', 'Спокойнее']].map(([id, label]) => (
-              <button key={id} className={mood === id ? 'is-active' : ''} type="button" onClick={() => setMood(id)}>{label}</button>
-            ))}
-          </div>
-          <button className="primary-button" type="button" onClick={onSession}><Radio size={18} /> Настроить волну</button>
-        </div>
-        <div className={`mood-map__canvas mood-map__canvas--${mood}`}>
-          <span className="mood-axis mood-axis--x">знакомое <i /> новое</span>
-          <span className="mood-axis mood-axis--y">спокойно <i /> энергия</span>
-          <div className="mood-map__field"><i /><i /><i /><i /><i /><i /><i /><i /><span><Sparkles size={19} /></span></div>
-        </div>
-      </section>
+      <MoodMap onSession={onSession} />
 
       <section className="content-section">
         <SectionHeader title="Подборки под момент" hint="25, 50 или 90 минут — без обрыва на полуслове" />
@@ -602,8 +585,8 @@ function PrivateApp() {
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined}><Search size={18} /><span>Найти музыку</span><kbd><Command size={13} /> K</kbd></button>
           <div className="topbar__actions">
-            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} data-tooltip="Подключить Яндекс Музыку или импортировать вкус из VK"><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
-            <div className="profile-chip" data-tooltip={`Аккаунт XEDOC: @${data.appUser?.username || ''}`}><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
+            <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
