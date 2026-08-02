@@ -79,7 +79,7 @@ export async function decodeVKImportFragment(hash: string): Promise<{ sourceUrl:
     const candidate = item as Record<string, unknown>
     if (typeof candidate.title !== 'string' || typeof candidate.artist !== 'string') return []
     return [{ title: candidate.title, artist: candidate.artist, ...(typeof candidate.duration === 'string' ? { duration: candidate.duration } : {}) }]
-  }).slice(0, 3000)
+  }).slice(0, 10000)
   if (!tracks.length) throw new Error('В списке VK не найдено ни одного трека')
   return { sourceUrl: payload.sourceUrl, tracks }
 }

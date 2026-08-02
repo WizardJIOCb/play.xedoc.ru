@@ -202,7 +202,7 @@ class ExternalTrackDTO(APIModel):
 
 
 class VKImportRequest(APIModel):
-    tracks: list[ExternalTrackDTO] = Field(min_length=1, max_length=3000)
+    tracks: list[ExternalTrackDTO] = Field(min_length=1, max_length=10000)
     source_url: str = Field(default="https://vk.ru/audios145429079", max_length=500)
 
 

@@ -8,6 +8,7 @@ import math
 import re
 import secrets
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
@@ -298,10 +299,10 @@ def create_app(
             playlist_id = ensure_vk_playlist(job["source_url"], len(tracks))
             store.update_vk_import_job(job_id, playlist_id=playlist_id)
             known_keys = existing_vk_seed_keys()
-            matched = 0
-            processed = 0
+            matched = int(job["matched"])
+            processed = int(job["processed"])
             semaphore = asyncio.Semaphore(4)
-            for offset in range(0, len(tracks), 20):
+            for offset in range(processed, len(tracks), 20):
                 chunk = tracks[offset:offset + 20]
                 results = await asyncio.gather(
                     *(match_vk_track(credential, external, semaphore) for external in chunk)
@@ -352,6 +353,18 @@ def create_app(
         task = asyncio.create_task(process_vk_import_job(job_id, owner_id))
         vk_job_tasks.add(task)
         task.add_done_callback(vk_job_tasks.discard)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        for job in store.incomplete_vk_import_jobs():
+            schedule_vk_import_job(str(job["id"]), str(job["user_id"]))
+        yield
+        for task in vk_job_tasks:
+            task.cancel()
+        if vk_job_tasks:
+            await asyncio.gather(*vk_job_tasks, return_exceptions=True)
+
+    app.router.lifespan_context = lifespan
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -641,7 +654,7 @@ def create_app(
         for track in body.tracks:
             key = (_normalize_music_text(track.artist), _normalize_music_text(track.title))
             unique.setdefault(key, track)
-        tracks = list(unique.values())[:3000]
+        tracks = list(unique.values())[:10000]
         job = store.create_vk_import_job(
             app_user.id,
             source_url,

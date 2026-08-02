@@ -52,7 +52,6 @@ function buildCollector(destination: string) {
       badge.textContent = `XEDOC: найдено ${count} треков…`
       stable = count === previous ? stable + 1 : 0
       previous = count
-      if (count >= 3000) break
       window.scrollTo(0, document.documentElement.scrollHeight)
       await wait(900)
     }
@@ -64,7 +63,7 @@ function buildCollector(destination: string) {
       const duration = row.querySelector('[data-testid="MusicTrackRow_Duration"]')?.textContent?.trim() ?? ''
       if (title && artist) unique.set(`${artist.toLocaleLowerCase()}\u0000${title.toLocaleLowerCase()}`, { title, artist, ...(duration ? { duration } : {}) })
     }
-    const tracks = Array.from(unique.values()).slice(0, 3000)
+    const tracks = Array.from(unique.values()).slice(0, 10000)
     if (!tracks.length) { badge.textContent = 'XEDOC: треки не найдены. Откройте раздел «Моя музыка».'; return }
     badge.textContent = `XEDOC: передаём ${tracks.length} треков…`
     const json = JSON.stringify({ sourceUrl: `https://vk.ru/audios${id}`, tracks })

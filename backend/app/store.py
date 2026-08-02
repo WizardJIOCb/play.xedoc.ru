@@ -432,6 +432,17 @@ class CredentialStore:
             ).fetchone()
         return self._vk_import_job_row(row) if row else None
 
+    def incomplete_vk_import_jobs(self) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, user_id, source_url, track_payload, status, total, processed,
+                       matched, unmatched, playlist_id, error, created_at, updated_at
+                FROM vk_import_job WHERE status IN ('queued', 'running') ORDER BY created_at
+                """
+            ).fetchall()
+        return [self._vk_import_job_row(row) for row in rows]
+
     def update_vk_import_job(
         self,
         job_id: str,
