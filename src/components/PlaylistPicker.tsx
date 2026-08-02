@@ -1,5 +1,6 @@
 import { Check, ListMusic, ListPlus, LoaderCircle, Plus } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { addTrackToLocalPlaylist, createLocalPlaylist, getLocalPlaylists } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
 import type { Playlist, Track } from '../types'
@@ -13,23 +14,59 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const [done, setDone] = useState('')
+  const [error, setError] = useState('')
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({ left: 0, top: 0, visibility: 'hidden' })
   const root = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (!root.current?.contains(target) && !menu.current?.contains(target)) setOpen(false)
     }
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
   }, [open])
 
+  useLayoutEffect(() => {
+    if (!open) return
+    const positionMenu = () => {
+      const triggerRect = root.current?.getBoundingClientRect()
+      const menuRect = menu.current?.getBoundingClientRect()
+      if (!triggerRect || !menuRect) return
+      const margin = 12
+      const gap = 8
+      const left = Math.max(margin, Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - margin))
+      const fitsAbove = triggerRect.top >= menuRect.height + gap + margin
+      const top = fitsAbove
+        ? triggerRect.top - menuRect.height - gap
+        : Math.min(triggerRect.bottom + gap, window.innerHeight - menuRect.height - margin)
+      setMenuStyle({ left, top: Math.max(margin, top), visibility: 'visible' })
+    }
+    positionMenu()
+    window.addEventListener('resize', positionMenu)
+    window.addEventListener('scroll', positionMenu, true)
+    return () => {
+      window.removeEventListener('resize', positionMenu)
+      window.removeEventListener('scroll', positionMenu, true)
+    }
+  }, [open, loading, playlists.length, creating])
+
   const show = () => {
     setOpen((value) => !value)
     setDone('')
+    setError('')
     if (!open) {
+      setMenuStyle({ left: 0, top: 0, visibility: 'hidden' })
       setLoading(true)
-      void getLocalPlaylists().then(setPlaylists).catch(() => setPlaylists([])).finally(() => setLoading(false))
+      void getLocalPlaylists()
+        .then(setPlaylists)
+        .catch(() => {
+          setPlaylists([])
+          setError('Не удалось загрузить плейлисты. Попробуйте ещё раз.')
+        })
+        .finally(() => setLoading(false))
     }
   }
 
@@ -41,6 +78,8 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
       setDone(playlist.id)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       window.setTimeout(() => setOpen(false), 550)
+    } catch {
+      setError('Не удалось добавить трек. Попробуйте ещё раз.')
     } finally {
       setLoading(false)
     }
@@ -59,6 +98,8 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
       setOpen(false)
       setTitle('')
       setCreating(false)
+    } catch {
+      setError('Не удалось создать плейлист. Попробуйте ещё раз.')
     } finally {
       setLoading(false)
     }
@@ -66,8 +107,8 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
 
   return (
     <div className={`playlist-picker ${className}`} ref={root}>
-      <button className="icon-button" type="button" aria-label="Добавить в плейлист или очередь" aria-expanded={open} onClick={show}><ListPlus size={18} /></button>
-      {open && <div className="playlist-picker__menu">
+      <button className="icon-button" type="button" aria-label={`Добавить ${track.title} в плейлист или очередь`} aria-expanded={open} onClick={show}><ListPlus size={18} /></button>
+      {open && createPortal(<div className="playlist-picker__menu" ref={menu} style={menuStyle}>
         <header><strong>Добавить трек</strong><span>{track.title}</span></header>
         {onAddNext && <button type="button" onClick={() => { onAddNext(); setOpen(false) }}><ListMusic size={17} /><span><strong>Следующим в очередь</strong><small>Сыграет после текущего</small></span></button>}
         <div className="playlist-picker__divider" />
@@ -77,8 +118,9 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
             <span><strong>{playlist.title}</strong><small>{playlist.trackCount} треков</small></span>
           </button>
         ))}
+        {error && <div className="playlist-picker__error" role="alert">{error}</div>}
         {creating ? <form onSubmit={(event) => void createAndAdd(event)}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Название плейлиста" autoFocus maxLength={120} /><button type="submit" disabled={!title.trim() || loading}>Создать</button></form> : <button className="playlist-picker__create" type="button" onClick={() => setCreating(true)}><Plus size={17} /><span><strong>Новый плейлист</strong><small>Создать и сразу добавить</small></span></button>}
-      </div>}
+      </div>, document.body)}
     </div>
   )
 }

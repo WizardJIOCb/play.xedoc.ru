@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Clock3, Command, CornerDownLeft, ListPlus, LoaderCircle, Play, Search, UserRound, X } from 'lucide-react'
+import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Play, Search, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
@@ -6,6 +6,7 @@ import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
+import { PlaylistPicker } from './PlaylistPicker'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
@@ -109,13 +110,13 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
           </div>
           <div className="search-results">
             {tracks.slice(0, 12).map((track) => (
-              <div key={track.id} className="search-result">
+              <div key={track.id} className={`search-result ${publicMode ? 'search-result--public' : ''}`}>
                 <div className="search-result__main" role="button" tabIndex={0} aria-label={`Включить ${track.title}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) } }}>
                   <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
                   <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
                   <Play size={17} fill="currentColor" />
                 </div>
-                <button className="search-result__next" type="button" aria-label={`Добавить ${track.title} следующим`} data-tooltip="Добавить следующим" onClick={() => player.addNext(track)}><ListPlus size={18} /></button>
+                {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
               </div>
             ))}
             {error && <div className="search-empty search-empty--error"><ArrowDownToLine size={24} /><p>{error}</p></div>}

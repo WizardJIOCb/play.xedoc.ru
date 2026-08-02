@@ -42,6 +42,7 @@ describe('content search page', () => {
     await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Новый'))
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(view.container.querySelector('.search-page__content')).toContainElement(screen.getByText('Найденный трек'))
+    expect(screen.getByRole('button', { name: 'Добавить Найденный трек в плейлист или очередь' })).toBeInTheDocument()
   })
 
   it('offers track search without registration in public mode', async () => {
@@ -54,5 +55,6 @@ describe('content search page', () => {
     await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Signal'))
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(screen.queryByText('Плейлисты')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Добавить Найденный трек в плейлист/ })).not.toBeInTheDocument()
   })
 })
