@@ -89,6 +89,43 @@ class CredentialStore:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS local_playlist (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    cover_url TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS local_playlist_track (
+                    playlist_id TEXT NOT NULL REFERENCES local_playlist(id) ON DELETE CASCADE,
+                    track_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    added_at INTEGER NOT NULL,
+                    PRIMARY KEY (playlist_id, track_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS listening_event (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    track_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    listened_ms INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_listening_event_created ON listening_event(created_at DESC)")
 
     def save(self, credential: Credential) -> None:
         payload = json.dumps(asdict(credential), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -212,3 +249,155 @@ class CredentialStore:
             owner_name=str(row[4]),
             created_at=int(row[5]),
         )
+
+    def create_local_playlist(self, title: str, description: str = "") -> dict:
+        playlist_id = f"local-{secrets.token_urlsafe(10)}"
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT INTO local_playlist(id, title, description, created_at, updated_at) VALUES(?, ?, ?, ?, ?)",
+                (playlist_id, title.strip(), description.strip(), now, now),
+            )
+        return self.load_local_playlist(playlist_id) or {}
+
+    def list_local_playlists(self) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
+                FROM local_playlist p
+                LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                GROUP BY p.id
+                ORDER BY p.updated_at DESC, p.created_at DESC
+                """
+            ).fetchall()
+        return [self._playlist_row(row) for row in rows]
+
+    def load_local_playlist(self, playlist_id: str) -> dict | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT p.id, p.title, p.description, p.cover_url, p.created_at, p.updated_at,
+                       COUNT(t.track_id), COALESCE(SUM(json_extract(t.payload, '$.durationMs')), 0)
+                FROM local_playlist p
+                LEFT JOIN local_playlist_track t ON t.playlist_id = p.id
+                WHERE p.id = ? GROUP BY p.id
+                """,
+                (playlist_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            track_rows = connection.execute(
+                "SELECT payload FROM local_playlist_track WHERE playlist_id = ? ORDER BY position, added_at",
+                (playlist_id,),
+            ).fetchall()
+        playlist = self._playlist_row(row)
+        try:
+            playlist["tracks"] = [json.loads(item[0]) for item in track_rows]
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise CredentialStoreError("Saved playlist track is invalid") from exc
+        return playlist
+
+    def update_local_playlist(self, playlist_id: str, *, title: str | None = None, description: str | None = None, cover_url: str | None = None, update_cover: bool = False) -> dict | None:
+        fields: list[str] = []
+        values: list[object] = []
+        if title is not None:
+            fields.append("title = ?")
+            values.append(title.strip())
+        if description is not None:
+            fields.append("description = ?")
+            values.append(description.strip())
+        if update_cover:
+            fields.append("cover_url = ?")
+            values.append(cover_url)
+        if not fields:
+            return self.load_local_playlist(playlist_id)
+        fields.append("updated_at = ?")
+        values.append(int(time.time()))
+        values.append(playlist_id)
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(f"UPDATE local_playlist SET {', '.join(fields)} WHERE id = ?", values)
+        return self.load_local_playlist(playlist_id) if cursor.rowcount else None
+
+    def delete_local_playlist(self, playlist_id: str) -> dict | None:
+        playlist = self.load_local_playlist(playlist_id)
+        if playlist is None:
+            return None
+        with self._lock, self._connect() as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("DELETE FROM local_playlist WHERE id = ?", (playlist_id,))
+        return playlist
+
+    def add_local_playlist_track(self, playlist_id: str, track_id: str, payload: dict) -> dict | None:
+        serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            exists = connection.execute("SELECT 1 FROM local_playlist WHERE id = ?", (playlist_id,)).fetchone()
+            if exists is None:
+                return None
+            position = connection.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM local_playlist_track WHERE playlist_id = ?",
+                (playlist_id,),
+            ).fetchone()[0]
+            connection.execute(
+                """
+                INSERT INTO local_playlist_track(playlist_id, track_id, position, payload, added_at)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(playlist_id, track_id) DO UPDATE SET payload = excluded.payload
+                """,
+                (playlist_id, track_id, int(position), serialized, now),
+            )
+            connection.execute("UPDATE local_playlist SET updated_at = ? WHERE id = ?", (now, playlist_id))
+        return self.load_local_playlist(playlist_id)
+
+    def remove_local_playlist_track(self, playlist_id: str, track_id: str) -> dict | None:
+        with self._lock, self._connect() as connection:
+            exists = connection.execute("SELECT 1 FROM local_playlist WHERE id = ?", (playlist_id,)).fetchone()
+            if exists is None:
+                return None
+            connection.execute("DELETE FROM local_playlist_track WHERE playlist_id = ? AND track_id = ?", (playlist_id, track_id))
+            connection.execute("UPDATE local_playlist SET updated_at = ? WHERE id = ?", (int(time.time()), playlist_id))
+        return self.load_local_playlist(playlist_id)
+
+    def save_listening_event(self, track_id: str, payload: dict, listened_ms: int, source: str = "player") -> None:
+        serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT INTO listening_event(track_id, payload, source, listened_ms, created_at) VALUES(?, ?, ?, ?, ?)",
+                (track_id, serialized, source, listened_ms, int(time.time())),
+            )
+            connection.execute(
+                "DELETE FROM listening_event WHERE id NOT IN (SELECT id FROM listening_event ORDER BY created_at DESC, id DESC LIMIT 3000)"
+            )
+
+    def list_listening_events(self, limit: int = 1000) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT track_id, payload, source, listened_ms, created_at FROM listening_event ORDER BY created_at DESC, id DESC LIMIT ?",
+                (max(1, min(limit, 3000)),),
+            ).fetchall()
+        events: list[dict] = []
+        for row in rows:
+            try:
+                payload = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            events.append({"track_id": row[0], "track": payload, "source": row[2], "listened_ms": row[3], "created_at": row[4]})
+        return events
+
+    @staticmethod
+    def _playlist_row(row: tuple) -> dict:
+        duration_ms = int(row[7] or 0)
+        description = str(row[2] or "")
+        return {
+            "id": str(row[0]),
+            "title": str(row[1]),
+            "subtitle": description or "Плейлист XEDOC",
+            "description": description or None,
+            "coverUrl": row[3],
+            "coverTone": "violet",
+            "trackCount": int(row[6] or 0),
+            "durationMinutes": round(duration_ms / 60_000) if duration_ms else None,
+            "local": True,
+        }

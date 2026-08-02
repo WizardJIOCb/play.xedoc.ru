@@ -40,6 +40,8 @@ class PlaylistDTO(APIModel):
     cover_tone: CoverTone | None = None
     accent: str | None = None
     tracks: list[TrackDTO] | None = None
+    description: str | None = None
+    local: bool = False
 
 
 class UserProfileDTO(APIModel):
@@ -58,6 +60,9 @@ class BootstrapPayload(APIModel):
     playlists: list[PlaylistDTO] = Field(default_factory=list)
     recommendations: list[PlaylistDTO] = Field(default_factory=list)
     rediscover: list[TrackDTO] = Field(default_factory=list)
+    local_playlists: list[PlaylistDTO] = Field(default_factory=list)
+    xedoc_recommendations: list[TrackDTO] = Field(default_factory=list)
+    recommendation_insight: str | None = None
 
 
 class SearchPayload(APIModel):
@@ -99,6 +104,47 @@ class SessionPayload(APIModel):
 
 class ActionResponse(APIModel):
     ok: bool = True
+
+
+class LocalPlaylistCreateRequest(APIModel):
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=4000)
+
+
+class LocalPlaylistUpdateRequest(APIModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=4000)
+
+
+class PlaylistCoverRequest(APIModel):
+    data_url: str = Field(min_length=32, max_length=2_000_000)
+
+
+class PlaylistTrackRequest(APIModel):
+    track: TrackDTO
+
+
+class ListeningEventRequest(APIModel):
+    track: TrackDTO
+    listened_ms: int = Field(ge=10_000, le=86_400_000)
+    source: Literal["player", "vk_seed"] = "player"
+
+
+class ExternalTrackDTO(APIModel):
+    title: str = Field(min_length=1, max_length=300)
+    artist: str = Field(min_length=1, max_length=300)
+    duration: str | None = Field(default=None, max_length=16)
+
+
+class VKImportRequest(APIModel):
+    tracks: list[ExternalTrackDTO] = Field(min_length=1, max_length=500)
+    source_url: str = Field(default="https://vk.ru/audios145429079", max_length=500)
+
+
+class VKImportResult(APIModel):
+    playlist: PlaylistDTO
+    matched: int
+    unmatched: list[ExternalTrackDTO] = Field(default_factory=list)
 
 
 class TrackShareRequest(APIModel):

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { toggleLike as persistTrackLike } from '../lib/api'
+import { recordListeningEvent, toggleLike as persistTrackLike } from '../lib/api'
 import type { Track } from '../types'
 
 export interface ListeningHistoryEntry {
@@ -138,6 +138,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const timerRef = useRef<number | null>(null)
   const nextRef = useRef<() => void>(() => undefined)
   const repeatRef = useRef(false)
+  const recordedSelectionRef = useRef<number>(-1)
   const [current, setCurrent] = useState<Track>()
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [queue, setQueue] = useState<Track[]>([])
@@ -231,6 +232,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const entry = { track, playedAt: Date.now() }
     setHistoryEntries((items) => [entry, ...items.filter((item) => item.track.id !== track.id)].slice(0, HISTORY_LIMIT))
   }, [current?.id, selectionVersion])
+
+  useEffect(() => {
+    if (!current || !isPlaying || selectionVersion === 0 || recordedSelectionRef.current === selectionVersion) return
+    if (current.id.startsWith('demo-') || current.streamUrl?.startsWith('/api/shares/')) return
+    const timeout = window.setTimeout(() => {
+      recordedSelectionRef.current = selectionVersion
+      void recordListeningEvent(current, 20_000).catch(() => undefined)
+    }, 20_000)
+    return () => window.clearTimeout(timeout)
+  }, [current, isPlaying, selectionVersion])
 
   useEffect(() => {
     const audio = audioRef.current

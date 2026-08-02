@@ -7,6 +7,8 @@ Private, single-user web player for a Yandex Music library. The interface focuse
 - Yandex Device Flow connection; the password never enters this application.
 - Encrypted server-side token storage and signed HttpOnly cookies.
 - Personal playlists, recommendations, search, likes and audio streaming.
+- Editable XEDOC playlists with descriptions, links, custom covers and public sharing.
+- A separate recommendation layer that learns from listening signals while keeping Yandex recommendations intact.
 - XEDOC Session Builder: 25/50/90-minute mixes, discovery balance, playlist/liked sources and 7/30/90-day local-history exclusion.
 - Lazy playlist loading, persistent local listening history, keyboard controls and responsive mobile UI.
 - Installable PWA shell with a privacy-scoped static cache.

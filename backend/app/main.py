@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import hmac
+import math
+import re
 import secrets
 import time
 from dataclasses import dataclass
@@ -29,7 +33,13 @@ from .models import (
     DeviceAuthPollDTO,
     DeviceAuthPollRequest,
     DeviceAuthStartDTO,
+    ExternalTrackDTO,
+    ListeningEventRequest,
+    LocalPlaylistCreateRequest,
+    LocalPlaylistUpdateRequest,
+    PlaylistCoverRequest,
     PlaylistShareRequest,
+    PlaylistTrackRequest,
     PlaylistDTO,
     PublicShareDTO,
     SearchPayload,
@@ -39,6 +49,8 @@ from .models import (
     TrackDTO,
     TrackShareRequest,
     UserProfileDTO,
+    VKImportRequest,
+    VKImportResult,
 )
 from .security import CookieSigner
 from .store import Credential, CredentialStore, CredentialStoreError
@@ -196,6 +208,7 @@ def create_app(
         try:
             payload = await gateway.bootstrap(credential)
             payload.access_locked = False
+            _attach_xedoc_library(payload, store)
             return payload
         except GatewayUnauthorized:
             store.delete()
@@ -208,7 +221,175 @@ def create_app(
             payload.connected = True
             payload.demo = True
             payload.user = UserProfileDTO(name=credential.user_name, avatar_url=credential.avatar_url)
+            _attach_xedoc_library(payload, store)
             return payload
+
+    @app.get("/api/local-playlists", response_model=list[PlaylistDTO], response_model_exclude_none=True)
+    async def local_playlists(_: None = Depends(require_access)) -> list[PlaylistDTO]:
+        return [PlaylistDTO.model_validate(item) for item in store.list_local_playlists()]
+
+    @app.post("/api/local-playlists", response_model=PlaylistDTO, response_model_exclude_none=True)
+    async def create_local_playlist(
+        body: LocalPlaylistCreateRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> PlaylistDTO:
+        require_credential(request)
+        return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description))
+
+    @app.patch("/api/local-playlists/{playlist_id}", response_model=PlaylistDTO, response_model_exclude_none=True)
+    async def update_local_playlist(
+        playlist_id: str,
+        body: LocalPlaylistUpdateRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> PlaylistDTO:
+        require_credential(request)
+        identifier = _safe_local_playlist_id(playlist_id)
+        playlist = store.update_local_playlist(identifier, title=body.title, description=body.description)
+        return _require_local_playlist(playlist)
+
+    @app.delete("/api/local-playlists/{playlist_id}", response_model=ActionResponse)
+    async def delete_local_playlist(
+        playlist_id: str,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ActionResponse:
+        require_credential(request)
+        playlist = store.delete_local_playlist(_safe_local_playlist_id(playlist_id))
+        _require_local_playlist(playlist)
+        return ActionResponse()
+
+    @app.put("/api/local-playlists/{playlist_id}/cover", response_model=PlaylistDTO, response_model_exclude_none=True)
+    async def update_local_playlist_cover(
+        playlist_id: str,
+        body: PlaylistCoverRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> PlaylistDTO:
+        require_credential(request)
+        data_url = _safe_cover_data_url(body.data_url)
+        playlist = store.update_local_playlist(_safe_local_playlist_id(playlist_id), cover_url=data_url, update_cover=True)
+        return _require_local_playlist(playlist)
+
+    @app.post("/api/local-playlists/{playlist_id}/tracks", response_model=PlaylistDTO, response_model_exclude_none=True)
+    async def add_local_playlist_track(
+        playlist_id: str,
+        body: PlaylistTrackRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> PlaylistDTO:
+        require_credential(request)
+        track = body.track.model_copy(update={"stream_url": None})
+        if track.id.startswith("demo-"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Демо-трек нельзя сохранить")
+        playlist = store.add_local_playlist_track(
+            _safe_local_playlist_id(playlist_id),
+            _safe_identifier(track.id),
+            track.model_dump(mode="json", by_alias=True, exclude_none=True),
+        )
+        return _require_local_playlist(playlist)
+
+    @app.delete("/api/local-playlists/{playlist_id}/tracks/{track_id}", response_model=PlaylistDTO, response_model_exclude_none=True)
+    async def remove_local_playlist_track(
+        playlist_id: str,
+        track_id: str,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> PlaylistDTO:
+        require_credential(request)
+        playlist = store.remove_local_playlist_track(_safe_local_playlist_id(playlist_id), _safe_identifier(track_id))
+        return _require_local_playlist(playlist)
+
+    @app.post("/api/listening-events", response_model=ActionResponse)
+    async def record_listening_event(
+        body: ListeningEventRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ActionResponse:
+        require_credential(request)
+        track = body.track.model_copy(update={"stream_url": None})
+        if not track.id.startswith("demo-"):
+            store.save_listening_event(
+                _safe_identifier(track.id),
+                track.model_dump(mode="json", by_alias=True, exclude_none=True),
+                body.listened_ms,
+                body.source,
+            )
+        return ActionResponse()
+
+    @app.post("/api/import/vk", response_model=VKImportResult, response_model_exclude_none=True)
+    async def import_vk_collection(
+        body: VKImportRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> VKImportResult:
+        credential = require_credential(request)
+        semaphore = asyncio.Semaphore(4)
+
+        async def match(external: ExternalTrackDTO) -> tuple[ExternalTrackDTO, TrackDTO | None]:
+            async with semaphore:
+                try:
+                    result = await gateway.search(credential, f"{external.artist} {external.title}")
+                except GatewayError:
+                    return external, None
+            wanted_title = _normalize_music_text(external.title)
+            wanted_artist = _normalize_music_text(external.artist)
+            best: tuple[float, TrackDTO] | None = None
+            for candidate in result.tracks:
+                title = _normalize_music_text(candidate.title)
+                artists = _normalize_music_text(" ".join(candidate.artists))
+                title_score = 5 if title == wanted_title else 2 if title in wanted_title or wanted_title in title else 0
+                artist_score = 4 if artists == wanted_artist else 2 if artists in wanted_artist or wanted_artist in artists else 0
+                overlap = len(set(wanted_artist.split()) & set(artists.split()))
+                score = title_score + artist_score + min(2, overlap)
+                if score >= 6 and (best is None or score > best[0]):
+                    best = (score, candidate)
+            return external, best[1] if best else None
+
+        results = await asyncio.gather(*(match(track) for track in body.tracks))
+        matched_tracks: dict[str, TrackDTO] = {}
+        unmatched: list[ExternalTrackDTO] = []
+        for external, track in results:
+            seed = track or TrackDTO(
+                id=f"vk-seed-{hashlib.sha1(f'{external.artist}|{external.title}'.encode()).hexdigest()[:20]}",
+                title=external.title,
+                artists=[external.artist],
+                duration_ms=0,
+            )
+            store.save_listening_event(
+                seed.id,
+                seed.model_dump(mode="json", by_alias=True, exclude_none=True),
+                45_000,
+                "vk_seed",
+            )
+            if track:
+                matched_tracks.setdefault(track.id, track)
+            else:
+                unmatched.append(external)
+
+        description = (
+            f"Импортировано из {body.source_url}\n"
+            f"Совпало с каталогом Яндекс Музыки: {len(matched_tracks)} из {len(body.tracks)}. "
+            "Список также используется как сигнал для рекомендаций XEDOC."
+        )
+        playlist_data = next(
+            (item for item in store.list_local_playlists() if item["title"] == "Музыка из VK" and body.source_url in (item.get("description") or "")),
+            None,
+        )
+        if playlist_data:
+            playlist_data = store.update_local_playlist(playlist_data["id"], description=description) or playlist_data
+        else:
+            playlist_data = store.create_local_playlist("Музыка из VK", description)
+        playlist_id = playlist_data["id"]
+        for track in matched_tracks.values():
+            store.add_local_playlist_track(
+                playlist_id,
+                track.id,
+                track.model_copy(update={"stream_url": None}).model_dump(mode="json", by_alias=True, exclude_none=True),
+            )
+        playlist = _require_local_playlist(store.load_local_playlist(playlist_id))
+        return VKImportResult(playlist=playlist, matched=len(matched_tracks), unmatched=unmatched)
 
     @app.post("/api/access/unlock", response_model=ActionResponse)
     async def unlock(body: AccessUnlockRequest, request: Request, response: Response) -> ActionResponse:
@@ -418,10 +599,13 @@ def create_app(
     ) -> ShareLinkDTO:
         credential = require_credential(request)
         playlist_id = _safe_identifier(body.playlist_id)
-        try:
-            playlist = await gateway.playlist(credential, playlist_id)
-        except GatewayError as exc:
-            raise _http_gateway_error(exc) from exc
+        if playlist_id.startswith("local-"):
+            playlist = _require_local_playlist(store.load_local_playlist(_safe_local_playlist_id(playlist_id)))
+        else:
+            try:
+                playlist = await gateway.playlist(credential, playlist_id)
+            except GatewayError as exc:
+                raise _http_gateway_error(exc) from exc
         playlist = _sanitize_shared_playlist(playlist)
         share = store.save_public_share(
             kind="playlist",
@@ -507,6 +691,8 @@ def create_app(
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
         identifier = _safe_identifier(playlist_id)
+        if identifier.startswith("local-"):
+            return _require_local_playlist(store.load_local_playlist(_safe_local_playlist_id(identifier)))
         credential = optional_credential(request)
         if credential is None:
             demo = next((item for item in DEMO_PLAYLISTS if item.id == identifier), None)
@@ -545,6 +731,102 @@ def _safe_identifier(value: str) -> str:
     if not value or len(value) > 256 or any(char in value for char in ("/", "\\", "\x00")):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный идентификатор")
     return value
+
+
+def _normalize_music_text(value: str) -> str:
+    normalized = value.casefold().replace("ё", "е").replace("feat.", " ").replace("ft.", " ")
+    return " ".join(re.sub(r"[^a-zа-я0-9]+", " ", normalized).split())
+
+
+def _safe_local_playlist_id(value: str) -> str:
+    identifier = _safe_identifier(value)
+    if not identifier.startswith("local-"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный плейлист XEDOC")
+    return identifier
+
+
+def _require_local_playlist(value: dict | None) -> PlaylistDTO:
+    if value is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Плейлист XEDOC не найден")
+    return PlaylistDTO.model_validate(value)
+
+
+def _safe_cover_data_url(value: str) -> str:
+    prefixes = {
+        "data:image/jpeg;base64,": b"\xff\xd8\xff",
+        "data:image/png;base64,": b"\x89PNG\r\n\x1a\n",
+        "data:image/webp;base64,": b"RIFF",
+    }
+    prefix = next((item for item in prefixes if value.startswith(item)), None)
+    if prefix is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Поддерживаются JPEG, PNG и WebP")
+    try:
+        payload = base64.b64decode(value[len(prefix):], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Изображение повреждено") from exc
+    if len(payload) > 1_200_000 or len(payload) < 32 or not payload.startswith(prefixes[prefix]):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Изображение повреждено или слишком велико")
+    if prefix.endswith("webp;base64,") and payload[8:12] != b"WEBP":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Изображение повреждено")
+    return value
+
+
+def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> None:
+    payload.local_playlists = [PlaylistDTO.model_validate(item) for item in store.list_local_playlists()]
+    candidates: dict[str, TrackDTO] = {}
+    for track in [*payload.quick_tracks, *payload.liked_tracks, *payload.rediscover]:
+        candidates.setdefault(track.id, track)
+    for summary in store.list_local_playlists():
+        full = store.load_local_playlist(summary["id"])
+        for item in (full or {}).get("tracks", []):
+            try:
+                track = TrackDTO.model_validate(item)
+            except ValueError:
+                continue
+            candidates.setdefault(track.id, track)
+
+    events = store.list_listening_events()
+    artist_affinity: dict[str, float] = {}
+    recent_track_ids: set[str] = set()
+    now = int(time.time())
+    for index, event in enumerate(events):
+        try:
+            track = TrackDTO.model_validate(event["track"])
+        except ValueError:
+            continue
+        age_days = max(0, (now - int(event["created_at"])) / 86_400)
+        recency = math.exp(-age_days / 120)
+        duration_weight = min(2.0, max(.35, int(event["listened_ms"]) / 45_000))
+        source_weight = 2.2 if event["source"] == "vk_seed" else 1.0
+        weight = recency * duration_weight * source_weight
+        for artist in track.artists:
+            key = artist.casefold().strip()
+            artist_affinity[key] = artist_affinity.get(key, 0.0) + weight
+        if index < 30:
+            recent_track_ids.add(track.id)
+
+    scored: list[tuple[float, TrackDTO]] = []
+    for position, track in enumerate(candidates.values()):
+        affinity = sum(artist_affinity.get(artist.casefold().strip(), 0) for artist in track.artists)
+        discovery = 1.4 if track.id not in recent_track_ids else -3.5
+        liked = 1.8 if track.liked else 0
+        scored.append((affinity + discovery + liked - position * .002, track))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    artist_counts: dict[str, int] = {}
+    recommendations: list[TrackDTO] = []
+    for _, track in scored:
+        artist_key = track.artists[0].casefold().strip() if track.artists else ""
+        if artist_counts.get(artist_key, 0) >= 2:
+            continue
+        recommendations.append(track)
+        artist_counts[artist_key] = artist_counts.get(artist_key, 0) + 1
+        if len(recommendations) >= 12:
+            break
+    payload.xedoc_recommendations = recommendations
+    if events:
+        payload.recommendation_insight = f"Учли {len(events)} сигналов прослушивания · больше знакомого, меньше недавних повторов"
+    else:
+        payload.recommendation_insight = "Начинаем с вашей коллекции и станем точнее после первых прослушиваний"
 
 
 def _safe_share_token(value: str) -> str:

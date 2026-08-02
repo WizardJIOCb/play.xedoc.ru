@@ -23,6 +23,8 @@ export interface Playlist {
   coverTone?: CoverTone
   accent?: string
   tracks?: Track[]
+  description?: string
+  local?: boolean
 }
 
 export interface UserProfile {
@@ -41,6 +43,9 @@ export interface BootstrapPayload {
   playlists: Playlist[]
   recommendations: Playlist[]
   rediscover: Track[]
+  localPlaylists: Playlist[]
+  xedocRecommendations: Track[]
+  recommendationInsight?: string
 }
 
 export interface SearchPayload {

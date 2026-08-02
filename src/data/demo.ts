@@ -54,4 +54,7 @@ export const demoBootstrap: BootstrapPayload = {
   playlists: demoPlaylists.slice(0, 4),
   recommendations: demoPlaylists.slice(1, 6),
   rediscover: [demoTracks[5], demoTracks[0], demoTracks[3], demoTracks[8]],
+  localPlaylists: [],
+  xedocRecommendations: [],
+  recommendationInsight: 'Подключите коллекцию — рекомендации XEDOC будут учиться на прослушиваниях.',
 }

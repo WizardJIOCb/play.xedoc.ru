@@ -59,6 +59,7 @@ class FakeGateway:
         self.poll_result: Credential | None = TEST_CREDENTIAL
         self.likes: list[tuple[str, bool]] = []
         self.playlist_ids: list[str] = []
+        self.search_queries: list[str] = []
 
     async def start_device_auth(self) -> DeviceAuthorization:
         return DeviceAuthorization(
@@ -88,7 +89,7 @@ class FakeGateway:
         )
 
     async def search(self, credential: Credential, query: str) -> SearchPayload:
-        assert query == "signal"
+        self.search_queries.append(query)
         return SearchPayload(tracks=[TEST_TRACK], playlists=[TEST_PLAYLIST])
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None:
@@ -155,4 +156,3 @@ def connect(client: TestClient) -> None:
     response = client.post("/api/auth/device/poll", json={"deviceId": attempt_id})
     assert response.status_code == 200
     assert response.json() == {"connected": True}
-

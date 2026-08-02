@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Clock3,
   Command,
-  Disc3,
   Flame,
   Headphones,
   Heart,
@@ -15,6 +14,7 @@ import {
   LogOut,
   Menu,
   Play,
+  Pencil,
   Radio,
   Search,
   Shuffle,
@@ -28,6 +28,8 @@ import { ConnectModal } from './components/ConnectModal'
 import { CoverArt } from './components/CoverArt'
 import { PlayerBar } from './components/PlayerBar'
 import { PlaylistCard } from './components/PlaylistCard'
+import { PlaylistEditor } from './components/PlaylistEditor'
+import { PLAYLISTS_CHANGED_EVENT } from './components/PlaylistPicker'
 import { PublicSharePage } from './components/PublicSharePage'
 import { SearchPalette } from './components/SearchPalette'
 import { SessionBuilder } from './components/SessionBuilder'
@@ -86,7 +88,7 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: Boots
           <span className="orbit orbit--one"><i /></span>
           <span className="orbit orbit--two"><i /></span>
           <span className="orbit orbit--three"><i /></span>
-          <div className="hero-session__core"><Disc3 size={38} /><strong>58%</strong><small>нового</small></div>
+          <div className="hero-session__core"><strong>58%</strong><small>нового</small></div>
           <div className="hero-session__note note--top"><Zap size={15} /> мягкая энергия</div>
           <div className="hero-session__note note--bottom"><Clock3 size={15} /> cooldown 30 дней</div>
         </div>
@@ -103,6 +105,13 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: Boots
         <SectionHeader title="Сделано для вас" hint="Рекомендации Яндекса, но в спокойном порядке" action="Обновить" />
         <div className="playlist-grid">
           {data.recommendations.slice(0, 5).map((playlist) => <PlaylistCard key={playlist.id} playlist={playlist} onOpen={onPlaylist} onPlay={onPlaylistPlay} />)}
+        </div>
+      </section>
+
+      <section className="content-section xedoc-recommendations">
+        <SectionHeader title="XEDOC рекомендует" hint={data.recommendationInsight || 'Персональная выдача учится на ваших прослушиваниях'} />
+        <div className="track-table">
+          {data.xedocRecommendations.slice(0, 8).map((track, index) => <TrackRow key={`xedoc-${track.id}`} track={track} context={data.xedocRecommendations} index={index} />)}
         </div>
       </section>
 
@@ -156,10 +165,11 @@ function DiscoverView({ data, onSession, onPlaylist, onPlaylistPlay }: { data: B
   )
 }
 
-function LibraryView({ data, onPlaylist, onPlaylistPlay, onSession }: { data: BootstrapPayload; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onSession: () => void }) {
+function LibraryView({ data, onPlaylist, onPlaylistPlay, onSession, onCreate }: { data: BootstrapPayload; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onSession: () => void; onCreate: () => void }) {
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [filter, setFilter] = useState<'all' | 'mine'>('all')
-  const playlists = filter === 'mine' ? data.playlists : data.playlists.concat(data.recommendations.slice(0, 2))
+  const ownPlaylists = data.localPlaylists.concat(data.playlists)
+  const playlists = filter === 'mine' ? ownPlaylists : ownPlaylists.concat(data.recommendations.slice(0, 2))
   return (
     <>
       <div className="library-toolbar">
@@ -167,7 +177,7 @@ function LibraryView({ data, onPlaylist, onPlaylistPlay, onSession }: { data: Bo
         <div className="layout-switch"><button className={layout === 'grid' ? 'is-active' : ''} type="button" onClick={() => setLayout('grid')} aria-label="Сетка"><Menu size={17} /></button><button className={layout === 'list' ? 'is-active' : ''} type="button" onClick={() => setLayout('list')} aria-label="Список"><ListMusic size={17} /></button></div>
       </div>
       <section className="content-section content-section--first">
-        <SectionHeader title="Плейлисты" hint={`${data.playlists.length} коллекции · синхронизировано с Яндекс Музыкой`} action="Новый плейлист" />
+        <SectionHeader title="Плейлисты" hint={`${data.localPlaylists.length} XEDOC · ${data.playlists.length} из Яндекс Музыки`} action="Новый плейлист" onAction={onCreate} />
         <div className={`playlist-grid ${layout === 'list' ? 'playlist-grid--list' : ''}`}>
           {playlists.map((playlist) => <PlaylistCard key={playlist.id} playlist={playlist} wide={layout === 'list'} onOpen={onPlaylist} onPlay={onPlaylistPlay} />)}
         </div>
@@ -180,7 +190,13 @@ function LibraryView({ data, onPlaylist, onPlaylistPlay, onSession }: { data: Bo
   )
 }
 
-function PlaylistDetailView({ playlist, loading, error, onBack }: { playlist: Playlist; loading: boolean; error?: string; onBack: () => void }) {
+function linkifyDescription(text: string) {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, index) => part.match(/^https?:\/\//)
+    ? <a key={`${part}-${index}`} href={part} target="_blank" rel="noreferrer">{part}</a>
+    : part)
+}
+
+function PlaylistDetailView({ playlist, loading, error, onBack, onEdit }: { playlist: Playlist; loading: boolean; error?: string; onBack: () => void; onEdit: (playlist: Playlist) => void }) {
   const player = usePlayer()
   const tracks = playlist.tracks || []
   return (
@@ -191,9 +207,9 @@ function PlaylistDetailView({ playlist, loading, error, onBack }: { playlist: Pl
         <div className="playlist-detail__meta">
           <span className="eyebrow">ПЛЕЙЛИСТ</span>
           <h1>{playlist.title}</h1>
-          <p>{playlist.subtitle || 'Ваша коллекция в Яндекс Музыке'}</p>
+          <p className="playlist-description">{linkifyDescription(playlist.description || playlist.subtitle || 'Ваша коллекция в Яндекс Музыке')}</p>
           <span>{playlist.trackCount} треков{playlist.durationMinutes ? ` · ${Math.floor(playlist.durationMinutes / 60)} ч ${playlist.durationMinutes % 60} мин` : ''}</span>
-          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5))}><Shuffle size={17} /> Перемешать</button><ShareButton playlist={playlist} labeled /></div>
+          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5))}><Shuffle size={17} /> Перемешать</button><ShareButton playlist={playlist} labeled />{playlist.local && <button className="secondary-button" type="button" onClick={() => onEdit(playlist)}><Pencil size={17} /> Редактировать</button>}</div>
         </div>
       </header>
       <div className="playlist-detail__summary"><span><Sparkles size={15} /> XEDOC-анализ</span><p><strong>{new Set(tracks.flatMap((track) => track.artists)).size || '—'} артистов</strong><i />повторы разведены по очереди<i />можно собрать сессию без треков последних 30 дней</p></div>
@@ -278,6 +294,8 @@ function PrivateApp() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>()
   const [playlistLoading, setPlaylistLoading] = useState(false)
   const [playlistError, setPlaylistError] = useState('')
+  const [playlistEditorOpen, setPlaylistEditorOpen] = useState(false)
+  const [editingPlaylist, setEditingPlaylist] = useState<Playlist>()
   const [notice, setNotice] = useState('')
   const player = usePlayer()
 
@@ -291,6 +309,11 @@ function PrivateApp() {
   }, [])
 
   useEffect(refresh, [refresh])
+
+  useEffect(() => {
+    window.addEventListener(PLAYLISTS_CHANGED_EVENT, refresh)
+    return () => window.removeEventListener(PLAYLISTS_CHANGED_EVENT, refresh)
+  }, [refresh])
 
   const openPlaylist = useCallback((playlist: Playlist) => {
     setSelectedPlaylist(playlist)
@@ -350,10 +373,10 @@ function PrivateApp() {
 
   const title = viewTitles[view]
   const content = useMemo(() => {
-    if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} />
+    if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (view === 'home') return <HomeView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
     if (view === 'discover') return <DiscoverView data={data} onSession={() => setSessionOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
-    if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} />
+    if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => setSessionOpen(true)} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={data.likedTracks} total={data.likedCount} />
     return <TrackCollectionView type="history" tracks={player.history} />
   }, [data, openPlaylist, playPlaylist, player.history, playlistError, playlistLoading, selectedPlaylist, view])
@@ -364,7 +387,7 @@ function PrivateApp() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
-      <Sidebar view={view} playlists={data.playlists} collapsed={sidebarCollapsed} onView={changeView} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
+      <Sidebar view={view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} onView={changeView} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => setSessionOpen(true)} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist} onClick={() => setSelectedPlaylist(undefined)}><ArrowLeft size={18} /></button></div>
@@ -391,6 +414,16 @@ function PrivateApp() {
       <SearchPalette open={searchOpen} suggestions={data.quickTracks} onClose={() => setSearchOpen(false)} onPlaylistPlay={playPlaylist} />
       <SessionBuilder open={sessionOpen} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
+      <PlaylistEditor
+        open={playlistEditorOpen}
+        playlist={editingPlaylist}
+        onClose={() => setPlaylistEditorOpen(false)}
+        onSaved={(playlist) => {
+          if (selectedPlaylist?.id === playlist.id) void getPlaylist(playlist.id).then(setSelectedPlaylist)
+          refresh()
+        }}
+        onDeleted={() => { setSelectedPlaylist(undefined); refresh() }}
+      />
 
       <nav className="mobile-nav" aria-label="Мобильная навигация">
         {[['home', Headphones, 'Главная'], ['discover', Radio, 'Обзор'], ['library', ListMusic, 'Библиотека'], ['liked', Heart, 'Любимые'], ['history', History, 'История']].map(([id, Icon, label]) => {

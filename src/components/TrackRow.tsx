@@ -1,9 +1,10 @@
-import { Heart, ListPlus, Pause, Play } from 'lucide-react'
+import { Heart, Pause, Play } from 'lucide-react'
 import { useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import type { Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ShareButton } from './ShareButton'
+import { PlaylistPicker } from './PlaylistPicker'
 
 function formatDuration(durationMs: number) {
   const total = Math.round(durationMs / 1000)
@@ -48,9 +49,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       </button>}
       <span className="track-row__duration">{formatDuration(track.durationMs)}</span>
       {!readonly && <ShareButton track={track} className="track-row__more" />}
-      {!readonly && <button className="icon-button track-row__next" type="button" aria-label="Добавить следующим" onClick={() => player.addNext(track)}>
-        <ListPlus size={18} />
-      </button>}
+      {!readonly && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />}
     </div>
   )
 }

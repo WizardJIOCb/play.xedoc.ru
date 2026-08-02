@@ -51,6 +51,38 @@ export async function getPlaylist(playlistId: string): Promise<Playlist> {
   return request<Playlist>(`/playlists/${encodeURIComponent(playlistId)}`)
 }
 
+export async function createLocalPlaylist(title: string, description = ''): Promise<Playlist> {
+  return request<Playlist>('/local-playlists', { method: 'POST', body: JSON.stringify({ title, description }) })
+}
+
+export async function getLocalPlaylists(): Promise<Playlist[]> {
+  return request<Playlist[]>('/local-playlists')
+}
+
+export async function updateLocalPlaylist(playlistId: string, changes: { title?: string; description?: string }): Promise<Playlist> {
+  return request<Playlist>(`/local-playlists/${encodeURIComponent(playlistId)}`, { method: 'PATCH', body: JSON.stringify(changes) })
+}
+
+export async function deleteLocalPlaylist(playlistId: string): Promise<void> {
+  await request(`/local-playlists/${encodeURIComponent(playlistId)}`, { method: 'DELETE' })
+}
+
+export async function updateLocalPlaylistCover(playlistId: string, dataUrl: string): Promise<Playlist> {
+  return request<Playlist>(`/local-playlists/${encodeURIComponent(playlistId)}/cover`, { method: 'PUT', body: JSON.stringify({ dataUrl }) })
+}
+
+export async function addTrackToLocalPlaylist(playlistId: string, track: Track): Promise<Playlist> {
+  return request<Playlist>(`/local-playlists/${encodeURIComponent(playlistId)}/tracks`, { method: 'POST', body: JSON.stringify({ track }) })
+}
+
+export async function removeTrackFromLocalPlaylist(playlistId: string, trackId: string): Promise<Playlist> {
+  return request<Playlist>(`/local-playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' })
+}
+
+export async function recordListeningEvent(track: Track, listenedMs: number): Promise<void> {
+  await request('/listening-events', { method: 'POST', body: JSON.stringify({ track, listenedMs, source: 'player' }) })
+}
+
 export async function buildSession(preferences: SessionPreferences): Promise<{ tracks: Track[] }> {
   return request<{ tracks: Track[] }>('/sessions/build', {
     method: 'POST',

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
 import { ShareButton } from './ShareButton'
+import { PlaylistPicker } from './PlaylistPicker'
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return '0:00'
@@ -54,6 +55,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
 
       <div className="player-bar__tools">
         {!readonly && track && <ShareButton track={track} />}
+        {!readonly && track && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}
         {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}
         <div className="volume-control">
           {player.volume === 0 ? <VolumeX size={18} /> : player.volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}

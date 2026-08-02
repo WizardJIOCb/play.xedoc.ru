@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
@@ -111,6 +112,58 @@ def test_connected_music_endpoints(
     )
     assert session.status_code == 200
     assert session.json()["tracks"][0]["title"] == "Test Signal"
+
+
+def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient) -> None:
+    connect(client)
+    created = client.post("/api/local-playlists", json={"title": "My XEDOC list", "description": "See https://example.com"})
+    assert created.status_code == 200
+    playlist_id = created.json()["id"]
+    assert created.json()["local"] is True
+
+    added = client.post(f"/api/local-playlists/{playlist_id}/tracks", json={"track": {
+        "id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000,
+    }})
+    assert added.status_code == 200
+    assert added.json()["trackCount"] == 1
+    assert added.json()["tracks"][0]["id"] == "101"
+
+    image = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 40).decode()
+    covered = client.put(f"/api/local-playlists/{playlist_id}/cover", json={"dataUrl": image})
+    assert covered.status_code == 200
+    assert covered.json()["coverUrl"] == image
+
+    listened = client.post("/api/listening-events", json={
+        "track": {"id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000},
+        "listenedMs": 20_000,
+    })
+    assert listened.json() == {"ok": True}
+    bootstrap = client.get("/api/bootstrap").json()
+    assert bootstrap["localPlaylists"][0]["id"] == playlist_id
+    assert bootstrap["xedocRecommendations"][0]["id"] == "101"
+    assert "сигналов" in bootstrap["recommendationInsight"]
+
+    shared = client.post("/api/shares/playlists", json={"playlistId": playlist_id})
+    assert shared.status_code == 200
+    removed = client.delete(f"/api/local-playlists/{playlist_id}/tracks/101")
+    assert removed.json()["trackCount"] == 0
+    assert client.delete(f"/api/local-playlists/{playlist_id}").json() == {"ok": True}
+
+
+def test_vk_import_matches_catalog_and_seeds_preferences(client: TestClient) -> None:
+    connect(client)
+    imported = client.post("/api/import/vk", json={
+        "sourceUrl": "https://vk.ru/audios145429079",
+        "tracks": [{"title": "Test Signal", "artist": "Fixture Artist", "duration": "3:21"}],
+    })
+    assert imported.status_code == 200
+    body = imported.json()
+    assert body["matched"] == 1
+    assert body["unmatched"] == []
+    assert body["playlist"]["title"] == "Музыка из VK"
+    assert body["playlist"]["tracks"][0]["id"] == "101"
+    bootstrap = client.get("/api/bootstrap").json()
+    assert "сигналов" in bootstrap["recommendationInsight"]
 
 
 def test_track_share_is_public_and_only_streams_the_shared_track(
