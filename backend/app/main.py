@@ -919,8 +919,37 @@ def create_app(
         if profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
         safe_username = _safe_username(username)
+        _decorate_public_top_tracks(profile, safe_username)
         _decorate_public_now_playing(profile, safe_username)
         return PublicProfileDTO.model_validate(profile)
+
+    @app.get(
+        "/api/profiles/{username}/top-tracks/{track_id}/stream",
+        response_class=RedirectResponse,
+    )
+    async def public_profile_top_track_stream(username: str, track_id: str, request: Request) -> RedirectResponse:
+        await enforce_rate_limit(request, "public-profile-top-stream", maximum=240, window_seconds=60)
+        safe_username = _safe_username(username)
+        track_identifier = _safe_identifier(track_id)
+        loaded = store.load_public_top_track(safe_username, track_identifier)
+        if loaded is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не опубликован в профиле")
+        _track, owner_id = loaded
+        try:
+            credential = store.load_for_user(owner_id)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Музыка временно недоступна") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Владелец отключил музыкальную коллекцию")
+        try:
+            url = await gateway.stream_url(credential, track_identifier)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        return RedirectResponse(
+            url=url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Cache-Control": "public, no-store, max-age=0", "Referrer-Policy": "no-referrer"},
+        )
 
     @app.get(
         "/api/profiles/{username}/now-playing",
@@ -1541,6 +1570,22 @@ def _public_profile_stream_path(username: str, playlist_id: str, track_id: str) 
 
 def _public_now_playing_stream_path(username: str, track_id: str) -> str:
     return f"/api/profiles/{quote(username, safe='')}/now-playing/tracks/{quote(track_id, safe='')}/stream"
+
+
+def _public_profile_top_stream_path(username: str, track_id: str) -> str:
+    return f"/api/profiles/{quote(username, safe='')}/top-tracks/{quote(track_id, safe='')}/stream"
+
+
+def _decorate_public_top_tracks(profile: dict, username: str) -> None:
+    tracks = profile.get("topTracks")
+    if not isinstance(tracks, list):
+        return
+    for track in tracks:
+        if not isinstance(track, dict):
+            continue
+        track_id = str(track.get("id", ""))
+        if track_id:
+            track["streamUrl"] = _public_profile_top_stream_path(username, track_id)
 
 
 def _decorate_public_now_playing(profile: dict, username: str) -> None:

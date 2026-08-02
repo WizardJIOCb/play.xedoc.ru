@@ -256,7 +256,12 @@ def test_public_profile_exposes_only_explicitly_public_playlists(client: TestCli
     assert [item["title"] for item in body["playlists"]] == ["Open signals"]
     assert body["stats"] == {"totalPlays": 1, "uniqueTracks": 1, "totalListenedMs": 20_000}
     assert body["topTracks"][0]["playCount"] == 1
-    assert "streamUrl" not in body["topTracks"][0]
+    top_stream_path = body["topTracks"][0]["streamUrl"]
+    assert top_stream_path == "/api/profiles/testuser/top-tracks/101/stream"
+    top_stream = client.get(top_stream_path, follow_redirects=False)
+    assert top_stream.status_code == 307
+    assert top_stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
+    assert client.get("/api/profiles/testuser/top-tracks/unknown/stream").status_code == 404
 
     playlist = client.get(f"/api/profiles/testuser/playlists/{public['id']}")
     assert playlist.status_code == 200

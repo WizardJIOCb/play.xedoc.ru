@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Play, Radio, UserRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Pause, Play, Radio, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
@@ -137,7 +137,10 @@ export function PublicProfilePage({ username }: { username: string }) {
 
             {profile.topTracks.length > 0 && <section className="public-profile-section public-profile-top">
               <header><div><span className="eyebrow">СТАТИСТИКА ВКУСА</span><h2>Часто слушает</h2></div><small>Без раскрытия полной истории</small></header>
-              <div>{profile.topTracks.map((track, index) => <article key={track.id}><span>{index + 1}</span><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="public-profile-top-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><em>{track.playCount || 0} просл.</em></article>)}</div>
+              <div>{profile.topTracks.map((track, index) => {
+                const active = player.current?.id === track.id
+                return <article key={track.id} className={active ? 'is-active' : ''}><button className="public-profile-top__play" type="button" aria-label={active && player.isPlaying ? `Пауза ${track.title}` : `Включить ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, profile.topTracks, index)}>{active && player.isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}</button><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="public-profile-top-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><em>{track.playCount || 0} просл.</em></article>
+              })}</div>
             </section>}
           </>
         )}

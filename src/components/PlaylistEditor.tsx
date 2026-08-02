@@ -1,8 +1,8 @@
-import { Camera, Globe2, LoaderCircle, LockKeyhole, Save, Trash2, X } from 'lucide-react'
+import { Camera, Check, Globe2, LoaderCircle, LockKeyhole, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { createLocalPlaylist, deleteLocalPlaylist, getPlaylist, removeTrackFromLocalPlaylist, updateLocalPlaylist, updateLocalPlaylistCover } from '../lib/api'
+import { addTrackToLocalPlaylist, createLocalPlaylist, deleteLocalPlaylist, getPlaylist, removeTrackFromLocalPlaylist, searchMusic, updateLocalPlaylist, updateLocalPlaylistCover } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
-import type { Playlist } from '../types'
+import type { Playlist, Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { PLAYLISTS_CHANGED_EVENT } from './PlaylistPicker'
@@ -25,6 +25,11 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
   const [title, setTitle] = useState(playlist?.title || '')
   const [description, setDescription] = useState(playlist?.description || playlist?.subtitle || '')
   const [isPublic, setIsPublic] = useState(Boolean(playlist?.isPublic))
+  const [tracks, setTracks] = useState<Track[]>(playlist?.tracks || [])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Track[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchAttempted, setSearchAttempted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -34,12 +39,17 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     setTitle(playlist?.title || '')
     setDescription(playlist?.description || playlist?.subtitle || '')
     setIsPublic(Boolean(playlist?.isPublic))
+    setTracks(playlist?.tracks || [])
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchAttempted(false)
     setError('')
     if (playlist?.id && !playlist.tracks) void getPlaylist(playlist.id).then((value) => {
       setLoaded(value)
       setTitle(value.title)
       setDescription(value.description || value.subtitle || '')
       setIsPublic(Boolean(value.isPublic))
+      setTracks(value.tracks || [])
     }).catch(() => setError('Не удалось загрузить плейлист'))
   }, [open, playlist])
 
@@ -51,10 +61,19 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     setBusy(true)
     setError('')
     try {
-      const value = loaded?.id
+      let value = loaded?.id
         ? await updateLocalPlaylist(loaded.id, { title: title.trim(), description: description.trim(), isPublic })
         : await createLocalPlaylist(title.trim(), description.trim(), isPublic)
       if (!loaded?.id) trackGoal('playlist_created', { isPublic })
+      const originalTracks = loaded?.tracks || []
+      const originalIds = new Set(originalTracks.map((track) => track.id))
+      const desiredIds = new Set(tracks.map((track) => track.id))
+      for (const track of tracks) {
+        if (!originalIds.has(track.id)) value = await addTrackToLocalPlaylist(value.id, track)
+      }
+      for (const track of originalTracks) {
+        if (!desiredIds.has(track.id)) value = await removeTrackFromLocalPlaylist(value.id, track.id)
+      }
       setLoaded(value)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       onSaved(value)
@@ -82,16 +101,21 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     }
   }
 
-  const remove = async (trackId: string) => {
-    if (!loaded) return
-    setBusy(true)
+  const search = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const query = searchQuery.trim()
+    if (!query) return
+    setSearching(true)
+    setSearchAttempted(true)
+    setError('')
     try {
-      const value = await removeTrackFromLocalPlaylist(loaded.id, trackId)
-      setLoaded(value)
-      window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
-      onSaved(value)
+      const result = await searchMusic(query)
+      setSearchResults(result.tracks.slice(0, 12))
+    } catch (reason) {
+      setSearchResults([])
+      setError(reason instanceof Error ? reason.message : 'Не удалось выполнить поиск музыки')
     } finally {
-      setBusy(false)
+      setSearching(false)
     }
   }
 
@@ -112,6 +136,7 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section className="playlist-editor" role="dialog" aria-modal="true" aria-label={loaded ? 'Редактирование плейлиста' : 'Новый плейлист'}>
         <header><div><span className="eyebrow">XEDOC PLAYLIST</span><h2>{loaded ? 'Настроить плейлист' : 'Новый плейлист'}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><X size={20} /></button></header>
+        <div className="playlist-editor__scroll">
         <div className="playlist-editor__body">
           <div className="playlist-editor__cover-wrap">
             <CoverArt title={title || 'Новый плейлист'} url={loaded?.coverUrl} tone={loaded?.coverTone || 'violet'} className="playlist-editor__cover" />
@@ -129,8 +154,21 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
             </label>
           </form>
         </div>
-        {loaded && <div className="playlist-editor__tracks"><div><strong>Треки</strong><span>{loaded.tracks?.length || 0}</span></div>{loaded.tracks?.map((track) => <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><button className="icon-button" type="button" disabled={busy} onClick={() => void remove(track.id)} aria-label={`Убрать ${track.title}`}><X size={17} /></button></div>)}</div>}
+        <section className="playlist-editor__music" aria-label="Добавление треков">
+          <div className="playlist-editor__music-heading"><div><strong>Добавить музыку</strong><small>Найдите трек или исполнителя и соберите плейлист прямо здесь.</small></div><span>{tracks.length} в плейлисте</span></div>
+          <form className="playlist-editor__search" onSubmit={(event) => void search(event)}>
+            <label><Search size={18} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Трек или исполнитель" aria-label="Поиск треков для плейлиста" /></label>
+            <button className="secondary-button" type="submit" disabled={searching || !searchQuery.trim()}>{searching ? <LoaderCircle className="spin" size={17} /> : <Search size={17} />} Найти</button>
+          </form>
+          {searchResults.length > 0 && <div className="playlist-editor__results">{searchResults.map((track) => {
+            const added = tracks.some((item) => item.id === track.id)
+            return <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><button className={added ? 'is-added' : ''} type="button" disabled={added || busy} onClick={() => setTracks((current) => current.some((item) => item.id === track.id) ? current : [...current, track])}>{added ? <Check size={16} /> : <Plus size={16} />}{added ? 'Добавлен' : 'Добавить'}</button></div>
+          })}</div>}
+          {searchAttempted && !searching && searchResults.length === 0 && <div className="playlist-editor__search-empty">По этому запросу треков не найдено.</div>}
+        </section>
+        <div className="playlist-editor__tracks"><div><strong>Треки плейлиста</strong><span>{tracks.length}</span></div>{tracks.length ? tracks.map((track) => <div key={track.id}><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="playlist-editor__track-cover" /><span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span><button className="icon-button" type="button" disabled={busy} onClick={() => setTracks((current) => current.filter((item) => item.id !== track.id))} aria-label={`Убрать ${track.title}`}><X size={17} /></button></div>) : <div className="playlist-editor__tracks-empty">Пока пусто — найдите музыку выше.</div>}</div>
         {error && <div className="form-error playlist-editor__error">{error}</div>}
+        </div>
         <footer>{loaded ? <button className="playlist-editor__delete" type="button" disabled={busy} onClick={() => void destroy()}><Trash2 size={17} /> Удалить</button> : <span />}<div><button className="secondary-button" type="button" onClick={onClose}>Отмена</button><button className="primary-button" type="submit" form="playlist-editor-form" disabled={busy || !title.trim()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Save size={17} />} Сохранить</button></div></footer>
       </section>
     </div>

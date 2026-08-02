@@ -13,7 +13,7 @@ vi.mock('../lib/api', async (importOriginal) => {
       memberSince: 1_700_000_000,
       publicPlaylistCount: 1,
       stats: { totalPlays: 42, uniqueTracks: 9, totalListenedMs: 7_200_000 },
-      topTracks: [],
+      topTracks: [{ id: 'top', title: 'Top track', artists: ['Top artist'], durationMs: 210_000, streamUrl: '/api/public-top', playCount: 7 }],
       playlists: [{ id: 'local-open', title: 'Open mix', trackCount: 8, isPublic: true }],
       nowPlaying: {
         updatedAt: 1_700_000_100,
@@ -38,6 +38,7 @@ describe('PublicProfilePage', () => {
     expect(screen.getAllByRole('button', { name: /Open mix/ })).toHaveLength(2)
     expect(screen.getByRole('region', { name: 'Слушает сейчас' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Live track/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить Top track' })).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: /Open mix/ })[0])
     expect(await screen.findByRole('heading', { name: 'Open mix' })).toBeInTheDocument()

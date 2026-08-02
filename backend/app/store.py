@@ -1097,6 +1097,36 @@ class CredentialStore:
             profile["nowPlaying"] = now_playing[0]
         return profile
 
+    def load_public_top_track(self, username: str, track_id: str) -> tuple[dict, str] | None:
+        """Return a track only when it belongs to the five public profile highlights."""
+        with self._lock, self._connect() as connection:
+            user = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE",
+                (username,),
+            ).fetchone()
+            if user is None:
+                return None
+            user_id = str(user[0])
+            rows = connection.execute(
+                """
+                SELECT payload
+                FROM user_track_listening_stat
+                WHERE user_id = ?
+                ORDER BY play_count DESC, total_listened_ms DESC, last_played_at DESC
+                LIMIT 5
+                """,
+                (user_id,),
+            ).fetchall()
+        for row in rows:
+            try:
+                track = json.loads(row[0])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if str(track.get("id", "")) == track_id:
+                track.pop("streamUrl", None)
+                return track, user_id
+        return None
+
     def save_now_playing(self, track_id: str, payload: dict, playlist_id: str | None = None) -> None:
         user_id = self.current_user_id()
         if user_id == ANONYMOUS_USER_ID:
