@@ -113,6 +113,77 @@ def test_connected_music_endpoints(
     assert session.json()["tracks"][0]["title"] == "Test Signal"
 
 
+def test_track_share_is_public_and_only_streams_the_shared_track(
+    client: TestClient,
+) -> None:
+    connect(client)
+    created = client.post(
+        "/api/shares/tracks",
+        json={"track": {
+            "id": "101",
+            "title": "Test Signal",
+            "artists": ["Fixture Artist"],
+            "album": "Fixture Album",
+            "durationMs": 201_000,
+            "coverUrl": "https://avatars.yandex.net/example/400x400",
+            "liked": True,
+            "streamUrl": "/api/tracks/101/stream",
+        }},
+    )
+    assert created.status_code == 200
+    token = created.json()["token"]
+    assert created.json()["path"] == f"/share/{token}"
+
+    client.cookies.clear()
+    public = client.get(f"/api/shares/{token}")
+    assert public.status_code == 200
+    assert public.json()["kind"] == "track"
+    assert public.json()["sharedBy"] == "Rodion Test"
+    assert public.json()["track"]["streamUrl"] == f"/api/shares/{token}/tracks/101/stream"
+    assert "liked" not in public.json()["track"]
+
+    stream = client.get(public.json()["track"]["streamUrl"], follow_redirects=False)
+    assert stream.status_code == 307
+    assert stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
+    denied = client.get(f"/api/shares/{token}/tracks/999/stream", follow_redirects=False)
+    assert denied.status_code == 404
+
+
+def test_playlist_share_is_public_and_reuses_its_link(
+    client: TestClient,
+    fake_gateway: FakeGateway,
+) -> None:
+    connect(client)
+    first = client.post("/api/shares/playlists", json={"playlistId": "42:7"})
+    second = client.post("/api/shares/playlists", json={"playlistId": "42:7"})
+    assert first.status_code == 200
+    assert second.json()["token"] == first.json()["token"]
+    assert fake_gateway.playlist_ids[-2:] == ["42:7", "42:7"]
+
+    token = first.json()["token"]
+    client.cookies.clear()
+    public = client.get(f"/api/shares/{token}")
+    assert public.status_code == 200
+    assert public.json()["kind"] == "playlist"
+    assert public.json()["playlist"]["title"] == "Fixture Playlist"
+    assert public.json()["playlist"]["tracks"][0]["streamUrl"] == f"/api/shares/{token}/tracks/101/stream"
+
+
+def test_share_creation_requires_connected_owner(client: TestClient) -> None:
+    unlock(client)
+    response = client.post(
+        "/api/shares/tracks",
+        json={"track": {
+            "id": "101",
+            "title": "Test Signal",
+            "artists": ["Fixture Artist"],
+            "durationMs": 201_000,
+        }},
+    )
+    assert response.status_code == 401
+    assert client.get("/api/shares/not-a-real-token").status_code == 404
+
+
 def test_demo_search_session_and_playlist(client: TestClient) -> None:
     unlock(client)
     search = client.get("/api/search", params={"q": "свет"})

@@ -2,13 +2,14 @@ import { Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, SkipForward,
 import { useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
+import { ShareButton } from './ShareButton'
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return '0:00'
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 }
 
-export function PlayerBar({ onQueue }: { onQueue: () => void }) {
+export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; readonly?: boolean }) {
   const player = usePlayer()
   const [liking, setLiking] = useState(false)
   const track = player.current
@@ -27,11 +28,11 @@ export function PlayerBar({ onQueue }: { onQueue: () => void }) {
   }
 
   return (
-    <footer className={`player-bar ${track ? 'player-bar--ready' : ''}`}>
+    <footer className={`player-bar ${track ? 'player-bar--ready' : ''} ${readonly ? 'player-bar--readonly' : ''}`}>
       <div className="player-bar__track">
         <CoverArt title={track?.title || 'XEDOC'} url={track?.coverUrl} tone={track?.coverTone || 'mono'} className="player-bar__cover" />
         <div><strong>{track?.title || 'Выберите музыку'}</strong><span>{track?.artists.join(', ') || 'Плейлисты и рекомендации ждут вас'}</span></div>
-        <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>
+        {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
       </div>
 
       <div className="player-bar__center">
@@ -52,7 +53,8 @@ export function PlayerBar({ onQueue }: { onQueue: () => void }) {
       </div>
 
       <div className="player-bar__tools">
-        <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>
+        {!readonly && track && <ShareButton track={track} />}
+        {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}
         <div className="volume-control">
           {player.volume === 0 ? <VolumeX size={18} /> : player.volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}
           <input type="range" min="0" max="1" step="0.01" value={player.volume} onChange={(event) => player.setVolume(Number(event.target.value))} style={{ '--range-value': `${player.volume * 100}%` } as React.CSSProperties} aria-label="Громкость" />

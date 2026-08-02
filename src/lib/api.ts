@@ -1,4 +1,4 @@
-import type { BootstrapPayload, DeviceAuthStart, Playlist, SearchPayload, SessionPreferences, Track } from '../types'
+import type { BootstrapPayload, DeviceAuthStart, Playlist, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -62,4 +62,22 @@ export async function toggleLike(trackId: string, liked: boolean): Promise<void>
   await request(`/tracks/${encodeURIComponent(trackId)}/like`, {
     method: liked ? 'PUT' : 'DELETE',
   })
+}
+
+export async function createTrackShare(track: Track): Promise<ShareLink> {
+  return request<ShareLink>('/shares/tracks', {
+    method: 'POST',
+    body: JSON.stringify({ track }),
+  })
+}
+
+export async function createPlaylistShare(playlistId: string): Promise<ShareLink> {
+  return request<ShareLink>('/shares/playlists', {
+    method: 'POST',
+    body: JSON.stringify({ playlistId }),
+  })
+}
+
+export async function getPublicShare(token: string): Promise<PublicShare> {
+  return request<PublicShare>(`/shares/${encodeURIComponent(token)}`)
 }

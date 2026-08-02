@@ -99,3 +99,25 @@ class SessionPayload(APIModel):
 
 class ActionResponse(APIModel):
     ok: bool = True
+
+
+class TrackShareRequest(APIModel):
+    track: TrackDTO
+
+
+class PlaylistShareRequest(APIModel):
+    playlist_id: str = Field(min_length=1, max_length=256)
+
+
+class ShareLinkDTO(APIModel):
+    token: str
+    path: str
+
+
+class PublicShareDTO(APIModel):
+    token: str
+    kind: Literal["track", "playlist"]
+    shared_by: str
+    created_at: int
+    track: TrackDTO | None = None
+    playlist: PlaylistDTO | None = None

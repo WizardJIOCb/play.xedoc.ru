@@ -28,8 +28,10 @@ import { ConnectModal } from './components/ConnectModal'
 import { CoverArt } from './components/CoverArt'
 import { PlayerBar } from './components/PlayerBar'
 import { PlaylistCard } from './components/PlaylistCard'
+import { PublicSharePage } from './components/PublicSharePage'
 import { SearchPalette } from './components/SearchPalette'
 import { SessionBuilder } from './components/SessionBuilder'
+import { ShareButton } from './components/ShareButton'
 import { Sidebar } from './components/Sidebar'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
@@ -191,7 +193,7 @@ function PlaylistDetailView({ playlist, loading, error, onBack }: { playlist: Pl
           <h1>{playlist.title}</h1>
           <p>{playlist.subtitle || 'Ваша коллекция в Яндекс Музыке'}</p>
           <span>{playlist.trackCount} треков{playlist.durationMinutes ? ` · ${Math.floor(playlist.durationMinutes / 60)} ч ${playlist.durationMinutes % 60} мин` : ''}</span>
-          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5))}><Shuffle size={17} /> Перемешать</button></div>
+          <div><button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks)}><Play size={18} fill="currentColor" /> Слушать</button><button className="secondary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue([...tracks].sort(() => Math.random() - .5))}><Shuffle size={17} /> Перемешать</button><ShareButton playlist={playlist} labeled /></div>
         </div>
       </header>
       <div className="playlist-detail__summary"><span><Sparkles size={15} /> XEDOC-анализ</span><p><strong>{new Set(tracks.flatMap((track) => track.artists)).size || '—'} артистов</strong><i />повторы разведены по очереди<i />можно собрать сессию без треков последних 30 дней</p></div>
@@ -263,7 +265,7 @@ function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
   )
 }
 
-export default function App() {
+function PrivateApp() {
   const [data, setData] = useState<BootstrapPayload>(() => ({ ...demoBootstrap, accessLocked: true }))
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -401,4 +403,9 @@ export default function App() {
       {data.demo && <div className="demo-badge"><span>{data.connected ? 'Яндекс временно недоступен · резервная выдача' : 'Демо-режим'}</span>{!data.connected && <button type="button" onClick={() => setConnectOpen(true)}>Подключить коллекцию <ChevronRight size={14} /></button>}</div>}
     </div>
   )
+}
+
+export default function App() {
+  const shareMatch = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
+  return shareMatch ? <PublicSharePage token={shareMatch[1]} /> : <PrivateApp />
 }

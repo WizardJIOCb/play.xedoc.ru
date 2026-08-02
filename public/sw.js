@@ -1,4 +1,4 @@
-const CACHE = 'xedoc-play-v3'
+const CACHE = 'xedoc-play-v4'
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg']
 
 self.addEventListener('install', (event) => {

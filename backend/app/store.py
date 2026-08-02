@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 import time
@@ -28,6 +29,16 @@ class Credential:
     @property
     def expires_soon(self) -> bool:
         return self.expires_at is not None and self.expires_at <= int(time.time()) + 60
+
+
+@dataclass(slots=True)
+class PublicShare:
+    token: str
+    kind: str
+    resource_id: str
+    payload: dict
+    owner_name: str
+    created_at: int
 
 
 class CredentialStore:
@@ -62,6 +73,19 @@ class CredentialStore:
                 CREATE TABLE IF NOT EXISTS app_state (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public_share (
+                    token TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL CHECK (kind IN ('track', 'playlist')),
+                    resource_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    owner_name TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(kind, resource_id)
                 )
                 """
             )
@@ -131,3 +155,60 @@ class CredentialStore:
                 "SELECT encrypted_payload FROM yandex_credential WHERE singleton = 1"
             ).fetchone()
         return row[0] if row else None
+
+    def save_public_share(
+        self,
+        *,
+        kind: str,
+        resource_id: str,
+        payload: dict,
+        owner_name: str,
+    ) -> PublicShare:
+        if kind not in {"track", "playlist"}:
+            raise ValueError("Unsupported public share kind")
+        serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        created_at = int(time.time())
+        with self._lock, self._connect() as connection:
+            existing = connection.execute(
+                "SELECT token, created_at FROM public_share WHERE kind = ? AND resource_id = ?",
+                (kind, resource_id),
+            ).fetchone()
+            token = str(existing[0]) if existing else secrets.token_urlsafe(24)
+            original_created_at = int(existing[1]) if existing else created_at
+            connection.execute(
+                """
+                INSERT INTO public_share(token, kind, resource_id, payload, owner_name, created_at)
+                VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(kind, resource_id) DO UPDATE SET
+                    payload = excluded.payload,
+                    owner_name = excluded.owner_name
+                """,
+                (token, kind, resource_id, serialized, owner_name, original_created_at),
+            )
+        return PublicShare(token, kind, resource_id, payload, owner_name, original_created_at)
+
+    def load_public_share(self, token: str) -> PublicShare | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT token, kind, resource_id, payload, owner_name, created_at
+                FROM public_share WHERE token = ?
+                """,
+                (token,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row[3])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise CredentialStoreError("Saved public share is invalid") from exc
+        if not isinstance(payload, dict):
+            raise CredentialStoreError("Saved public share is invalid")
+        return PublicShare(
+            token=str(row[0]),
+            kind=str(row[1]),
+            resource_id=str(row[2]),
+            payload=payload,
+            owner_name=str(row[4]),
+            created_at=int(row[5]),
+        )

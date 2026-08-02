@@ -5,6 +5,7 @@ import hmac
 import secrets
 import time
 from dataclasses import dataclass
+from urllib.parse import quote
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.responses import JSONResponse
@@ -28,10 +29,15 @@ from .models import (
     DeviceAuthPollDTO,
     DeviceAuthPollRequest,
     DeviceAuthStartDTO,
+    PlaylistShareRequest,
     PlaylistDTO,
+    PublicShareDTO,
     SearchPayload,
+    ShareLinkDTO,
     SessionPayload,
     SessionPreferences,
+    TrackDTO,
+    TrackShareRequest,
     UserProfileDTO,
 )
 from .security import CookieSigner
@@ -383,6 +389,113 @@ def create_app(
             },
         )
 
+    @app.post("/api/shares/tracks", response_model=ShareLinkDTO)
+    async def create_track_share(
+        body: TrackShareRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ShareLinkDTO:
+        credential = require_credential(request)
+        track_id = _safe_identifier(body.track.id)
+        if track_id.startswith("demo-"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Демо-трек нельзя опубликовать")
+        track = body.track.model_copy(
+            update={"id": track_id, "liked": None, "stream_url": None},
+        )
+        share = store.save_public_share(
+            kind="track",
+            resource_id=track_id,
+            payload=track.model_dump(mode="json", by_alias=True, exclude_none=True),
+            owner_name=credential.user_name,
+        )
+        return ShareLinkDTO(token=share.token, path=f"/share/{share.token}")
+
+    @app.post("/api/shares/playlists", response_model=ShareLinkDTO)
+    async def create_playlist_share(
+        body: PlaylistShareRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> ShareLinkDTO:
+        credential = require_credential(request)
+        playlist_id = _safe_identifier(body.playlist_id)
+        try:
+            playlist = await gateway.playlist(credential, playlist_id)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        playlist = _sanitize_shared_playlist(playlist)
+        share = store.save_public_share(
+            kind="playlist",
+            resource_id=playlist_id,
+            payload=playlist.model_dump(mode="json", by_alias=True, exclude_none=True),
+            owner_name=credential.user_name,
+        )
+        return ShareLinkDTO(token=share.token, path=f"/share/{share.token}")
+
+    @app.get(
+        "/api/shares/{token}",
+        response_model=PublicShareDTO,
+        response_model_exclude_none=True,
+    )
+    async def public_share(token: str, request: Request) -> PublicShareDTO:
+        await enforce_rate_limit(request, "public-share", maximum=120, window_seconds=60)
+        share = _load_public_share(store, token)
+        if share.kind == "track":
+            track = TrackDTO.model_validate(share.payload)
+            track.stream_url = _public_stream_path(share.token, track.id)
+            return PublicShareDTO(
+                token=share.token,
+                kind="track",
+                shared_by=share.owner_name,
+                created_at=share.created_at,
+                track=track,
+            )
+        playlist = PlaylistDTO.model_validate(share.payload)
+        playlist.tracks = [
+            track.model_copy(update={"stream_url": _public_stream_path(share.token, track.id)})
+            for track in (playlist.tracks or [])
+        ]
+        return PublicShareDTO(
+            token=share.token,
+            kind="playlist",
+            shared_by=share.owner_name,
+            created_at=share.created_at,
+            playlist=playlist,
+        )
+
+    @app.get(
+        "/api/shares/{token}/tracks/{track_id}/stream",
+        response_class=RedirectResponse,
+    )
+    async def public_share_stream(
+        token: str,
+        track_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        await enforce_rate_limit(request, "public-stream", maximum=240, window_seconds=60)
+        share = _load_public_share(store, token)
+        identifier = _safe_identifier(track_id)
+        allowed_ids = _shared_track_ids(share.kind, share.payload)
+        if identifier not in allowed_ids:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не входит в эту публичную ссылку")
+        try:
+            credential = store.load()
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Музыка временно недоступна") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Владелец отключил музыкальную коллекцию")
+        try:
+            url = await gateway.stream_url(credential, identifier)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+        return RedirectResponse(
+            url=url,
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={
+                "Cache-Control": "public, no-store, max-age=0",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
+
     @app.get(
         "/api/playlists/{playlist_id}",
         response_model=PlaylistDTO,
@@ -432,6 +545,41 @@ def _safe_identifier(value: str) -> str:
     if not value or len(value) > 256 or any(char in value for char in ("/", "\\", "\x00")):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный идентификатор")
     return value
+
+
+def _safe_share_token(value: str) -> str:
+    value = value.strip()
+    if not 20 <= len(value) <= 80 or any(not (char.isalnum() or char in "_-") for char in value):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публичная ссылка не найдена")
+    return value
+
+
+def _load_public_share(store: CredentialStore, token: str):
+    share = store.load_public_share(_safe_share_token(token))
+    if share is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публичная ссылка не найдена")
+    return share
+
+
+def _public_stream_path(token: str, track_id: str) -> str:
+    return f"/api/shares/{quote(token, safe='')}/tracks/{quote(track_id, safe='')}/stream"
+
+
+def _sanitize_shared_track(track: TrackDTO) -> TrackDTO:
+    return track.model_copy(update={"liked": None, "stream_url": None})
+
+
+def _sanitize_shared_playlist(playlist: PlaylistDTO) -> PlaylistDTO:
+    return playlist.model_copy(
+        update={"tracks": [_sanitize_shared_track(track) for track in (playlist.tracks or [])]},
+    )
+
+
+def _shared_track_ids(kind: str, payload: dict) -> set[str]:
+    if kind == "track":
+        return {TrackDTO.model_validate(payload).id}
+    playlist = PlaylistDTO.model_validate(payload)
+    return {track.id for track in (playlist.tracks or [])}
 
 
 def _http_gateway_error(error: GatewayError) -> HTTPException:

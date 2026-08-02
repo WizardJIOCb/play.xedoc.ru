@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildSession, getBootstrap, searchMusic } from './api'
+import { buildSession, createPlaylistShare, createTrackShare, getBootstrap, getPublicShare, searchMusic } from './api'
 
 describe('API error handling', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -17,5 +17,21 @@ describe('API error handling', () => {
   it('does not fabricate a session when the server is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     await expect(buildSession({ duration: 25, discovery: 50, cooldownDays: 30, source: 'all' })).rejects.toThrow('offline')
+  })
+
+  it('creates and reads public share links through the dedicated API', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'share-token', path: '/share/share-token' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'playlist-token', path: '/share/playlist-token' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'share-token', kind: 'track', sharedBy: 'Rodion', createdAt: 1 }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await createTrackShare({ id: '101', title: 'Signal', artists: ['Artist'], durationMs: 1000 })
+    await createPlaylistShare('42:7')
+    await getPublicShare('share-token')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/shares/tracks', expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/shares/playlists', expect.objectContaining({ body: JSON.stringify({ playlistId: '42:7' }) }))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/shares/share-token', expect.objectContaining({ credentials: 'include' }))
   })
 })

@@ -48,6 +48,20 @@ export interface SearchPayload {
   playlists: Playlist[]
 }
 
+export interface ShareLink {
+  token: string
+  path: string
+}
+
+export interface PublicShare {
+  token: string
+  kind: 'track' | 'playlist'
+  sharedBy: string
+  createdAt: number
+  track?: Track
+  playlist?: Playlist
+}
+
 export interface DeviceAuthStart {
   deviceId: string
   userCode: string
