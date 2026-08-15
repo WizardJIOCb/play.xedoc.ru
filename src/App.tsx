@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ChevronRight,
   CalendarDays,
+  Clock3,
   Flame,
   Headphones,
   Heart,
@@ -105,18 +106,25 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
       <section className="hero-session">
         <div className="hero-session__copy">
           <span className="hero-session__label"><WandSparkles size={14} /> XEDOC SESSION</span>
-          <h2>50 минут музыки.<br /><em>Ни одного случайного повтора.</em></h2>
-          <p>Смешаем любимое с новым, сохраним ритм и не поставим одного артиста дважды рядом.</p>
+          <h2>Сессия под ваши правила.<br /><em>Настройте — и слушайте.</em></h2>
+          <p>{data.connected ? 'Выберите длительность, баланс знакомого и нового, источник музыки и период без повторов.' : 'Выберите длительность, источник музыки и период без повторов. Подборка строится по музыке, которую слушают в XEDOC.'}</p>
           <div className="hero-session__actions">
-            <button className="primary-button" type="button" onClick={onSession}><Sparkles size={18} /> Собрать сессию</button>
-            <button className="secondary-button" type="button" onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Быстрый старт</button>
+            <button className="primary-button" type="button" onClick={onSession}><Sparkles size={18} /> Настроить сессию</button>
+            <button className="secondary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить подборку</button>
           </div>
         </div>
-        <div className="hero-session__visual" aria-hidden="true">
-          <span className="orbit orbit--one"><i /></span>
-          <span className="orbit orbit--two"><i /></span>
-          <span className="orbit orbit--three"><i /></span>
-          <div className="hero-session__core"><strong>58%</strong><small>нового</small></div>
+        <div className="hero-session__visual">
+          <div className="hero-session__settings">
+            <span className="hero-session__settings-label">Что можно настроить</span>
+            <div className="hero-session__setting-list">
+              <article><Clock3 size={19} /><span><strong>25 · 50 · 90 минут</strong><small>Длительность сессии</small></span></article>
+              {data.connected
+                ? <article><Shuffle size={19} /><span><strong>0–100% открытий</strong><small>Баланс знакомого и нового</small></span></article>
+                : <article><Radio size={19} /><span><strong>Каталог XEDOC</strong><small>Популярное и недавнее в сервисе</small></span></article>}
+              <article><History size={19} /><span><strong>7 · 30 · 90 дней</strong><small>Период без повторов</small></span></article>
+            </div>
+            <p><Headphones size={17} /><span>{data.quickTracks.length ? `${data.quickTracks.length} треков готовы к быстрому запуску` : 'Быстрая подборка пока формируется'}</span></p>
+          </div>
         </div>
       </section>
 

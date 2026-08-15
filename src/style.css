@@ -376,21 +376,20 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .hero-session h2 { max-width: 650px; margin: 18px 0 14px; font-size: clamp(28px, 3.2vw, 48px); line-height: 1.02; letter-spacing: -.05em; }
 .hero-session h2 em { color: var(--acid); font-style: normal; }
 .hero-session__copy > p { max-width: 540px; margin: 0; color: #a9aeaa; font-size: var(--type-control); line-height: 1.65; }
-.hero-session__actions { margin-top: 28px; display: flex; gap: 10px; }
+.hero-session__actions { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
 .hero-session__actions .primary-button, .hero-session__actions .secondary-button { flex: 0 0 auto; white-space: nowrap; }
-.hero-session__visual { min-height: 330px; position: relative; display: grid; place-items: center; overflow: hidden; }
-.hero-session__visual::before { content: ""; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(159,122,234,.27), transparent 66%); filter: blur(4px); }
-.hero-session__core { position: absolute; width: 112px; height: 112px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: rgba(9,10,13,.84); border: 1px solid rgba(217,255,99,.28); box-shadow: 0 0 0 9px rgba(217,255,99,.035), 0 0 80px rgba(159,122,234,.22); }
-.hero-session__core svg { display: none; }
-.hero-session__core strong { position: relative; z-index: 1; color: var(--acid); font-size: 25px; line-height: 1; letter-spacing: -.04em; text-shadow: 0 1px 12px rgba(217,255,99,.16); }
-.hero-session__core small { position: relative; z-index: 1; margin-top: 6px; color: #aeb3be; font-size: var(--type-caption); line-height: 1; text-transform: uppercase; letter-spacing: .08em; }
-.orbit { position: absolute; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; animation: orbit-spin 18s linear infinite; }
-.orbit i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--acid); top: -4px; left: 50%; box-shadow: 0 0 14px var(--acid); }
-.orbit--one { width: 174px; height: 174px; }
-.orbit--two { width: 238px; height: 238px; animation-direction: reverse; animation-duration: 24s; transform: rotate(50deg); }
-.orbit--two i { background: var(--violet); box-shadow: 0 0 14px var(--violet); }
-.orbit--three { width: 302px; height: 302px; border-style: dashed; opacity: .45; animation-duration: 34s; }
-@keyframes orbit-spin { to { transform: rotate(360deg); } }
+.hero-session__visual { min-height: 330px; padding: 28px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.hero-session__visual::before { content: ""; position: absolute; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(159,122,234,.22), transparent 68%); filter: blur(4px); }
+.hero-session__settings { width: min(370px,100%); padding: 20px; position: relative; z-index: 1; border: 1px solid rgba(255,255,255,.11); border-radius: 18px; background: rgba(8,10,13,.56); box-shadow: 0 24px 70px rgba(0,0,0,.24); backdrop-filter: blur(15px); }
+.hero-session__settings-label { color: var(--muted); font-size: var(--type-caption); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.hero-session__setting-list { margin-top: 14px; display: grid; gap: 8px; }
+.hero-session__setting-list article { min-height: 58px; padding: 10px 12px; display: grid; grid-template-columns: 36px minmax(0,1fr); align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(255,255,255,.035); }
+.hero-session__setting-list article > svg { color: var(--acid); }
+.hero-session__setting-list article > span { min-width: 0; display: grid; gap: 3px; }
+.hero-session__setting-list strong { font-size: var(--type-body); }
+.hero-session__setting-list small { color: var(--muted); font-size: var(--type-caption); }
+.hero-session__settings > p { margin: 14px 2px 0; display: flex; align-items: center; gap: 8px; color: #bfc3cb; font-size: var(--type-caption); }
+.hero-session__settings > p svg { flex: 0 0 auto; color: var(--violet); }
 
 /* Personal recommendations */
 .recommendations-page { padding-top: 5px; }
