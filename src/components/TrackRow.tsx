@@ -34,7 +34,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
   }
 
   return (
-    <div className={`track-row ${active ? 'track-row--active' : ''} ${compact ? 'track-row--compact' : ''} ${readonly ? 'track-row--readonly' : ''}`}>
+    <div className={`track-row ${active ? 'track-row--active' : ''} ${compact ? 'track-row--compact' : ''} ${readonly ? 'track-row--readonly' : ''} ${onQueueRemove ? 'track-row--queue' : ''}`}>
       <button className="track-row__play" type="button" aria-label={active && player.isPlaying ? 'Пауза' : `Включить ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, context, contextIndex >= 0 ? contextIndex : index, playbackSource)}>
         <span className="track-row__index">{index === undefined ? <Play size={15} fill="currentColor" /> : index + 1}</span>
         <span className="track-row__control">{active && player.isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</span>
@@ -51,7 +51,10 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       <span className="track-row__duration">{formatDuration(track.durationMs)}</span>
       {!readonly && <ShareButton track={track} className="track-row__more" />}
       {!readonly && (onQueueRemove
-        ? <button className="icon-button track-row__next track-row__remove" type="button" onClick={onQueueRemove} aria-label={`Убрать ${track.title} из очереди`} data-tooltip="Убрать из очереди"><X size={17} /></button>
+        ? <div className="track-row__queue-actions">
+            <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />
+            <button className="icon-button track-row__remove" type="button" onClick={onQueueRemove} aria-label={`Убрать ${track.title} из очереди`} data-tooltip="Убрать из очереди"><X size={17} /></button>
+          </div>
         : <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />)}
     </div>
   )

@@ -69,10 +69,11 @@ describe('player like controls', () => {
     expect(screen.getByRole('button', { name: 'Поставить лайк' })).toBeInTheDocument()
   })
 
-  it('shows a dedicated action for removing a track from the queue', () => {
+  it('shows playlist and remove actions for a track in the queue', () => {
     const removeFromQueue = vi.fn()
     render(<PlayerProvider><TrackRow track={unlikedTrack} context={[unlikedTrack]} onQueueRemove={removeFromQueue} /></PlayerProvider>)
 
+    expect(screen.getByRole('button', { name: 'Добавить Two в плейлист или очередь' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Убрать Two из очереди' }))
     expect(removeFromQueue).toHaveBeenCalledOnce()
   })

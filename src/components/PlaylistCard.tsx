@@ -26,14 +26,16 @@ export function PlaylistCard({ playlist, wide = false, onOpen, onPlay }: { playl
         <div>
           <h3>{playlist.title}</h3>
           {playlist.subtitle && <p>{playlist.subtitle}</p>}
+        </div>
+        <div className="playlist-card__meta">
           <span className="playlist-card__count">{trackCountLabel(playlist.trackCount)}</span>
+          {wide && (
+            <button className="playlist-card__wide-play" type="button" onClick={(event) => { event.stopPropagation(); play() }}>
+              <Play size={16} fill="currentColor" /> Слушать
+            </button>
+          )}
         </div>
       </div>
-      {wide && (
-        <button className="playlist-card__wide-play" type="button" onClick={(event) => { event.stopPropagation(); play() }}>
-          <Play size={16} fill="currentColor" /> Слушать
-        </button>
-      )}
     </article>
   )
 }
