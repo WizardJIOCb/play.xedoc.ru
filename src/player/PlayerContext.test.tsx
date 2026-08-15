@@ -120,6 +120,22 @@ describe('PlayerProvider state', () => {
     expect(player.currentIndex).toBe(1)
   })
 
+  it('removes a queued occurrence without interrupting the current track', () => {
+    const first = track('first', 'First')
+    const following = track('following', 'Following')
+    const last = track('last', 'Last')
+    renderPlayer()
+
+    act(() => player.playQueue([first, following, last], 1))
+    act(() => player.removeFromQueue(last))
+
+    expect(player.current?.title).toBe('Following')
+    expect(player.currentIndex).toBe(1)
+    expect(player.queue.map((item) => item.title)).toEqual(['First', 'Following'])
+    act(() => player.removeFromQueue(player.current!))
+    expect(player.queue.map((item) => item.title)).toEqual(['First', 'Following'])
+  })
+
   it('normalizes repeated references into separately addressable queue occurrences', () => {
     const repeated = track('same', 'Repeated')
     const middle = track('middle', 'Middle')

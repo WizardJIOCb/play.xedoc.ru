@@ -36,6 +36,7 @@ interface PlayerContextValue {
   toggleShuffle: () => void
   toggleRepeat: () => void
   addNext: (track: Track) => void
+  removeFromQueue: (track: Track) => void
   isTrackLiked: (track: Track) => boolean
   setTrackLiked: (track: Track, liked: boolean) => Promise<void>
   clear: () => void
@@ -512,6 +513,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
   }, [currentIndex])
 
+  const removeFromQueue = useCallback((track: Track) => {
+    const index = queue.indexOf(track)
+    if (index < 0 || index === currentIndex) return
+    setQueue((items) => items.filter((item) => item !== track))
+    setCurrentIndex((value) => index < value ? value - 1 : value)
+  }, [currentIndex, queue])
+
   const applyTrackLike = useCallback((trackId: string, liked: boolean) => {
     setTrackLikes((items) => ({ ...items, [trackId]: liked }))
     setCurrent((track) => track?.id === trackId ? { ...track, liked } : track)
@@ -593,10 +601,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle: () => setShuffle((value) => !value),
     toggleRepeat: () => setRepeat((value) => !value),
     addNext,
+    removeFromQueue,
     isTrackLiked,
     setTrackLiked,
     clear,
-  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isTrackLiked, next, playQueue, playTrack, previous, progress, queue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
+  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isTrackLiked, next, playQueue, playTrack, previous, progress, queue, removeFromQueue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
 }

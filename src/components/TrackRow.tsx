@@ -1,4 +1,4 @@
-import { Headphones, Heart, Pause, Play } from 'lucide-react'
+import { Headphones, Heart, Pause, Play, X } from 'lucide-react'
 import { useState } from 'react'
 import { usePlayer, type PlaybackSource } from '../player/PlayerContext'
 import type { Track } from '../types'
@@ -12,7 +12,7 @@ function formatDuration(durationMs: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
-export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource }) {
+export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource, onQueueRemove }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource; onQueueRemove?: () => void }) {
   const player = usePlayer()
   const contextIndex = context.findIndex((item) => item === track)
   const active = context === player.queue && contextIndex >= 0
@@ -50,7 +50,9 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       </button>}
       <span className="track-row__duration">{formatDuration(track.durationMs)}</span>
       {!readonly && <ShareButton track={track} className="track-row__more" />}
-      {!readonly && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />}
+      {!readonly && (onQueueRemove
+        ? <button className="icon-button track-row__next track-row__remove" type="button" onClick={onQueueRemove} aria-label={`Убрать ${track.title} из очереди`} data-tooltip="Убрать из очереди"><X size={17} /></button>
+        : <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />)}
     </div>
   )
 }

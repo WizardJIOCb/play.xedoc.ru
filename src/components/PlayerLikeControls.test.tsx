@@ -68,4 +68,12 @@ describe('player like controls', () => {
     await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith('one', false))
     expect(screen.getByRole('button', { name: 'Поставить лайк' })).toBeInTheDocument()
   })
+
+  it('shows a dedicated action for removing a track from the queue', () => {
+    const removeFromQueue = vi.fn()
+    render(<PlayerProvider><TrackRow track={unlikedTrack} context={[unlikedTrack]} onQueueRemove={removeFromQueue} /></PlayerProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Убрать Two из очереди' }))
+    expect(removeFromQueue).toHaveBeenCalledOnce()
+  })
 })
