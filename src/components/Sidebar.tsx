@@ -1,4 +1,4 @@
-import { BarChart3, Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
+import { BarChart3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
@@ -87,7 +87,6 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__footer">
-        {!collapsed && <span data-tooltip="Сессии могут исключать треки, которые звучали последние 30 дней"><Clock3 size={15} /> Без повторов: 30 дней</span>}
         <button className="icon-button" type="button" onClick={onToggle} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
           {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
         </button>
