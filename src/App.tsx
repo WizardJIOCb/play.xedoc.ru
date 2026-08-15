@@ -22,7 +22,6 @@ import {
   TrendingUp,
   Trophy,
   WandSparkles,
-  X,
   Zap,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -362,18 +361,21 @@ function TrackCollectionView({ type, tracks, total, loading = false, error }: { 
   )
 }
 
-function QueuePanel({ open, onClose, playlistTitle, loading = false, error = '' }: { open: boolean; onClose: () => void; playlistTitle?: string; loading?: boolean; error?: string }) {
+function QueueContentView({ playlistTitle, loading = false, error = '' }: { playlistTitle?: string; loading?: boolean; error?: string }) {
   const player = usePlayer()
-  if (!open) return null
+  const following = player.upNext
+  const total = player.queue.length
   return (
-    <aside id="queue-panel" className="queue-panel" aria-label="Очередь воспроизведения">
-      <header><div><span className="eyebrow">{playlistTitle ? 'ВЫБРАННЫЙ ПЛЕЙЛИСТ' : 'ДАЛЬШЕ'}</span><h2>{playlistTitle || 'Очередь'}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть очередь"><X size={20} /></button></header>
-      {loading ? <div className="queue-panel__empty"><LoaderCircle className="spin" size={28} /><p>Загружаем треки…</p><span>Собираем очередь выбранного плейлиста.</span></div> : error ? <div className="queue-panel__empty queue-panel__empty--error"><ListMusic size={28} /><p>Не удалось открыть плейлист</p><span>{error}</span></div> : <>
-        {player.current && <div className="queue-panel__current"><small>Сейчас играет</small><TrackRow track={player.current} context={player.queue} compact /></div>}
-        <div className="queue-panel__list"><small>Следом · {player.upNext.length} треков</small>{player.upNext.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={player.queue} compact />)}</div>
-        {!player.queue.length && <div className="queue-panel__empty"><ListMusic size={28} /><p>Очередь пока пуста</p><span>Включите плейлист или добавьте трек следующим.</span></div>}
-      </>}
-    </aside>
+    <section className="queue-page" aria-label="Очередь воспроизведения">
+      <header className="queue-page__hero">
+        <div><span className="eyebrow">{playlistTitle ? 'ВЫБРАННЫЙ ПЛЕЙЛИСТ' : 'СЕЙЧАС ИГРАЕТ'}</span><h1>{playlistTitle || 'Очередь.'}</h1><p>{total ? `${total} ${total === 1 ? 'трек' : total < 5 ? 'трека' : 'треков'} — всё, что прозвучит дальше.` : 'Соберите очередь из плейлиста, подборки или отдельных треков.'}</p></div>
+        <div className="queue-page__count"><ListMusic size={23} /><strong>{total}</strong><span>{total === 1 ? 'трек' : total < 5 ? 'трека' : 'треков'}<br />в очереди</span></div>
+      </header>
+      {loading ? <div className="queue-page__empty"><LoaderCircle className="spin" size={28} /><p>Загружаем треки…</p><span>Собираем очередь выбранного плейлиста.</span></div> : error ? <div className="queue-page__empty queue-page__empty--error"><ListMusic size={28} /><p>Не удалось открыть плейлист</p><span>{error}</span></div> : total ? <>
+        {player.current && <section className="queue-page__section"><header><div><span className="eyebrow">СЕЙЧАС ИГРАЕТ</span><h2>В эфире</h2><p>Этот трек уже звучит.</p></div></header><div className="track-table track-table--large"><TrackRow track={player.current} context={player.queue} index={player.currentIndex} /></div></section>}
+        <section className="queue-page__section"><header><div><span className="eyebrow">ДАЛЬШЕ</span><h2>Следом в очереди</h2><p>{following.length ? `${following.length} ${following.length === 1 ? 'трек' : following.length < 5 ? 'трека' : 'треков'} ждут своей очереди.` : 'Это последний трек в очереди.'}</p></div></header>{following.length ? <div className="track-table track-table--large">{following.map((track, index) => <TrackRow key={`${track.id}-${index}`} track={track} context={player.queue} index={(player.currentIndex + index + 1) % player.queue.length} />)}</div> : null}</section>
+      </> : <div className="queue-page__empty"><ListMusic size={28} /><p>Очередь пока пуста</p><span>Включите плейлист или добавьте трек следующим.</span></div>}
+    </section>
   )
 }
 
@@ -491,6 +493,7 @@ function PrivateApp() {
   }, [refresh])
 
   const openPlaylist = useCallback((playlist: Playlist) => {
+    setQueueOpen(false)
     setSelectedPlaylist(playlist)
     setPlaylistError('')
     if (playlist.tracks?.length) return
@@ -552,6 +555,7 @@ function PrivateApp() {
   }, [notice])
 
   const changeView = useCallback((nextView: ViewId) => {
+    setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(false)
@@ -563,6 +567,7 @@ function PrivateApp() {
   }, [])
 
   const openRecommendations = useCallback(() => {
+    setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(true)
     setTopOpen(false)
@@ -572,6 +577,7 @@ function PrivateApp() {
   }, [])
 
   const openTop = useCallback(() => {
+    setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(true)
@@ -582,6 +588,7 @@ function PrivateApp() {
   }, [])
 
   const openAdmin = useCallback(() => {
+    setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(false)
@@ -591,6 +598,7 @@ function PrivateApp() {
   }, [])
 
   const openSearch = useCallback(() => {
+    setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
     setTopOpen(false)
@@ -627,6 +635,7 @@ function PrivateApp() {
     setSessionOpen(true)
   }, [])
   const content = useMemo(() => {
+    if (queueOpen) return <QueueContentView playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} />
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
@@ -639,7 +648,7 @@ function PrivateApp() {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -648,26 +657,23 @@ function PrivateApp() {
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
       <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
-      <main className={`main-view ${queueOpen ? 'main-view--queue' : ''}`}>
-        <div className="main-view__content">
+      <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <div className="topbar__actions">
             <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined} aria-label="Найти музыку" data-tooltip="Найти музыку (⌘ K)"><Search size={19} /></button>
-            <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-expanded={queueOpen} aria-controls="queue-panel"><ListMusic size={18} /><span>Сейчас играет</span></button>
+            <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-pressed={queueOpen}><ListMusic size={18} /><span>Сейчас играет</span></button>
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
             <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
         <div className="page-content">
-          {!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
+          {!queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}
         </div>
-        </div>
-        <QueuePanel open={queueOpen} playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} onClose={() => setQueueOpen(false)} />
       </main>
 
       <PlayerBar onQueue={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} />
