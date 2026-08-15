@@ -17,6 +17,7 @@ describe('recent playlists sidebar', () => {
   it('opens a selected playlist while the section heading opens the library', () => {
     const onView = vi.fn()
     const onPlaylist = vi.fn()
+    const onCreatePlaylist = vi.fn()
     render(
       <Sidebar
         view="home"
@@ -28,6 +29,7 @@ describe('recent playlists sidebar', () => {
         onRecommendations={() => undefined}
         onTop={() => undefined}
         onPlaylist={onPlaylist}
+        onCreatePlaylist={onCreatePlaylist}
         onToggle={() => undefined}
         onSession={() => undefined}
       />,
@@ -39,6 +41,9 @@ describe('recent playlists sidebar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Показать все плейлисты' }))
     expect(onView).toHaveBeenCalledWith('library')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Новый плейлист' }))
+    expect(onCreatePlaylist).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
     expect(onView).toHaveBeenCalledWith('home')

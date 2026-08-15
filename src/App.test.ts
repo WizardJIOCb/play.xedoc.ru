@@ -85,6 +85,23 @@ describe('favorite collection filtering', () => {
     expect(window.location.pathname).toBe('/')
   })
 
+  it('opens playlist creation from the sidebar and protects it for guests', async () => {
+    render(createElement(PlayerProvider, null, createElement(App)))
+    fireEvent.click(await screen.findByRole('button', { name: 'Новый плейлист' }))
+    expect(await screen.findByRole('dialog', { name: 'Новый плейлист' })).toBeInTheDocument()
+    cleanup()
+
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [], playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+    render(createElement(PlayerProvider, null, createElement(App)))
+    fireEvent.click(await screen.findByRole('button', { name: 'Новый плейлист' }))
+    expect(await screen.findByRole('dialog', { name: 'Вход или регистрация' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Новый плейлист' })).not.toBeInTheDocument()
+  })
+
   it('lets a guest open and play the public top without an auth prompt', async () => {
     vi.mocked(getBootstrap).mockResolvedValueOnce({
       connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
