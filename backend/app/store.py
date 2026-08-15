@@ -1096,7 +1096,7 @@ class CredentialStore:
                 LEFT JOIN user_track_listening_stat s ON s.user_id = u.id
                 WHERE (? = '' OR u.username LIKE ? ESCAPE '\\' COLLATE NOCASE OR u.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE)
                 GROUP BY u.id
-                ORDER BY u.is_admin DESC, MAX(s.last_played_at) DESC, u.created_at DESC
+                ORDER BY u.created_at DESC, u.username COLLATE NOCASE
                 LIMIT ?
                 """,
                 (value, pattern, pattern, max(1, min(limit, 250))),

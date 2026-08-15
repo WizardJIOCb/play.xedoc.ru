@@ -70,6 +70,15 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     assert denied.status_code == 403
 
     assert store.set_user_admin("@testuser", True) is True
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            "UPDATE app_user SET created_at = ? WHERE username = ?",
+            (1_700_000_000, "wizardjiocb911"),
+        )
+        connection.execute(
+            "UPDATE app_user SET created_at = ? WHERE username = ?",
+            (1_600_000_000, "testuser"),
+        )
     created = client.post("/api/local-playlists", json={"title": "Admin fixture", "isPublic": True})
     assert created.status_code == 200
     listened = client.post("/api/listening-events", json={
@@ -86,8 +95,8 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     assert body["summary"]["playlistsTotal"] == 1
     assert body["summary"]["publicPlaylists"] == 1
     assert body["summary"]["totalPlays"] == 1
-    assert body["users"][0]["username"] == "testuser"
-    assert body["users"][0]["isAdmin"] is True
+    assert [user["username"] for user in body["users"]] == ["wizardjiocb911", "testuser"]
+    assert body["users"][1]["isAdmin"] is True
     assert body["topTracks"][0]["id"] == "101"
 
     filtered = client.get("/api/admin/dashboard", params={"q": "@testuser"})
