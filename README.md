@@ -14,6 +14,9 @@ Multi-user web player that brings a Yandex Music library and VK taste signals in
 - XEDOC Session Builder: 25/50/90-minute mixes, discovery balance, playlist/liked sources and 7/30/90-day local-history exclusion.
 - Lazy playlist loading, persistent local listening history, keyboard controls and responsive mobile UI.
 - Installable PWA shell with a privacy-scoped static cache.
+- A social layer with public/friends-only posts, images, video and web links, playable track/playlist cards and polls.
+- Mutual friend requests, profile walls and separate “For You”/friends feeds.
+- Transparent `xedoc-social-v1` ranking: freshness + friendship + music-taste affinity + social response. It uses the listener's own play history for track/artist affinity and keeps visibility filtering separate from ranking.
 
 ## Local development
 

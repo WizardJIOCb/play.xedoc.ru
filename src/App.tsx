@@ -32,6 +32,7 @@ import { AuthGate } from './components/AuthGate'
 import { ArtistLinks } from './components/ArtistLinks'
 import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
+import { FriendsPage } from './components/FriendsPage'
 import { MoodMap, type MoodSettings } from './components/MoodMap'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
@@ -47,6 +48,7 @@ import { SessionBuilder } from './components/SessionBuilder'
 import { ShareButton } from './components/ShareButton'
 import { Sidebar } from './components/Sidebar'
 import { SourcesModal } from './components/SourcesModal'
+import { SocialFeedPage } from './components/SocialFeedPage'
 import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
@@ -56,6 +58,8 @@ import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, Li
 
 const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: string }> = {
   home: { eyebrow: 'ВОСКРЕСЕНЬЕ · ВАШ РИТМ', title: 'Добрый день', description: 'Музыка, которая подходит именно сейчас.' },
+  feed: { eyebrow: 'СОЦИАЛЬНЫЙ XEDOC', title: 'Лента', description: 'Записи друзей и людей с близким музыкальным вкусом.' },
+  friends: { eyebrow: 'ЛЮДИ', title: 'Друзья', description: 'Знакомые и новые музыкальные связи.' },
   discover: { eyebrow: 'ОБЗОР', title: 'Найти новое', description: 'Знакомые ориентиры, неожиданные повороты.' },
   library: { eyebrow: 'КОЛЛЕКЦИЯ', title: 'Ваша библиотека', description: 'Всё важное — без лишних витрин.' },
   liked: { eyebrow: 'МНЕ НРАВИТСЯ', title: 'Любимые треки', description: 'Музыка, к которой хочется возвращаться.' },
@@ -64,9 +68,15 @@ const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: 
 
 const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '') === '/recommendations'
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
-const isLikedPath = () => window.location.pathname.replace(/\/+$/, '') === '/liked'
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
 const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
+const pathView = (): ViewId => {
+  const path = window.location.pathname.replace(/\/+$/, '')
+  if (path === '/feed') return 'feed'
+  if (path === '/friends') return 'friends'
+  if (path === '/liked') return 'liked'
+  return 'home'
+}
 
 function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
@@ -356,7 +366,7 @@ function QueuePanel({ open, onClose, playlistTitle, loading = false, error = '' 
   const player = usePlayer()
   if (!open) return null
   return (
-    <aside className="queue-panel">
+    <aside id="queue-panel" className="queue-panel" aria-label="Очередь воспроизведения">
       <header><div><span className="eyebrow">{playlistTitle ? 'ВЫБРАННЫЙ ПЛЕЙЛИСТ' : 'ДАЛЬШЕ'}</span><h2>{playlistTitle || 'Очередь'}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть очередь"><X size={20} /></button></header>
       {loading ? <div className="queue-panel__empty"><LoaderCircle className="spin" size={28} /><p>Загружаем треки…</p><span>Собираем очередь выбранного плейлиста.</span></div> : error ? <div className="queue-panel__empty queue-panel__empty--error"><ListMusic size={28} /><p>Не удалось открыть плейлист</p><span>{error}</span></div> : <>
         {player.current && <div className="queue-panel__current"><small>Сейчас играет</small><TrackRow track={player.current} context={player.queue} compact /></div>}
@@ -371,7 +381,7 @@ function PrivateApp() {
   const [data, setData] = useState<BootstrapPayload>(() => ({ ...demoBootstrap, accessLocked: true }))
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [view, setView] = useState<ViewId>(() => isLikedPath() ? 'liked' : 'home')
+  const [view, setView] = useState<ViewId>(pathView)
   const [recommendationsOpen, setRecommendationsOpen] = useState(isRecommendationsPath)
   const [topOpen, setTopOpen] = useState(isTopPath)
   const [adminOpen, setAdminOpen] = useState(isAdminPath)
@@ -455,7 +465,7 @@ function PrivateApp() {
       setAdminOpen(isAdminPath())
       setSearchOpen(isSearchPath())
       setPlaylistEditorOpen(false)
-      setView(isLikedPath() ? 'liked' : 'home')
+      setView(pathView())
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
@@ -547,7 +557,7 @@ function PrivateApp() {
     setTopOpen(false)
     setAdminOpen(false)
     setSearchOpen(false)
-    const nextPath = nextView === 'liked' ? '/liked' : '/'
+    const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : '/'
     if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
     setView(nextView)
   }, [])
@@ -623,6 +633,8 @@ function PrivateApp() {
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
     if (view === 'home') return <HomeView data={data} onSession={() => openSession()} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
+    if (view === 'feed') return <SocialFeedPage user={data.appUser} tracks={data.quickTracks.concat(data.likedTracks)} playlists={data.localPlaylists.concat(data.playlists)} />
+    if (view === 'friends') return <FriendsPage username={data.appUser?.username} />
     if (view === 'discover') return <DiscoverView data={data} onSession={(settings) => openSession(settings.novelty)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
@@ -634,13 +646,15 @@ function PrivateApp() {
   if (data.accessLocked) return <AuthGate onAuthenticated={refresh} />
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''} ${queueOpen ? 'app-shell--queue' : ''}`}>
+    <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
       <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
-      <main className="main-view">
+      <main className={`main-view ${queueOpen ? 'main-view--queue' : ''}`}>
+        <div className="main-view__content">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <div className="topbar__actions">
             <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined} aria-label="Найти музыку" data-tooltip="Найти музыку (⌘ K)"><Search size={19} /></button>
+            <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-expanded={queueOpen} aria-controls="queue-panel"><ListMusic size={18} /><span>Сейчас играет</span></button>
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
             <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
@@ -652,9 +666,10 @@ function PrivateApp() {
           </header>}
           {content}
         </div>
+        </div>
+        <QueuePanel open={queueOpen} playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} onClose={() => setQueueOpen(false)} />
       </main>
 
-      <QueuePanel open={queueOpen} playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} onClose={() => setQueueOpen(false)} />
       <PlayerBar onQueue={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} />
       <SessionBuilder open={sessionOpen} initialDiscovery={sessionDiscovery} onClose={() => setSessionOpen(false)} />
       <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
@@ -673,7 +688,7 @@ function PrivateApp() {
       />
 
       <nav className="mobile-nav" aria-label="Мобильная навигация">
-        {[['home', Headphones, 'Главная'], ['discover', Radio, 'Обзор'], ['library', ListMusic, 'Библиотека'], ['liked', Heart, 'Любимые'], ['history', History, 'История']].map(([id, Icon, label]) => {
+        {[['home', Headphones, 'Главная'], ['feed', Radio, 'Лента'], ['friends', Heart, 'Друзья'], ['library', ListMusic, 'Библиотека'], ['history', History, 'История']].map(([id, Icon, label]) => {
           const IconComponent = Icon as typeof Headphones
           return <button key={id as string} className={!recommendationsOpen && !topOpen && !searchOpen && view === id ? 'is-active' : ''} type="button" onClick={() => changeView(id as ViewId)}><IconComponent size={20} /><span>{label as string}</span></button>
         })}

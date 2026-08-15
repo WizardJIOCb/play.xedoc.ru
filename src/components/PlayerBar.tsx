@@ -34,7 +34,6 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
       <div className="player-bar__track">
         <CoverArt title={track?.title || 'XEDOC'} url={track?.coverUrl} tone={track?.coverTone || 'mono'} className="player-bar__cover" />
         <div><strong>{track?.title || 'Выберите музыку'}</strong>{track ? <ArtistLinks artists={track.artists} /> : <span>Плейлисты и рекомендации ждут вас</span>}</div>
-        {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
       </div>
 
       <div className="player-bar__center">
@@ -55,6 +54,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
       </div>
 
       <div className="player-bar__tools">
+        {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
         {!readonly && track && <ShareButton track={track} />}
         {!readonly && track && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}
         {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}

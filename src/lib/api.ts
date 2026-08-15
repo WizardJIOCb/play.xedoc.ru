@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -116,6 +116,57 @@ export async function searchProfiles(query: string): Promise<ProfileSummary[]> {
 
 export async function getPublicProfile(username: string): Promise<PublicProfile> {
   return request<PublicProfile>(`/profiles/${encodeURIComponent(username)}`)
+}
+
+export async function getSocialFeed(mode: 'for-you' | 'friends' = 'for-you'): Promise<SocialFeed> {
+  return request<SocialFeed>(`/social/feed?mode=${mode}`)
+}
+
+export async function createSocialPost(input: {
+  body: string
+  visibility: 'public' | 'friends'
+  attachments: SocialAttachment[]
+  poll?: { question: string; options: Array<{ text: string }> }
+}): Promise<SocialPost> {
+  return request<SocialPost>('/social/posts', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function deleteSocialPost(postId: string): Promise<void> {
+  await request(`/social/posts/${encodeURIComponent(postId)}`, { method: 'DELETE' })
+}
+
+export async function toggleSocialPostLike(postId: string, liked: boolean): Promise<SocialPost> {
+  return request<SocialPost>(`/social/posts/${encodeURIComponent(postId)}/like`, { method: liked ? 'PUT' : 'DELETE' })
+}
+
+export async function voteSocialPoll(postId: string, optionId: string): Promise<SocialPost> {
+  return request<SocialPost>(`/social/posts/${encodeURIComponent(postId)}/vote`, {
+    method: 'POST', body: JSON.stringify({ optionId }),
+  })
+}
+
+export async function getSocialProfilePosts(username: string): Promise<SocialPost[]> {
+  return request<SocialPost[]>(`/social/profiles/${encodeURIComponent(username)}/posts`)
+}
+
+export async function getFriends(): Promise<FriendsPayload> {
+  return request<FriendsPayload>('/social/friends')
+}
+
+export async function getFriendStatus(username: string): Promise<FriendStatus> {
+  return (await request<{ status: FriendStatus }>(`/social/friends/${encodeURIComponent(username)}/status`)).status
+}
+
+export async function requestFriend(username: string): Promise<FriendStatus> {
+  return (await request<{ status: FriendStatus }>(`/social/friends/${encodeURIComponent(username)}/request`, { method: 'POST' })).status
+}
+
+export async function acceptFriend(username: string): Promise<FriendStatus> {
+  return (await request<{ status: FriendStatus }>(`/social/friends/${encodeURIComponent(username)}/accept`, { method: 'POST' })).status
+}
+
+export async function removeFriend(username: string): Promise<void> {
+  await request(`/social/friends/${encodeURIComponent(username)}`, { method: 'DELETE' })
 }
 
 export async function getPublicNowPlaying(username: string): Promise<PublicNowPlaying | null> {

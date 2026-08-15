@@ -1,9 +1,11 @@
-import { BarChart3, Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from 'lucide-react'
+import { BarChart3, Clock3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
 const navigation: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: 'home', label: 'Главная', icon: Home },
+  { id: 'feed', label: 'Лента', icon: Rss },
+  { id: 'friends', label: 'Друзья', icon: UsersRound },
   { id: 'discover', label: 'Обзор', icon: Compass },
   { id: 'library', label: 'Библиотека', icon: Library },
 ]
