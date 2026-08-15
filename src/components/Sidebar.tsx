@@ -20,6 +20,7 @@ export function Sidebar({
   onRecommendations,
   onTop,
   onPlaylist,
+  onCreatePlaylist,
   onToggle,
   onSession,
 }: {
@@ -32,6 +33,7 @@ export function Sidebar({
   onRecommendations: () => void
   onTop: () => void
   onPlaylist: (playlist: Playlist) => void
+  onCreatePlaylist: () => void
   onToggle: () => void
   onSession: () => void
 }) {
@@ -75,9 +77,12 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__section sidebar__playlists">
-        <button className="sidebar__section-title" type="button" onClick={() => onView('library')} aria-label="Показать все плейлисты">
-          <span>Недавние</span><ListMusic size={16} />
-        </button>
+        <div className="sidebar__playlist-heading">
+          <button className="sidebar__section-title" type="button" onClick={() => onView('library')} aria-label="Показать все плейлисты">
+            <span>Недавние</span><ListMusic size={16} />
+          </button>
+          <button className="sidebar__playlist-create" type="button" onClick={onCreatePlaylist} aria-label="Новый плейлист">+ Новый</button>
+        </div>
         {playlists.slice(0, 4).map((playlist) => (
           <button key={playlist.id} className="sidebar__playlist" type="button" onClick={() => onPlaylist(playlist)} aria-label={`Открыть плейлист ${playlist.title}`}>
             <CoverArt title={playlist.title} url={playlist.coverUrl} tone={playlist.coverTone} className="sidebar__cover" />
