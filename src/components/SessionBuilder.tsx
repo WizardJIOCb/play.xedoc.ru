@@ -16,10 +16,14 @@ export function SessionBuilder({ open, initialDiscovery = 58, onClose }: { open:
     setError('')
     setPreferences((current) => ({ ...current, discovery: initialDiscovery }))
     window.setTimeout(() => closeRef.current?.focus(), 30)
+  }, [initialDiscovery, open])
+
+  useEffect(() => {
+    if (!open) return
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [initialDiscovery, onClose, open])
+  }, [onClose, open])
 
   if (!open) return null
 
@@ -67,7 +71,7 @@ export function SessionBuilder({ open, initialDiscovery = 58, onClose }: { open:
           <fieldset className="discovery-control">
             <legend><Radio size={17} /> Баланс открытий</legend>
             <div className="discovery-control__labels"><span>Только знакомое</span><strong>{preferences.discovery}% нового</strong><span>Удиви меня</span></div>
-            <input type="range" min="0" max="100" value={preferences.discovery} onChange={(event) => setPreferences({ ...preferences, discovery: Number(event.target.value) })} style={{ '--range-value': `${preferences.discovery}%` } as React.CSSProperties} />
+            <input type="range" min="0" max="100" value={preferences.discovery} onChange={(event) => setPreferences({ ...preferences, discovery: Number(event.target.value) })} style={{ '--range-value': `${preferences.discovery}%` } as React.CSSProperties} aria-label="Баланс открытий" />
             <div className="discovery-control__markers"><i /><i /><i /><i /><i /></div>
           </fieldset>
 

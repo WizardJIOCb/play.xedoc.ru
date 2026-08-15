@@ -5,6 +5,7 @@ import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
+import { useAuthPrompt } from '../auth/AuthPromptContext'
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return '0:00'
@@ -13,12 +14,14 @@ function formatTime(seconds: number) {
 
 export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; readonly?: boolean }) {
   const player = usePlayer()
+  const auth = useAuthPrompt()
   const [liking, setLiking] = useState(false)
   const track = player.current
   const liked = track ? player.isTrackLiked(track) : false
 
   const onLike = async () => {
     if (!track || liking) return
+    if (!auth.requireAuth()) return
     setLiking(true)
     try {
       await player.setTrackLiked(track, !liked)

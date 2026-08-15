@@ -6,6 +6,7 @@ import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
+import { useAuthPrompt } from '../auth/AuthPromptContext'
 
 function formatDuration(durationMs: number) {
   const total = Math.round(durationMs / 1000)
@@ -14,6 +15,7 @@ function formatDuration(durationMs: number) {
 
 export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource, onQueueRemove }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource; onQueueRemove?: () => void }) {
   const player = usePlayer()
+  const auth = useAuthPrompt()
   const contextIndex = context.findIndex((item) => item === track)
   const active = context === player.queue && contextIndex >= 0
     ? player.currentIndex === contextIndex
@@ -23,6 +25,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
 
   const onLike = async () => {
     if (liking) return
+    if (!auth.requireAuth()) return
     setLiking(true)
     try {
       await player.setTrackLiked(track, !liked)

@@ -4,10 +4,12 @@ import { createPortal } from 'react-dom'
 import { addTrackToLocalPlaylist, createLocalPlaylist, getLocalPlaylists } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
 import type { Playlist, Track } from '../types'
+import { useAuthPrompt } from '../auth/AuthPromptContext'
 
 export const PLAYLISTS_CHANGED_EVENT = 'xedoc:playlists-changed'
 
 export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Track; onAddNext?: () => void; className?: string }) {
+  const auth = useAuthPrompt()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -54,6 +56,7 @@ export function PlaylistPicker({ track, onAddNext, className = '' }: { track: Tr
   }, [open, loading, playlists.length, creating])
 
   const show = () => {
+    if (!auth.requireAuth()) return
     setOpen((value) => !value)
     setDone('')
     setError('')

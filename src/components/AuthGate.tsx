@@ -1,4 +1,4 @@
-import { ChevronRight, LoaderCircle, LockKeyhole, UserRound } from 'lucide-react'
+import { ChevronRight, LoaderCircle, LockKeyhole, UserRound, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { loginAccount, registerAccount } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
@@ -12,7 +12,7 @@ function usernameError(value: string, mode: 'login' | 'register') {
   return ''
 }
 
-export function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
+export function AuthGate({ onAuthenticated, modal = false, onClose }: { onAuthenticated: () => void; modal?: boolean; onClose?: () => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -38,14 +38,15 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
     }
   }
 
-  return (
-    <main className="access-gate auth-gate">
+  const gate = (
+    <div className={`access-gate auth-gate ${modal ? 'auth-gate--modal' : ''}`} role={modal ? 'dialog' : undefined} aria-modal={modal || undefined} aria-label={modal ? 'Вход или регистрация' : undefined}>
       <div className="access-gate__glow" />
       <form onSubmit={(event) => void submit(event)}>
+        {modal && <button className="icon-button auth-gate__close" type="button" onClick={onClose} aria-label="Закрыть окно входа"><X size={19} /></button>}
         <span className="brand__mark">X</span>
         <span className="eyebrow">XEDOC PLAY · ВАША МУЗЫКА</span>
-        <h1>{mode === 'login' ? 'С возвращением.' : 'Создайте свой профиль.'}</h1>
-        <p>{mode === 'login' ? 'Плейлисты, музыкальный вкус и подключения останутся только в вашем аккаунте.' : 'После регистрации подключите Яндекс Музыку и перенесите музыкальный вкус из VK.'}</p>
+        <h1>{mode === 'login' ? 'Войдите в XEDOC.' : 'Создайте свой профиль.'}</h1>
+        <p>{mode === 'login' ? 'Вход нужен для лайков, плейлистов, друзей и персональных рекомендаций. Слушать популярное можно без аккаунта.' : 'После регистрации сохраняйте музыку, собирайте плейлисты и подключайте свои источники.'}</p>
         <div className="auth-gate__tabs" role="tablist" aria-label="Вход или регистрация">
           <button className={mode === 'login' ? 'is-active' : ''} type="button" onClick={() => { setMode('login'); setError('') }}>Вход</button>
           <button className={mode === 'register' ? 'is-active' : ''} type="button" onClick={() => { setMode('register'); setError('') }}>Регистрация</button>
@@ -60,6 +61,8 @@ export function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
         {error && <span className="form-error">{error}</span>}
         <small>{mode === 'register' ? 'Логин нужен для входа и виден в профиле, поэтому email не используется. Пароль — не короче 10 символов.' : 'Ваш пароль не передаётся музыкальным сервисам.'}</small>
       </form>
-    </main>
+    </div>
   )
+
+  return modal ? <div className="modal-backdrop auth-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.() }}>{gate}</div> : <main>{gate}</main>
 }
