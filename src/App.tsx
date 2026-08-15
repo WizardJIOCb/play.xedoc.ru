@@ -226,14 +226,14 @@ function formatListeningTime(durationMs: number) {
   return hours ? `${hours} ч ${minutes} мин` : `${minutes} мин`
 }
 
-function ListeningTopView({ stats, loading, error }: { stats?: ListeningStats; loading: boolean; error?: string }) {
+function ListeningTopView({ stats, loading, error, authenticated }: { stats?: ListeningStats; loading: boolean; error?: string; authenticated: boolean }) {
   const player = usePlayer()
   const [selectedId, setSelectedId] = useState('day')
   const selected = stats?.top.find((item) => item.id === selectedId) || stats?.top[0]
   return (
     <section className="listening-top-page">
       <header className="listening-top-page__hero">
-        <div><span className="eyebrow"><Trophy size={15} /> ВАША МУЗЫКАЛЬНАЯ СТАТИСТИКА</span><h1>Треки, которые<br /><em>остались с вами.</em></h1><p>Рейтинг строится только по прослушиваниям через XEDOC Play и обновляется автоматически.</p></div>
+        <div><span className="eyebrow"><Trophy size={15} /> {authenticated ? 'ВАША МУЗЫКАЛЬНАЯ СТАТИСТИКА' : 'ПОПУЛЯРНО В XEDOC'}</span><h1>{authenticated ? <>Треки, которые<br /><em>остались с вами.</em></> : <>Треки, которые<br /><em>слушают сейчас.</em></>}</h1><p>{authenticated ? 'Рейтинг строится только по вашим прослушиваниям через XEDOC Play и обновляется автоматически.' : 'Общий рейтинг XEDOC Play доступен без регистрации и обновляется по подтверждённым прослушиваниям.'}</p></div>
         <div className="listening-top-page__numbers">
           <span data-tooltip="Количество запусков, которые играли не меньше 20 секунд"><strong>{stats?.totalPlays || 0}</strong><small>прослушиваний</small></span>
           <span data-tooltip="Количество разных треков в истории XEDOC"><strong>{stats?.uniqueTracks || 0}</strong><small>уникальных треков</small></span>
@@ -423,6 +423,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   const queueRequest = useRef(0)
   const player = usePlayer()
   const authenticated = data.authenticated && Boolean(data.appUser)
+  const listeningStatsScope = useRef(authenticated)
 
   const requireAuth = useCallback(() => {
     if (authenticated) return true
@@ -495,11 +496,23 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [])
 
   useEffect(() => {
-    if (!authenticated || !topOpen || listeningStats || statsLoading || !data.catalogAvailable) return
+    if (!topOpen || listeningStats || !data.catalogAvailable) return
+    let cancelled = false
     setStatsLoading(true)
     setStatsError('')
-    void getListeningStats().then(setListeningStats).catch(() => setStatsError('Не удалось загрузить статистику прослушиваний.')).finally(() => setStatsLoading(false))
-  }, [authenticated, data.catalogAvailable, listeningStats, statsLoading, topOpen])
+    void getListeningStats()
+      .then((result) => { if (!cancelled) setListeningStats(result) })
+      .catch(() => { if (!cancelled) setStatsError('Не удалось загрузить статистику прослушиваний.') })
+      .finally(() => { if (!cancelled) setStatsLoading(false) })
+    return () => { cancelled = true }
+  }, [authenticated, data.catalogAvailable, listeningStats, topOpen])
+
+  useEffect(() => {
+    if (listeningStatsScope.current === authenticated) return
+    listeningStatsScope.current = authenticated
+    setListeningStats(undefined)
+    setStatsError('')
+  }, [authenticated])
 
   useEffect(() => {
     if (!authenticated || view !== 'liked' || allLiked || likedLoading || !data.catalogAvailable) return
@@ -600,7 +613,6 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [navigatePath, requireAuth])
 
   const openTop = useCallback(() => {
-    if (!requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
@@ -609,7 +621,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setSearchOpen(false)
     setListeningStats(undefined)
     if (!isTopPath()) navigatePath('/top')
-  }, [navigatePath, requireAuth])
+  }, [navigatePath])
 
   const openAdmin = useCallback(() => {
     if (!requireAuth()) return
@@ -663,6 +675,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
 
   useEffect(() => {
     if (loading || authenticated || profileUsername || searchOpen) return
+    if (topOpen) return
     if (view === 'home' && !recommendationsOpen && !topOpen && !adminOpen) return
     setView('home')
     setRecommendationsOpen(false)
@@ -677,7 +690,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
-    if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
+    if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} authenticated={authenticated} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
     if (view === 'home') return <HomeView data={data} authenticated={authenticated} onSession={() => openSession()} onRequireAuth={() => setAuthOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
     if (view === 'feed') return <SocialFeedPage user={data.appUser} tracks={data.quickTracks.concat(data.likedTracks)} playlists={data.localPlaylists.concat(data.playlists)} />

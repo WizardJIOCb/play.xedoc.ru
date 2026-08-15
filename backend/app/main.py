@@ -1357,8 +1357,9 @@ def create_app(
     @app.get("/api/listening-stats", response_model=ListeningStatsPayload, response_model_exclude_none=True)
     async def listening_stats(
         request: Request,
-        _: None = Depends(require_access),
     ) -> ListeningStatsPayload:
+        await enforce_rate_limit(request, "listening-stats", maximum=120, window_seconds=60)
+        public_catalog = optional_app_user(request) is None
         shared_catalog = optional_credential(request) is None
         periods: list[tuple[str, str, int | None]] = [
             ("day", "За день", 1),
@@ -1370,18 +1371,23 @@ def create_app(
         top: list[ListeningTopDTO] = []
         for identifier, title, days in periods:
             tracks: list[TrackDTO] = []
-            rows = store.top_tracks(days=days, limit=200)
+            rows = store.service_tracks(days=days, limit=200) if public_catalog else store.top_tracks(days=days, limit=200)
             for row in rows:
                 try:
-                    track = TrackDTO.model_validate(row["track"])
-                except ValueError:
+                    track = TrackDTO.model_validate(row if public_catalog else row["track"])
+                except (KeyError, ValueError):
                     continue
                 tracks.append(track.model_copy(update={
-                    "play_count": row["play_count"],
-                    "total_listened_ms": row["total_listened_ms"],
-                    "last_played_at": row["last_played_at"],
+                    "liked": None if public_catalog else track.liked,
+                    "play_count": row.get("playCount") if public_catalog else row["play_count"],
+                    "total_listened_ms": row.get("totalListenedMs") if public_catalog else row["total_listened_ms"],
+                    "last_played_at": row.get("lastPlayedAt") if public_catalog else row["last_played_at"],
+                    "stream_url": (
+                        f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                        f"?ticket={quote(signer.issue(f'public-search:{track.id}', 86_400), safe='')}"
+                    ) if public_catalog else track.stream_url,
                 }))
-            if shared_catalog:
+            if shared_catalog and not public_catalog:
                 _mark_local_likes(tracks, store)
             top.append(ListeningTopDTO(
                 id=identifier,
@@ -1390,6 +1396,14 @@ def create_app(
                 total_plays=sum(track.play_count or 0 for track in tracks),
                 tracks=tracks,
             ))
+        if public_catalog:
+            summary = store.service_listening_summary()
+            return ListeningStatsPayload(
+                total_plays=summary["total_plays"],
+                unique_tracks=summary["unique_tracks"],
+                total_listened_ms=summary["total_listened_ms"],
+                top=top,
+            )
         all_stats = store.list_track_stats()
         return ListeningStatsPayload(
             total_plays=sum(item["play_count"] for item in all_stats.values()),
