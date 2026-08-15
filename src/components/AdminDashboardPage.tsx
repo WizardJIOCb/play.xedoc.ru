@@ -16,6 +16,14 @@ function dateTime(timestamp?: number) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp * 1000))
 }
 
+function registrationDate(timestamp: number) {
+  return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium' }).format(new Date(timestamp * 1000))
+}
+
+function registrationTime(timestamp: number) {
+  return new Intl.DateTimeFormat('ru-RU', { timeStyle: 'short' }).format(new Date(timestamp * 1000))
+}
+
 export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
   const [dashboard, setDashboard] = useState<AdminDashboard>()
   const [query, setQuery] = useState('')
@@ -63,9 +71,10 @@ export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
       <section className="admin-users">
         <header><div><span className="eyebrow">АККАУНТЫ</span><h2>Пользователи</h2></div><label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя или @логин" />{loading && <LoaderCircle className="spin" size={16} />}</label></header>
         <div className="admin-users__table">
-          <div className="admin-users__head"><span>Профиль</span><span>Музыка</span><span>Плейлисты</span><span>Активность</span><span /></div>
+          <div className="admin-users__head"><span>Профиль</span><span>Регистрация</span><span>Музыка</span><span>Плейлисты</span><span>Активность</span><span /></div>
           {dashboard.users.map((user) => <article key={user.username}>
             <div className="admin-user-identity"><span>{user.displayName.charAt(0).toUpperCase() || 'X'}</span><p><strong>{user.displayName}</strong><small>@{user.username}{user.isAdmin && <em><ShieldCheck size={11} /> admin</em>}</small></p></div>
+            <div className="admin-user-created" aria-label={`Дата регистрации ${user.displayName}`}><strong>{registrationDate(user.createdAt)}</strong><small>{registrationTime(user.createdAt)}</small></div>
             <div className="admin-user-source"><i className={user.yandexConnected ? 'is-connected' : ''} /> <span>{user.yandexConnected ? 'Яндекс подключён' : 'Без подключения'}</span></div>
             <div><strong>{user.playlists}</strong><small>{user.publicPlaylists} публичных · {user.playlistTracks} треков</small></div>
             <div><strong>{user.totalPlays} просл.</strong><small>{user.uniqueTracks} треков · {listeningTime(user.totalListenedMs)}<br />{dateTime(user.lastPlayedAt)}</small></div>

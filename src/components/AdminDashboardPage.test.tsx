@@ -30,6 +30,8 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('@wizardjiocb911')).toBeInTheDocument()
     expect(screen.getByText('Signal')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('Регистрация')).toBeInTheDocument()
+    expect(screen.getByLabelText('Дата регистрации Rodion')).toHaveTextContent('2023')
   })
 
   it('does not request or render data without the admin role', () => {
