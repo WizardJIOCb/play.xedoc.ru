@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -137,6 +137,20 @@ export async function deleteSocialPost(postId: string): Promise<void> {
 
 export async function toggleSocialPostLike(postId: string, liked: boolean): Promise<SocialPost> {
   return request<SocialPost>(`/social/posts/${encodeURIComponent(postId)}/like`, { method: liked ? 'PUT' : 'DELETE' })
+}
+
+export async function getSocialComments(postId: string): Promise<SocialComment[]> {
+  return request<SocialComment[]>(`/social/posts/${encodeURIComponent(postId)}/comments`)
+}
+
+export async function createSocialComment(postId: string, body: string, parentId?: string): Promise<SocialComment> {
+  return request<SocialComment>(`/social/posts/${encodeURIComponent(postId)}/comments`, {
+    method: 'POST', body: JSON.stringify({ body, ...(parentId ? { parentId } : {}) }),
+  })
+}
+
+export async function deleteSocialComment(commentId: string): Promise<void> {
+  await request(`/social/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' })
 }
 
 export async function voteSocialPoll(postId: string, optionId: string): Promise<SocialPost> {

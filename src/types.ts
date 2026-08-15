@@ -193,9 +193,22 @@ export interface SocialPost {
   poll?: SocialPoll
   createdAt: number
   likeCount: number
+  commentCount: number
   liked: boolean
   isOwner: boolean
   rankingReason?: string
+}
+
+export interface SocialComment {
+  id: string
+  postId: string
+  parentId?: string
+  author: { username: string; displayName: string }
+  body: string
+  createdAt: number
+  deleted: boolean
+  isOwner: boolean
+  replies: SocialComment[]
 }
 
 export interface SocialFeed {

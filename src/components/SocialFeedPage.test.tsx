@@ -12,6 +12,7 @@ const fixture: SocialPost = {
   attachments: [],
   createdAt: 1_700_000_000,
   likeCount: 0,
+  commentCount: 0,
   liked: false,
   isOwner: true,
   rankingReason: 'Свежая запись',

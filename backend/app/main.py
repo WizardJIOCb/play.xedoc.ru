@@ -61,6 +61,8 @@ from .models import (
     RecommendationCollectionDTO,
     SearchPayload,
     SocialFeedDTO,
+    SocialCommentCreateRequest,
+    SocialCommentDTO,
     SocialPostCreateRequest,
     SocialPostDTO,
     ShareLinkDTO,
@@ -1052,6 +1054,48 @@ def create_app(
         if post is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
         return SocialPostDTO.model_validate(post)
+
+    @app.get(
+        "/api/social/posts/{post_id}/comments",
+        response_model=list[SocialCommentDTO],
+        response_model_exclude_none=True,
+    )
+    async def social_post_comments(post_id: str, request: Request) -> list[SocialCommentDTO]:
+        await enforce_rate_limit(request, "social-comments", maximum=180, window_seconds=60)
+        try:
+            return [
+                SocialCommentDTO.model_validate(item)
+                for item in store.list_social_comments(_safe_social_id(post_id))
+            ]
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/social/posts/{post_id}/comments",
+        response_model=SocialCommentDTO,
+        response_model_exclude_none=True,
+    )
+    async def create_social_comment(
+        post_id: str,
+        body: SocialCommentCreateRequest,
+        _: None = Depends(require_access),
+    ) -> SocialCommentDTO:
+        try:
+            return SocialCommentDTO.model_validate(
+                store.create_social_comment(
+                    _safe_social_id(post_id),
+                    body.body,
+                    _safe_social_id(body.parent_id) if body.parent_id else None,
+                )
+            )
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    @app.delete("/api/social/comments/{comment_id}", response_model=ActionResponse)
+    async def delete_social_comment(comment_id: str, _: None = Depends(require_access)) -> ActionResponse:
+        if not store.delete_social_comment(_safe_social_id(comment_id)):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Комментарий не найден")
+        return ActionResponse()
 
     @app.post("/api/social/posts/{post_id}/vote", response_model=SocialPostDTO, response_model_exclude_none=True)
     async def vote_social_post(
