@@ -47,6 +47,18 @@ describe('favorite collection filtering', () => {
     expect(updated.tracks.map((track) => track.id)).toEqual(['liked', 'removed'])
   })
 
+  it('shows actual session controls instead of a fixed discovery claim', async () => {
+    render(createElement(PlayerProvider, null, createElement(App)))
+
+    expect(await screen.findByRole('heading', { name: /Сессия под ваши правила/ })).toBeInTheDocument()
+    expect(screen.getByText('Настройте — и слушайте.')).toBeInTheDocument()
+    expect(screen.getByText('25 · 50 · 90 минут')).toBeInTheDocument()
+    expect(screen.getByText('Каталог XEDOC')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Настроить сессию' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Включить подборку' })).toBeDisabled()
+    expect(screen.queryByText('58%')).not.toBeInTheDocument()
+  })
+
   it('keeps the same audio instance while opening a profile and returning through the logo', async () => {
     const audio = document.createElement('audio')
     const pause = vi.fn()
