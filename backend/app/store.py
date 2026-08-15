@@ -297,6 +297,26 @@ class CredentialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS social_comment (
+                    id TEXT PRIMARY KEY,
+                    post_id TEXT NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
+                    author_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    parent_id TEXT REFERENCES social_comment(id) ON DELETE CASCADE,
+                    body TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    deleted_at INTEGER
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_social_comment_post ON social_comment(post_id, created_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_social_comment_parent ON social_comment(parent_id, created_at)"
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS social_poll_option (
                     id TEXT PRIMARY KEY,
                     post_id TEXT NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
@@ -1490,6 +1510,72 @@ class CredentialStore:
                 )
             return self._social_post_row(connection, post_id, viewer_id)
 
+    def create_social_comment(self, post_id: str, body: str, parent_id: str | None = None) -> dict:
+        viewer_id = self.current_user_id()
+        now = int(time.time())
+        comment_id = secrets.token_urlsafe(12)
+        with self._lock, self._connect() as connection:
+            if not self._can_view_social_post(connection, post_id, viewer_id):
+                raise CredentialStoreError("Запись не найдена")
+            if parent_id is not None:
+                parent = connection.execute(
+                    "SELECT 1 FROM social_comment WHERE id = ? AND post_id = ?", (parent_id, post_id)
+                ).fetchone()
+                if parent is None:
+                    raise CredentialStoreError("Родительский комментарий не найден")
+            connection.execute(
+                """
+                INSERT INTO social_comment(id, post_id, author_id, parent_id, body, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?)
+                """,
+                (comment_id, post_id, viewer_id, parent_id, body.strip(), now, now),
+            )
+            comment = self._social_comment_row(connection, comment_id, viewer_id)
+        if comment is None:
+            raise CredentialStoreError("Не удалось сохранить комментарий")
+        return comment
+
+    def list_social_comments(self, post_id: str) -> list[dict]:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            if not self._can_view_social_post(connection, post_id, viewer_id):
+                raise CredentialStoreError("Запись не найдена")
+            ids = connection.execute(
+                "SELECT id FROM social_comment WHERE post_id = ? ORDER BY created_at, id", (post_id,)
+            ).fetchall()
+            comments = [
+                comment
+                for row in ids
+                if (comment := self._social_comment_row(connection, str(row[0]), viewer_id)) is not None
+            ]
+        by_id = {comment["id"]: comment for comment in comments}
+        roots: list[dict] = []
+        for comment in comments:
+            parent = by_id.get(comment.get("parentId"))
+            if parent is None:
+                roots.append(comment)
+            else:
+                parent["replies"].append(comment)
+        return roots
+
+    def delete_social_comment(self, comment_id: str) -> bool:
+        viewer_id = self.current_user_id()
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE social_comment
+                SET body = '', deleted_at = ?, updated_at = ?
+                WHERE id = ? AND deleted_at IS NULL AND (
+                    author_id = ? OR EXISTS(
+                        SELECT 1 FROM social_post p WHERE p.id = social_comment.post_id AND p.owner_id = ?
+                    )
+                )
+                """,
+                (now, now, comment_id, viewer_id, viewer_id),
+            )
+            return cursor.rowcount == 1
+
     def vote_social_poll(self, post_id: str, option_id: str) -> dict | None:
         viewer_id = self.current_user_id()
         with self._lock, self._connect() as connection:
@@ -1639,12 +1725,39 @@ class CredentialStore:
         return score
 
     @staticmethod
+    def _social_comment_row(connection: sqlite3.Connection, comment_id: str, viewer_id: str) -> dict | None:
+        row = connection.execute(
+            """
+            SELECT c.id, c.post_id, c.parent_id, u.username, u.display_name, c.body,
+                   c.created_at, c.deleted_at, c.author_id
+            FROM social_comment c JOIN app_user u ON u.id = c.author_id
+            WHERE c.id = ?
+            """,
+            (comment_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        deleted = row[7] is not None
+        return {
+            "id": str(row[0]),
+            "postId": str(row[1]),
+            "parentId": str(row[2]) if row[2] is not None else None,
+            "author": {"username": str(row[3]), "displayName": str(row[4])},
+            "body": "Комментарий удалён" if deleted else str(row[5]),
+            "createdAt": int(row[6]),
+            "deleted": deleted,
+            "isOwner": str(row[8]) == viewer_id,
+            "replies": [],
+        }
+
+    @staticmethod
     def _social_post_row(connection: sqlite3.Connection, post_id: str, viewer_id: str) -> dict | None:
         row = connection.execute(
             """
             SELECT p.id, p.owner_id, u.username, u.display_name, p.body, p.visibility,
                    p.attachments, p.poll_question, p.created_at,
                    (SELECT COUNT(*) FROM social_post_like l WHERE l.post_id = p.id),
+                   (SELECT COUNT(*) FROM social_comment c WHERE c.post_id = p.id AND c.deleted_at IS NULL),
                    EXISTS(SELECT 1 FROM social_post_like l WHERE l.post_id = p.id AND l.user_id = ?)
             FROM social_post p JOIN app_user u ON u.id = p.owner_id
             WHERE p.id = ?
@@ -1665,7 +1778,8 @@ class CredentialStore:
             "attachments": attachments if isinstance(attachments, list) else [],
             "createdAt": int(row[8]),
             "likeCount": int(row[9]),
-            "liked": bool(row[10]),
+            "commentCount": int(row[10]),
+            "liked": bool(row[11]),
             "isOwner": str(row[1]) == viewer_id,
         }
         if row[7]:

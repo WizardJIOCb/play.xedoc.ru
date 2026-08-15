@@ -701,8 +701,32 @@ function PrivateApp() {
 }
 
 export default function App() {
-  const shareMatch = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
-  const profileMatch = window.location.pathname.match(/^\/users\/([A-Za-z0-9_.-]{3,32})\/?$/)
-  const publicSearch = window.location.pathname.replace(/\/+$/, '') === '/search'
+  const [pathname, setPathname] = useState(() => window.location.pathname)
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(window.location.pathname)
+    const navigateToProfile = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const link = target.closest<HTMLAnchorElement>('a[href]')
+      if (!link || link.target || link.hasAttribute('download')) return
+      const url = new URL(link.href, window.location.href)
+      if (url.origin !== window.location.origin || !/^\/users\/[A-Za-z0-9_.-]{3,32}\/?$/.test(url.pathname)) return
+      event.preventDefault()
+      window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
+      updatePathname()
+    }
+    window.addEventListener('popstate', updatePathname)
+    document.addEventListener('click', navigateToProfile)
+    return () => {
+      window.removeEventListener('popstate', updatePathname)
+      document.removeEventListener('click', navigateToProfile)
+    }
+  }, [])
+
+  const shareMatch = pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
+  const profileMatch = pathname.match(/^\/users\/([A-Za-z0-9_.-]{3,32})\/?$/)
+  const publicSearch = pathname.replace(/\/+$/, '') === '/search'
   return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : profileMatch ? <PublicProfilePage username={profileMatch[1]} /> : publicSearch ? <PublicSearchPage /> : <PrivateApp />}<GlobalTooltip /></>
 }

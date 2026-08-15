@@ -177,6 +177,11 @@ class SocialPostCreateRequest(APIModel):
     poll: PollCreate | None = None
 
 
+class SocialCommentCreateRequest(APIModel):
+    body: str = Field(min_length=1, max_length=2000)
+    parent_id: str | None = Field(default=None, min_length=8, max_length=64)
+
+
 class SocialPostAuthorDTO(APIModel):
     username: str
     display_name: str
@@ -191,6 +196,7 @@ class SocialPostDTO(APIModel):
     poll: PollDTO | None = None
     created_at: int
     like_count: int = 0
+    comment_count: int = 0
     liked: bool = False
     is_owner: bool = False
     ranking_reason: str | None = None
@@ -199,6 +205,18 @@ class SocialPostDTO(APIModel):
 class SocialFeedDTO(APIModel):
     posts: list[SocialPostDTO] = Field(default_factory=list)
     algorithm: str = "xedoc-social-v1"
+
+
+class SocialCommentDTO(APIModel):
+    id: str
+    post_id: str
+    parent_id: str | None = None
+    author: SocialPostAuthorDTO
+    body: str
+    created_at: int
+    deleted: bool = False
+    is_owner: bool = False
+    replies: list["SocialCommentDTO"] = Field(default_factory=list)
 
 
 class FriendDTO(APIModel):

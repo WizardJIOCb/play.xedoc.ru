@@ -58,6 +58,8 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         {!readonly && track && <ShareButton track={track} />}
         {!readonly && track && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}
         {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}
+      </div>
+      <div className="player-bar__volume-row">
         <div className="volume-control">
           {player.volume === 0 ? <VolumeX size={18} /> : player.volume < 0.5 ? <Volume1 size={18} /> : <Volume2 size={18} />}
           <input type="range" min="0" max="1" step="0.01" value={player.volume} onChange={(event) => player.setVolume(Number(event.target.value))} style={{ '--range-value': `${player.volume * 100}%` } as React.CSSProperties} aria-label="Громкость" />
