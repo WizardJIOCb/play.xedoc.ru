@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { getBootstrap } from './lib/api'
+import { getBootstrap, getListeningStats } from './lib/api'
 import { PlayerProvider } from './player/PlayerContext'
 import type { Track } from './types'
 import { filterCollectionTracks, stabilizeTrackOrder } from './App'
@@ -23,6 +23,10 @@ vi.mock('./lib/api', async (importOriginal) => {
     }),
     getSocialProfilePosts: vi.fn().mockResolvedValue([]),
     getFriendStatus: vi.fn().mockResolvedValue('self'),
+    getListeningStats: vi.fn().mockResolvedValue({
+      totalPlays: 3, uniqueTracks: 1, totalListenedMs: 60_000,
+      top: [{ id: 'day', title: 'За день', periodDays: 1, totalPlays: 3, tracks: [{ id: 'popular', title: 'Popular', artists: ['Artist'], durationMs: 180_000, playCount: 3, streamUrl: '/api/public-search/tracks/popular/stream?ticket=signed-ticket' }] }],
+    }),
   }
 })
 
@@ -79,6 +83,24 @@ describe('favorite collection filtering', () => {
     expect(await screen.findByRole('dialog', { name: 'Вход или регистрация' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Войдите в XEDOC.' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/')
+  })
+
+  it('lets a guest open and play the public top without an auth prompt', async () => {
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [{ id: 'popular', title: 'Popular', artists: ['Artist'], durationMs: 180_000, streamUrl: '/api/public-search/tracks/popular/stream?ticket=signed-ticket' }],
+      playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+    fireEvent.click(await screen.findByRole('button', { name: 'Топ треков' }))
+
+    expect(await screen.findByRole('heading', { name: /слушают сейчас/ })).toBeInTheDocument()
+    expect(getListeningStats).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Слушать топ' })).toBeEnabled()
+    expect(screen.queryByRole('dialog', { name: 'Вход или регистрация' })).not.toBeInTheDocument()
+    expect(window.location.pathname).toBe('/top')
   })
 
   it('keeps the same audio instance while opening a profile and returning through the logo', async () => {

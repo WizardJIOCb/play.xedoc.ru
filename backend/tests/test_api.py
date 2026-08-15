@@ -78,6 +78,30 @@ def test_guest_and_authenticated_shared_catalog_bootstrap(client: TestClient, st
     assert catalog.json()["recommendations"][0]["tracks"][0]["id"] == "101"
 
 
+def test_guest_can_open_and_stream_public_top_tracks(client: TestClient, fake_gateway) -> None:
+    connect(client)
+    listened = client.post("/api/listening-events", json={
+        "track": {"id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000},
+        "listenedMs": 20_000,
+    })
+    assert listened.status_code == 200
+
+    client.cookies.clear()
+    stats = client.get("/api/listening-stats")
+    assert stats.status_code == 200
+    body = stats.json()
+    assert body["totalPlays"] == 1
+    assert body["uniqueTracks"] == 1
+    assert body["top"][0]["tracks"][0]["id"] == "101"
+    assert "liked" not in body["top"][0]["tracks"][0]
+    stream_path = body["top"][0]["tracks"][0]["streamUrl"]
+    assert stream_path.startswith("/api/public-search/tracks/101/stream?ticket=")
+
+    stream = client.get(stream_path, follow_redirects=False)
+    assert stream.status_code == 307
+    assert stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
+
+
 def test_profile_search_accepts_at_username(client: TestClient, fake_gateway: FakeGateway) -> None:
     connect(client)
     response = client.get("/api/search", params={"q": "@testuser"})

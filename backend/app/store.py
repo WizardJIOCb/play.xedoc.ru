@@ -1138,6 +1138,22 @@ class CredentialStore:
             tracks.append(track)
         return tracks
 
+    def service_listening_summary(self) -> dict[str, int]:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(SUM(play_count), 0),
+                       COUNT(DISTINCT track_id),
+                       COALESCE(SUM(total_listened_ms), 0)
+                FROM user_track_listening_stat
+                """
+            ).fetchone()
+        return {
+            "total_plays": int(row[0] or 0),
+            "unique_tracks": int(row[1] or 0),
+            "total_listened_ms": int(row[2] or 0),
+        }
+
     def top_tracks(self, *, days: int | None = None, limit: int = 200) -> list[dict]:
         limit = max(1, min(limit, 500))
         user_id = self.current_user_id()
