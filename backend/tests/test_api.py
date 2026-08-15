@@ -595,6 +595,54 @@ def test_social_posts_support_rich_blocks_likes_and_polls(client: TestClient) ->
     assert public_wall.json()[0]["liked"] is False
 
 
+def test_social_comments_support_nested_replies_and_collapsed_branches(client: TestClient) -> None:
+    unlock(client)
+    post = client.post(
+        "/api/social/posts",
+        json={"body": "Обсудим этот трек", "visibility": "public"},
+    ).json()
+
+    root = client.post(
+        f"/api/social/posts/{post['id']}/comments",
+        json={"body": "Первый комментарий"},
+    )
+    assert root.status_code == 200
+    reply = client.post(
+        f"/api/social/posts/{post['id']}/comments",
+        json={"body": "Ответ на комментарий", "parentId": root.json()["id"]},
+    )
+    assert reply.status_code == 200
+    nested = client.post(
+        f"/api/social/posts/{post['id']}/comments",
+        json={"body": "Ответ на ответ", "parentId": reply.json()["id"]},
+    )
+    assert nested.status_code == 200
+
+    comments = client.get(f"/api/social/posts/{post['id']}/comments")
+    assert comments.status_code == 200
+    tree = comments.json()
+    assert tree[0]["body"] == "Первый комментарий"
+    assert tree[0]["replies"][0]["body"] == "Ответ на комментарий"
+    assert tree[0]["replies"][0]["replies"][0]["body"] == "Ответ на ответ"
+
+    feed_post = client.get("/api/social/feed").json()["posts"][0]
+    assert feed_post["commentCount"] == 3
+
+    deleted = client.delete(f"/api/social/comments/{reply.json()['id']}")
+    assert deleted.status_code == 200
+    tree_after_delete = client.get(f"/api/social/posts/{post['id']}/comments").json()
+    assert tree_after_delete[0]["replies"][0]["deleted"] is True
+    assert tree_after_delete[0]["replies"][0]["body"] == "Комментарий удалён"
+    assert tree_after_delete[0]["replies"][0]["replies"][0]["body"] == "Ответ на ответ"
+    assert client.get("/api/social/feed").json()["posts"][0]["commentCount"] == 2
+
+    client.cookies.clear()
+    assert client.get(f"/api/social/posts/{post['id']}/comments").status_code == 200
+    assert client.post(
+        f"/api/social/posts/{post['id']}/comments", json={"body": "Без входа"}
+    ).status_code == 401
+
+
 def test_friend_request_unlocks_friends_only_wall_and_feed(client: TestClient) -> None:
     unlock(client)
     client.post("/api/account/logout")

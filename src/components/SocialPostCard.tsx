@@ -1,8 +1,8 @@
-import { ExternalLink, Globe2, Heart, LockKeyhole, Music2, Play, Trash2, UsersRound } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, Globe2, Heart, LoaderCircle, LockKeyhole, MessageCircle, Music2, Play, Reply, Send, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
-import { deleteSocialPost, toggleSocialPostLike, voteSocialPoll } from '../lib/api'
+import { createSocialComment, deleteSocialComment, deleteSocialPost, getSocialComments, toggleSocialPostLike, voteSocialPoll } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
-import type { SocialAttachment, SocialPost } from '../types'
+import type { SocialAttachment, SocialComment, SocialPost } from '../types'
 import { CoverArt } from './CoverArt'
 
 function timeLabel(timestamp: number) {
@@ -32,12 +32,55 @@ function PostText({ text }: { text: string }) {
   return <p className="social-card__text">{parts.map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer">{part}</a> : part)}</p>
 }
 
+function countComments(comments: SocialComment[]): number {
+  return comments.reduce((total, comment) => total + (comment.deleted ? 0 : 1) + countComments(comment.replies), 0)
+}
+
+function CommentComposer({ postId, parentId, placeholder, onSent, onCancel }: { postId: string; parentId?: string; placeholder: string; onSent: () => void; onCancel?: () => void }) {
+  const [body, setBody] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const send = async () => {
+    if (!body.trim()) return
+    setSending(true); setError('')
+    try { await createSocialComment(postId, body.trim(), parentId); setBody(''); onSent() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось отправить комментарий.') }
+    finally { setSending(false) }
+  }
+  return <div className="comment-composer"><textarea autoFocus={Boolean(parentId)} value={body} maxLength={2000} onChange={(event) => setBody(event.target.value)} placeholder={placeholder} /><span>{onCancel && <button type="button" onClick={onCancel}>Отмена</button>}<button className="comment-composer__send" type="button" disabled={sending || !body.trim()} onClick={() => void send()}>{sending ? <LoaderCircle className="spin" size={15} /> : <Send size={15} />} Отправить</button></span>{error && <small className="form-error">{error}</small>}</div>
+}
+
+function CommentNode({ comment, postId, readonly, onChanged }: { comment: SocialComment; postId: string; readonly: boolean; onChanged: () => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const [replyOpen, setReplyOpen] = useState(false)
+  const canDelete = comment.isOwner && !comment.deleted && !readonly
+  return <div className={`comment-node ${comment.deleted ? 'is-deleted' : ''}`}>
+    <div className="comment-node__line"><a className="comment-avatar" href={`/users/${encodeURIComponent(comment.author.username)}`}>{comment.author.displayName.charAt(0).toUpperCase() || 'X'}</a><div className="comment-node__content"><header><a href={`/users/${encodeURIComponent(comment.author.username)}`}><strong>{comment.author.displayName}</strong></a><small>@{comment.author.username} · {timeLabel(comment.createdAt)}</small></header><p>{comment.body}</p>{!comment.deleted && <footer>{!readonly && <button type="button" onClick={() => setReplyOpen((value) => !value)}><Reply size={14} /> Ответить</button>}{canDelete && <button type="button" onClick={() => { if (window.confirm('Удалить комментарий?')) void deleteSocialComment(comment.id).then(onChanged) }}><Trash2 size={13} /> Удалить</button>}</footer>}</div></div>
+    {replyOpen && <CommentComposer postId={postId} parentId={comment.id} placeholder={`Ответить @${comment.author.username}`} onCancel={() => setReplyOpen(false)} onSent={() => { setReplyOpen(false); setExpanded(true); onChanged() }} />}
+    {comment.replies.length > 0 && <div className="comment-node__branch"><button className="comment-branch-toggle" type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}{expanded ? 'Скрыть ветку' : `Показать ответы · ${comment.replies.length}`}</button>{expanded && <div className="comment-node__children">{comment.replies.map((reply) => <CommentNode key={reply.id} comment={reply} postId={postId} readonly={readonly} onChanged={onChanged} />)}</div>}</div>}
+  </div>
+}
+
 export function SocialPostCard({ post: initialPost, onDeleted, readonly = false }: { post: SocialPost; onDeleted?: (id: string) => void; readonly?: boolean }) {
   const [post, setPost] = useState(initialPost)
   const [busy, setBusy] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [comments, setComments] = useState<SocialComment[]>()
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentsError, setCommentsError] = useState('')
   const update = async (action: () => Promise<SocialPost>) => {
     setBusy(true)
     try { setPost(await action()) } finally { setBusy(false) }
+  }
+  const refreshComments = async () => {
+    setCommentsLoading(true); setCommentsError('')
+    try { const value = await getSocialComments(post.id); setComments(value); setPost((current) => ({ ...current, commentCount: countComments(value) })) }
+    catch { setCommentsError('Не удалось загрузить комментарии.') }
+    finally { setCommentsLoading(false) }
+  }
+  const toggleComments = () => {
+    setCommentsOpen((value) => !value)
+    if (!comments) void refreshComments()
   }
   return <article className="social-card">
     <header className="social-card__header">
@@ -53,6 +96,7 @@ export function SocialPostCard({ post: initialPost, onDeleted, readonly = false 
       const percentage = post.poll!.totalVotes ? Math.round(option.votes / post.poll!.totalVotes * 100) : 0
       return <button key={option.id} className={option.selected ? 'is-selected' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => voteSocialPoll(post.id, option.id))}><span style={{ width: `${percentage}%` }} /><em>{option.text}</em><small>{percentage}%</small></button>
     })}<small>{post.poll.totalVotes.toLocaleString('ru-RU')} голосов</small></section>}
-    <footer className="social-card__actions"><button className={post.liked ? 'is-active' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => toggleSocialPostLike(post.id, !post.liked))}><Heart size={18} fill={post.liked ? 'currentColor' : 'none'} /> {post.likeCount || ''}</button></footer>
+    <footer className="social-card__actions"><button className={post.liked ? 'is-active' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => toggleSocialPostLike(post.id, !post.liked))}><Heart size={18} fill={post.liked ? 'currentColor' : 'none'} /> {post.likeCount || ''}</button><button className={commentsOpen ? 'is-active' : ''} type="button" aria-label={`Комментарии: ${post.commentCount}`} onClick={toggleComments}><MessageCircle size={18} /> {post.commentCount || ''}</button></footer>
+    {commentsOpen && <section className="social-comments">{!readonly && <CommentComposer postId={post.id} placeholder="Оставить комментарий" onSent={() => void refreshComments()} />}{commentsLoading && !comments ? <div className="social-comments__state"><LoaderCircle className="spin" size={18} /> Загружаем комментарии…</div> : comments?.length ? <div className="social-comments__tree">{comments.map((comment) => <CommentNode key={comment.id} comment={comment} postId={post.id} readonly={readonly} onChanged={() => void refreshComments()} />)}</div> : <div className="social-comments__state">Комментариев пока нет.</div>}{commentsError && <div className="form-error">{commentsError}</div>}</section>}
   </article>
 }
