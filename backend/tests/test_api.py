@@ -9,7 +9,20 @@ from fastapi.testclient import TestClient
 
 from app.store import LEGACY_USER_ID, CredentialStore
 
-from .conftest import FakeGateway, TEST_CREDENTIAL, connect, unlock
+from .conftest import FakeGateway, TEST_CREDENTIAL, TEST_TRACK, connect, unlock
+
+
+def seed_shared_catalog(store: CredentialStore) -> None:
+    token = store.set_current_user(LEGACY_USER_ID)
+    try:
+        store.save(TEST_CREDENTIAL)
+        store.save_listening_event(
+            TEST_TRACK.id,
+            TEST_TRACK.model_dump(by_alias=True, exclude_none=True),
+            20_000,
+        )
+    finally:
+        store.reset_current_user(token)
 
 
 def test_health_is_public(client: TestClient) -> None:
@@ -30,7 +43,7 @@ def test_health_returns_503_when_storage_is_unhealthy(
     assert response.json()["status"] == "degraded"
 
 
-def test_access_gate_and_demo_bootstrap(client: TestClient) -> None:
+def test_access_gate_and_shared_catalog_bootstrap(client: TestClient, store: CredentialStore) -> None:
     locked = client.get("/api/bootstrap")
     assert locked.status_code == 200
     assert locked.json()["accessLocked"] is True
@@ -40,17 +53,18 @@ def test_access_gate_and_demo_bootstrap(client: TestClient) -> None:
     denied = client.post("/api/account/login", json={"username": "nobody", "password": "wrong-password"})
     assert denied.status_code == 401
 
+    seed_shared_catalog(store)
     unlock(client)
-    demo = client.get("/api/bootstrap")
-    assert demo.status_code == 200
-    assert demo.json()["accessLocked"] is False
-    assert demo.json()["authenticated"] is True
-    assert demo.json()["appUser"]["username"] == "testuser"
-    assert demo.json()["connected"] is False
-    assert demo.json()["demo"] is True
-    assert demo.json()["quickTracks"][0]["id"].startswith("demo-")
-    assert demo.json()["quickTracks"][0]["coverUrl"].startswith("/demo-covers/")
-    assert demo.json()["playlists"][0]["coverUrl"].startswith("/demo-covers/")
+    catalog = client.get("/api/bootstrap")
+    assert catalog.status_code == 200
+    assert catalog.json()["accessLocked"] is False
+    assert catalog.json()["authenticated"] is True
+    assert catalog.json()["appUser"]["username"] == "testuser"
+    assert catalog.json()["connected"] is False
+    assert catalog.json()["demo"] is False
+    assert catalog.json()["catalogAvailable"] is True
+    assert catalog.json()["quickTracks"][0]["id"] == "101"
+    assert catalog.json()["recommendations"][0]["tracks"][0]["id"] == "101"
 
 
 def test_profile_search_accepts_at_username(client: TestClient, fake_gateway: FakeGateway) -> None:
@@ -146,7 +160,7 @@ def test_connected_music_endpoints(
     assert search.status_code == 200
     assert search.json()["tracks"][0]["streamUrl"] == "/api/tracks/101/stream"
 
-    liked = client.put("/api/tracks/101/like")
+    liked = client.put("/api/tracks/101/like", json={"track": TEST_TRACK.model_dump(by_alias=True, exclude_none=True)})
     unliked = client.delete("/api/tracks/101/like")
     assert liked.json() == {"ok": True}
     assert unliked.json() == {"ok": True}
@@ -223,6 +237,7 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_
     assert discovery.json()["seedCount"] == 1
     assert fake_gateway.discovery_contexts[-1][0] == ["101"]
     assert "101" in fake_gateway.discovery_contexts[-1][1]
+    assert fake_gateway.discovery_account_signals[-1] is True
 
     shared = client.post("/api/shares/playlists", json={"playlistId": playlist_id})
     assert shared.status_code == 200
@@ -426,11 +441,25 @@ def test_share_creation_requires_connected_owner(client: TestClient) -> None:
     assert client.get("/api/shares/not-a-real-token").status_code == 404
 
 
-def test_demo_search_session_and_playlist(client: TestClient) -> None:
+def test_shared_catalog_search_session_playlist_and_likes(
+    client: TestClient,
+    store: CredentialStore,
+    fake_gateway: FakeGateway,
+) -> None:
+    seed_shared_catalog(store)
     unlock(client)
-    search = client.get("/api/search", params={"q": "свет"})
+    search = client.get("/api/search", params={"q": "signal"})
     assert search.status_code == 200
-    assert any(track["title"] == "Тёплый свет" for track in search.json()["tracks"])
+    track = search.json()["tracks"][0]
+    assert track["title"] == "Test Signal"
+    assert track["liked"] is False
+
+    liked = client.put("/api/tracks/101/like", json={"track": track})
+    assert liked.status_code == 200
+    favorites = client.get("/api/liked-tracks").json()
+    assert favorites["total"] == 1
+    assert favorites["tracks"][0]["id"] == "101"
+    assert client.get("/api/search", params={"q": "signal"}).json()["tracks"][0]["liked"] is True
 
     session = client.post(
         "/api/sessions/build",
@@ -439,17 +468,32 @@ def test_demo_search_session_and_playlist(client: TestClient) -> None:
             "discovery": 50,
             "cooldownDays": 7,
             "source": "liked",
-            "excludeTrackIds": ["demo-01", "demo-02"],
+            "excludeTrackIds": [],
         },
     )
     assert session.status_code == 200
     assert session.json()["tracks"]
-    assert not {"demo-01", "demo-02"} & {track["id"] for track in session.json()["tracks"]}
+    assert session.json()["tracks"][0]["id"] == "101"
 
-    playlist_id = client.get("/api/bootstrap").json()["playlists"][0]["id"]
+    playlist_id = search.json()["playlists"][0]["id"]
     playlist = client.get(f"/api/playlists/{playlist_id}")
     assert playlist.status_code == 200
     assert playlist.json()["tracks"]
+
+    stream = client.get("/api/tracks/101/stream", follow_redirects=False)
+    assert stream.status_code == 307
+
+    listened = client.post("/api/listening-events", json={
+        "track": track,
+        "listenedMs": 20_000,
+    })
+    assert listened.status_code == 200
+    assert client.get("/api/listening-stats").json()["totalPlays"] == 1
+    assert "сигналов" in client.get("/api/bootstrap").json()["recommendationInsight"]
+
+    discovery = client.get("/api/discovery-recommendations")
+    assert discovery.status_code == 200
+    assert fake_gateway.discovery_account_signals[-1] is False
 
 
 def test_logout_clears_music_session(client: TestClient, store: CredentialStore) -> None:

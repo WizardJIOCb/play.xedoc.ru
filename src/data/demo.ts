@@ -47,6 +47,7 @@ export const demoPlaylists: Playlist[] = [
 export const demoBootstrap: BootstrapPayload = {
   connected: false,
   demo: true,
+  catalogAvailable: false,
   accessLocked: false,
   authenticated: false,
   quickTracks: demoTracks.slice(0, 6),

@@ -269,9 +269,11 @@ export async function buildSession(preferences: SessionPreferences): Promise<{ t
   })
 }
 
-export async function toggleLike(trackId: string, liked: boolean): Promise<void> {
+export async function toggleLike(track: Track, liked: boolean): Promise<void> {
+  const trackId = track.id
   await request(`/tracks/${encodeURIComponent(trackId)}/like`, {
     method: liked ? 'PUT' : 'DELETE',
+    ...(liked ? { body: JSON.stringify({ track }) } : {}),
   })
 }
 

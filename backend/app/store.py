@@ -221,6 +221,18 @@ class CredentialStore:
             )
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS user_track_like (
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    track_id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    liked_at INTEGER NOT NULL,
+                    PRIMARY KEY(user_id, track_id)
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_user_track_like_recent ON user_track_like(user_id, liked_at DESC)")
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_now_playing (
                     user_id TEXT PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
                     track_id TEXT NOT NULL,
@@ -981,6 +993,150 @@ class CredentialStore:
             }
             for row in rows
         }
+
+    def save_track_like(self, track_id: str, payload: dict) -> None:
+        value = dict(payload)
+        value.pop("streamUrl", None)
+        value.pop("stream_url", None)
+        value["liked"] = True
+        serialized = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO user_track_like(user_id, track_id, payload, liked_at)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(user_id, track_id) DO UPDATE SET
+                    payload = excluded.payload,
+                    liked_at = excluded.liked_at
+                """,
+                (self.current_user_id(), track_id, serialized, int(time.time())),
+            )
+
+    def import_track_likes(self, tracks: list[dict]) -> None:
+        if not tracks:
+            return
+        now = int(time.time())
+        rows: list[tuple[str, str, str, int]] = []
+        for payload in tracks:
+            value = dict(payload)
+            track_id = str(value.get("id") or "").strip()
+            if not track_id:
+                continue
+            value.pop("streamUrl", None)
+            value.pop("stream_url", None)
+            value["liked"] = True
+            rows.append((self.current_user_id(), track_id, json.dumps(value, separators=(",", ":"), ensure_ascii=False), now))
+        with self._lock, self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO user_track_like(user_id, track_id, payload, liked_at)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(user_id, track_id) DO UPDATE SET payload = excluded.payload
+                """,
+                rows,
+            )
+
+    def remove_track_like(self, track_id: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "DELETE FROM user_track_like WHERE user_id = ? AND track_id = ?",
+                (self.current_user_id(), track_id),
+            )
+
+    def list_track_likes(self, limit: int = 5000) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT track_id, payload, liked_at
+                FROM user_track_like
+                WHERE user_id = ?
+                ORDER BY liked_at DESC, track_id
+                LIMIT ?
+                """,
+                (self.current_user_id(), max(1, min(limit, 5000))),
+            ).fetchall()
+        likes: list[dict] = []
+        for row in rows:
+            try:
+                track = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            track["id"] = str(row[0])
+            track["liked"] = True
+            likes.append({"track": track, "liked_at": int(row[2])})
+        return likes
+
+    def liked_track_ids(self) -> set[str]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT track_id FROM user_track_like WHERE user_id = ?",
+                (self.current_user_id(),),
+            ).fetchall()
+        return {str(row[0]) for row in rows}
+
+    def service_tracks(self, *, recent: bool = False, days: int | None = None, limit: int = 50) -> list[dict]:
+        limit = max(1, min(limit, 200))
+        with self._lock, self._connect() as connection:
+            if days is not None:
+                cutoff = int(time.time()) - max(1, days) * 86_400
+                rows = connection.execute(
+                    """
+                    SELECT grouped.track_id,
+                           (SELECT latest.payload FROM listening_event latest
+                            WHERE latest.track_id = grouped.track_id AND latest.source = 'player'
+                            ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1),
+                           grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
+                    FROM (
+                        SELECT track_id, COUNT(*) AS play_count,
+                               SUM(listened_ms) AS total_listened_ms, MAX(created_at) AS last_played_at
+                        FROM listening_event
+                        WHERE source = 'player' AND created_at >= ?
+                        GROUP BY track_id
+                    ) grouped
+                    ORDER BY grouped.play_count DESC, grouped.total_listened_ms DESC, grouped.last_played_at DESC
+                    LIMIT ?
+                    """,
+                    (cutoff, limit),
+                ).fetchall()
+            else:
+                order = "grouped.last_played_at DESC" if recent else (
+                    "grouped.play_count DESC, grouped.total_listened_ms DESC, grouped.last_played_at DESC"
+                )
+                rows = connection.execute(
+                    f"""
+                    SELECT grouped.track_id,
+                           (SELECT latest.payload FROM user_track_listening_stat latest
+                            WHERE latest.track_id = grouped.track_id
+                            ORDER BY latest.last_played_at DESC LIMIT 1),
+                           grouped.play_count, grouped.total_listened_ms, grouped.last_played_at
+                    FROM (
+                        SELECT track_id, SUM(play_count) AS play_count,
+                               SUM(total_listened_ms) AS total_listened_ms,
+                               MAX(last_played_at) AS last_played_at
+                        FROM user_track_listening_stat
+                        GROUP BY track_id
+                    ) grouped
+                    ORDER BY {order}
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        tracks: list[dict] = []
+        for row in rows:
+            try:
+                track = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            track.pop("streamUrl", None)
+            track.pop("stream_url", None)
+            track.update({
+                "id": str(row[0]),
+                "playCount": int(row[2] or 0),
+                "totalListenedMs": int(row[3] or 0),
+                "lastPlayedAt": int(row[4] or 0),
+            })
+            tracks.append(track)
+        return tracks
 
     def top_tracks(self, *, days: int | None = None, limit: int = 200) -> list[dict]:
         limit = max(1, min(limit, 500))

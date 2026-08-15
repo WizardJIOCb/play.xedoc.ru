@@ -244,6 +244,7 @@ class PollVoteRequest(APIModel):
 class BootstrapPayload(APIModel):
     connected: bool
     demo: bool
+    catalog_available: bool = False
     access_locked: bool
     authenticated: bool = False
     app_user: AppUserDTO | None = None
@@ -367,6 +368,10 @@ class PlaylistCoverRequest(APIModel):
 
 
 class PlaylistTrackRequest(APIModel):
+    track: TrackDTO
+
+
+class TrackLikeRequest(APIModel):
     track: TrackDTO
 
 

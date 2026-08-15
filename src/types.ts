@@ -83,6 +83,7 @@ export interface AdminDashboard {
 export interface BootstrapPayload {
   connected: boolean
   demo: boolean
+  catalogAvailable: boolean
   accessLocked: boolean
   authenticated: boolean
   appUser?: AppUser

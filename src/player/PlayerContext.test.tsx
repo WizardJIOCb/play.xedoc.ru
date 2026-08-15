@@ -252,7 +252,7 @@ describe('PlayerProvider state', () => {
     act(() => player.playQueue([likedTrack]))
 
     await act(async () => player.setTrackLiked(player.current!, false))
-    expect(api.toggleLike).toHaveBeenCalledWith('liked', false)
+    expect(api.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: 'liked' }), false)
     expect(player.isTrackLiked(player.current!)).toBe(false)
     expect(player.queue[0].liked).toBe(false)
 

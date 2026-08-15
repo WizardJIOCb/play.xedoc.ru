@@ -54,7 +54,7 @@ describe('player like controls', () => {
     expect(screen.getByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist')
     fireEvent.click(unlike)
 
-    await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith('one', false))
+    await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: 'one' }), false))
     expect(screen.getByRole('button', { name: 'Поставить лайк' })).toBeInTheDocument()
 
     view.rerender(<PlayerProvider><PlayingBar track={unlikedTrack} /></PlayerProvider>)
@@ -65,7 +65,7 @@ describe('player like controls', () => {
     render(<PlayerProvider><TrackRow track={likedTrack} context={[likedTrack]} /></PlayerProvider>)
     fireEvent.click(screen.getByRole('button', { name: 'Убрать лайк' }))
 
-    await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith('one', false))
+    await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: 'one' }), false))
     expect(screen.getByRole('button', { name: 'Поставить лайк' })).toBeInTheDocument()
   })
 

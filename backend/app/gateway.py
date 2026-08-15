@@ -95,6 +95,8 @@ class MusicGateway(Protocol):
         credential: Credential,
         seed_track_ids: list[str],
         exclude_track_ids: set[str],
+        *,
+        account_signals: bool = True,
     ) -> DiscoveryRecommendationsPayload: ...
 
     async def set_like(self, credential: Credential, track_id: str, liked: bool) -> None: ...
@@ -297,21 +299,27 @@ class YandexMusicGateway:
         credential: Credential,
         seed_track_ids: list[str],
         exclude_track_ids: set[str],
+        *,
+        account_signals: bool = True,
     ) -> DiscoveryRecommendationsPayload:
         client = await self._authorized_client(credential)
         try:
-            likes_result, playlists_result, history_result = await asyncio.gather(
-                client.users_likes_tracks(user_id=_number_or_text(credential.user_uid)),
-                client.users_playlists_list(user_id=_number_or_text(credential.user_uid)),
-                client.music_history(full_models_count=0),
-                return_exceptions=True,
-            )
-            _raise_if_authorization_failed(likes_result, playlists_result, history_result)
-            if isinstance(likes_result, Exception) or isinstance(playlists_result, Exception):
-                raise GatewayUnavailable("Could not read the existing music collection")
-            liked_shorts = list(getattr(likes_result, "tracks", None) or [])
-            history_ids = [] if isinstance(history_result, Exception) else _music_history_track_ids(history_result)
-            playlist_summaries = list(playlists_result or [])
+            liked_shorts: list[Any] = []
+            history_ids: list[str] = []
+            playlist_summaries: list[Any] = []
+            if account_signals:
+                likes_result, playlists_result, history_result = await asyncio.gather(
+                    client.users_likes_tracks(user_id=_number_or_text(credential.user_uid)),
+                    client.users_playlists_list(user_id=_number_or_text(credential.user_uid)),
+                    client.music_history(full_models_count=0),
+                    return_exceptions=True,
+                )
+                _raise_if_authorization_failed(likes_result, playlists_result, history_result)
+                if isinstance(likes_result, Exception) or isinstance(playlists_result, Exception):
+                    raise GatewayUnavailable("Could not read the existing music collection")
+                liked_shorts = list(getattr(likes_result, "tracks", None) or [])
+                history_ids = [] if isinstance(history_result, Exception) else _music_history_track_ids(history_result)
+                playlist_summaries = list(playlists_result or [])
             kinds = [
                 getattr(item, "kind")
                 for item in playlist_summaries
@@ -366,10 +374,12 @@ class YandexMusicGateway:
                 *[client.tracks_similar(seed) for seed in seeds],
                 return_exceptions=True,
             )
-            try:
-                wave_result = await client.rotor_station_tracks("user:onyourwave")
-            except YandexMusicError:
-                wave_result = None
+            wave_result = None
+            if account_signals:
+                try:
+                    wave_result = await client.rotor_station_tracks("user:onyourwave")
+                except YandexMusicError:
+                    pass
         except UnauthorizedError as exc:
             raise GatewayUnauthorized("Yandex Music session expired") from exc
         except YandexMusicError as exc:

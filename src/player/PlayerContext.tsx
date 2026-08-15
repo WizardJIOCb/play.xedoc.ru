@@ -541,7 +541,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     try {
-      await persistTrackLike(track.id, liked)
+      await persistTrackLike(track, liked)
       trackGoal(liked ? 'track_like' : 'track_unlike', { source: 'catalog' })
     } catch (error) {
       applyTrackLike(track.id, previous)

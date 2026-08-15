@@ -74,6 +74,7 @@ class FakeGateway:
         self.playlist_ids: list[str] = []
         self.search_queries: list[str] = []
         self.discovery_contexts: list[tuple[list[str], set[str]]] = []
+        self.discovery_account_signals: list[bool] = []
 
     async def start_device_auth(self) -> DeviceAuthorization:
         return DeviceAuthorization(
@@ -114,8 +115,11 @@ class FakeGateway:
         credential: Credential,
         seed_track_ids: list[str],
         exclude_track_ids: set[str],
+        *,
+        account_signals: bool = True,
     ) -> DiscoveryRecommendationsPayload:
         self.discovery_contexts.append((seed_track_ids, exclude_track_ids))
+        self.discovery_account_signals.append(account_signals)
         return DiscoveryRecommendationsPayload(
             tracks=[TEST_DISCOVERY_TRACK],
             seed_count=len(seed_track_ids),

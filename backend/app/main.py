@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, s
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
-from .demo import DEMO_PLAYLISTS, demo_bootstrap, demo_search, demo_session
+from .demo import demo_bootstrap
 from .gateway import (
     DeviceAuthorization,
     DeviceFlowRejected,
@@ -70,6 +70,7 @@ from .models import (
     SessionPayload,
     SessionPreferences,
     TrackDTO,
+    TrackLikeRequest,
     TrackShareRequest,
     UserProfileDTO,
     VKImportRequest,
@@ -508,13 +509,18 @@ def create_app(
 
         credential = optional_credential(request)
         if credential is None:
-            payload = demo_bootstrap()
+            try:
+                catalog_credential = store.load_catalog_credential()
+            except CredentialStoreError as exc:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+            payload = _shared_catalog_bootstrap(store, available=catalog_credential is not None)
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
             return payload
         try:
             payload = await gateway.bootstrap(credential)
+            payload.catalog_available = True
             payload.access_locked = False
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
@@ -522,7 +528,7 @@ def create_app(
             return payload
         except GatewayUnauthorized:
             store.delete()
-            payload = demo_bootstrap()
+            payload = _shared_catalog_bootstrap(store, available=store.load_catalog_credential() is not None)
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
@@ -530,10 +536,7 @@ def create_app(
         except GatewayError as exc:
             if not settings.demo_fallback:
                 raise _http_gateway_error(exc) from exc
-            payload = demo_bootstrap()
-            payload.connected = True
-            payload.demo = True
-            payload.user = UserProfileDTO(name=credential.user_name, avatar_url=credential.avatar_url)
+            payload = _shared_catalog_bootstrap(store, available=store.load_catalog_credential() is not None)
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
@@ -632,7 +635,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> ActionResponse:
-        require_credential(request)
+        require_app_user(request)
         track = body.track.model_copy(update={"stream_url": None})
         if not track.id.startswith("demo-"):
             store.save_listening_event(
@@ -897,14 +900,14 @@ def create_app(
         profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(profile_query)]
         music_query = profile_query if query.startswith("@") else query
         public_search = optional_app_user(request) is None
+        personal_credential = None if public_search else optional_credential(request)
+        shared_catalog = personal_credential is None
         try:
-            credential = store.load_catalog_credential() if public_search else optional_credential(request)
+            credential = store.load_catalog_credential() if shared_catalog else personal_credential
         except CredentialStoreError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         if credential is None:
-            result = demo_search(music_query)
-            result.profiles = profiles
-            return result
+            return SearchPayload(profiles=profiles)
         try:
             result = await gateway.search(credential, music_query)
             if public_search:
@@ -923,22 +926,18 @@ def create_app(
                 ]
                 result.playlists = []
             else:
+                if shared_catalog:
+                    _set_local_like_state(result.tracks, store)
+                else:
+                    _mark_local_likes(result.tracks, store)
                 _decorate_tracks_with_stats(result.tracks, store)
             result.profiles = profiles
             return result
         except GatewayUnauthorized as exc:
-            if not public_search:
+            if personal_credential is not None:
                 store.delete()
-            if settings.demo_fallback:
-                result = demo_search(music_query)
-                result.profiles = profiles
-                return result
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         except GatewayError as exc:
-            if settings.demo_fallback:
-                result = demo_search(music_query)
-                result.profiles = profiles
-                return result
             raise _http_gateway_error(exc) from exc
 
     @app.get("/api/public-search/tracks/{track_id}/stream", response_class=RedirectResponse)
@@ -1279,11 +1278,14 @@ def create_app(
         _: None = Depends(require_access),
     ) -> LikedTracksPayload:
         credential = optional_credential(request)
+        local_tracks = _local_liked_tracks(store)
         if credential is None:
-            demo = demo_bootstrap()
-            return LikedTracksPayload(tracks=demo.liked_tracks, total=demo.liked_count)
+            _decorate_tracks_with_stats(local_tracks, store)
+            return LikedTracksPayload(tracks=local_tracks, total=len(local_tracks))
         try:
             result = await gateway.liked_tracks(credential)
+            result.tracks = _merge_tracks(local_tracks, result.tracks)
+            result.total = len(result.tracks)
             _decorate_tracks_with_stats(result.tracks, store)
             return result
         except GatewayError as exc:
@@ -1298,13 +1300,29 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> DiscoveryRecommendationsPayload:
-        credential = require_credential(request)
+        personal_credential = optional_credential(request)
         seed_track_ids, known_track_ids = _discovery_context(store)
+        if personal_credential is None and not seed_track_ids:
+            tracks = _service_track_dtos(store.service_tracks(limit=30), store)
+            tracks = [track for track in tracks if track.id not in known_track_ids][:24]
+            return DiscoveryRecommendationsPayload(
+                tracks=tracks,
+                seed_count=0,
+                known_track_count=len(known_track_ids),
+                insight="Начинаем с популярного в XEDOC и станем точнее после первых прослушиваний.",
+            )
+        try:
+            credential = personal_credential or store.load_catalog_credential()
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
         try:
             return await gateway.discovery_recommendations(
                 credential,
                 seed_track_ids,
                 known_track_ids,
+                account_signals=personal_credential is not None,
             )
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
@@ -1314,7 +1332,7 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> ListeningStatsPayload:
-        require_credential(request)
+        shared_catalog = optional_credential(request) is None
         periods: list[tuple[str, str, int | None]] = [
             ("day", "За день", 1),
             ("three-days", "За 3 дня", 3),
@@ -1336,6 +1354,8 @@ def create_app(
                     "total_listened_ms": row["total_listened_ms"],
                     "last_played_at": row["last_played_at"],
                 }))
+            if shared_catalog:
+                _mark_local_likes(tracks, store)
             top.append(ListeningTopDTO(
                 id=identifier,
                 title=title,
@@ -1354,15 +1374,22 @@ def create_app(
     @app.put("/api/tracks/{track_id}/like", response_model=ActionResponse)
     async def like_track(
         track_id: str,
+        body: TrackLikeRequest,
         request: Request,
         _: None = Depends(require_access),
     ) -> ActionResponse:
-        credential = require_credential(request)
-        try:
-            await gateway.set_like(credential, _safe_identifier(track_id), True)
-            return ActionResponse()
-        except GatewayError as exc:
-            raise _http_gateway_error(exc) from exc
+        identifier = _safe_identifier(track_id)
+        if _safe_identifier(body.track.id) != identifier:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Трек в запросе не совпадает с адресом")
+        track = _sanitize_shared_track(body.track.model_copy(update={"id": identifier, "liked": True}))
+        store.save_track_like(identifier, track.model_dump(by_alias=True, exclude_none=True))
+        credential = optional_credential(request)
+        if credential is not None:
+            try:
+                await gateway.set_like(credential, identifier, True)
+            except GatewayError:
+                pass
+        return ActionResponse()
 
     @app.delete("/api/tracks/{track_id}/like", response_model=ActionResponse)
     async def unlike_track(
@@ -1370,12 +1397,15 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> ActionResponse:
-        credential = require_credential(request)
-        try:
-            await gateway.set_like(credential, _safe_identifier(track_id), False)
-            return ActionResponse()
-        except GatewayError as exc:
-            raise _http_gateway_error(exc) from exc
+        identifier = _safe_identifier(track_id)
+        store.remove_track_like(identifier)
+        credential = optional_credential(request)
+        if credential is not None:
+            try:
+                await gateway.set_like(credential, identifier, False)
+            except GatewayError:
+                pass
+        return ActionResponse()
 
     @app.get("/api/tracks/{track_id}/stream", response_class=RedirectResponse)
     async def stream_track(
@@ -1383,7 +1413,15 @@ def create_app(
         request: Request,
         _: None = Depends(require_access),
     ) -> RedirectResponse:
-        credential = require_credential(request)
+        credential = optional_credential(request)
+        shared_catalog = credential is None
+        if shared_catalog:
+            try:
+                credential = store.load_catalog_credential()
+            except CredentialStoreError as exc:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
         try:
             url = await gateway.stream_url(credential, _safe_identifier(track_id))
         except GatewayError as exc:
@@ -1521,13 +1559,20 @@ def create_app(
             _decorate_tracks_with_stats(playlist.tracks or [], store)
             return playlist
         credential = optional_credential(request)
+        shared_catalog = credential is None
+        if shared_catalog:
+            try:
+                credential = store.load_catalog_credential()
+            except CredentialStoreError as exc:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         if credential is None:
-            demo = next((item for item in DEMO_PLAYLISTS if item.id == identifier), None)
-            if demo is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Плейлист не найден")
-            return demo
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
         try:
             playlist = await gateway.playlist(credential, identifier)
+            if shared_catalog:
+                _set_local_like_state(playlist.tracks or [], store)
+            else:
+                _mark_local_likes(playlist.tracks or [], store)
             _decorate_tracks_with_stats(playlist.tracks or [], store)
             return playlist
         except GatewayError as exc:
@@ -1541,7 +1586,7 @@ def create_app(
     ) -> SessionPayload:
         credential = optional_credential(request)
         if credential is None:
-            return demo_session(preferences)
+            return _build_xedoc_session(preferences, store)
         try:
             session = await gateway.build_session(credential, preferences)
             _decorate_tracks_with_stats(session.tracks, store)
@@ -1551,7 +1596,7 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
         except GatewayError as exc:
             if settings.demo_fallback:
-                return demo_session(preferences)
+                return _build_xedoc_session(preferences, store)
             raise _http_gateway_error(exc) from exc
 
     return app
@@ -1652,6 +1697,139 @@ def _decorate_tracks_with_stats(tracks: list[TrackDTO], store: CredentialStore) 
             track.last_played_at = item["last_played_at"]
 
 
+def _merge_tracks(*groups: list[TrackDTO]) -> list[TrackDTO]:
+    merged: list[TrackDTO] = []
+    seen: set[str] = set()
+    for group in groups:
+        for track in group:
+            if track.id in seen:
+                continue
+            seen.add(track.id)
+            merged.append(track)
+    return merged
+
+
+def _local_liked_tracks(store: CredentialStore) -> list[TrackDTO]:
+    tracks: list[TrackDTO] = []
+    for item in store.list_track_likes():
+        try:
+            tracks.append(TrackDTO.model_validate(item["track"]).model_copy(update={"liked": True}))
+        except (KeyError, ValueError):
+            continue
+    return tracks
+
+
+def _mark_local_likes(tracks: list[TrackDTO], store: CredentialStore) -> None:
+    liked_ids = store.liked_track_ids()
+    for track in tracks:
+        if track.id in liked_ids:
+            track.liked = True
+
+
+def _set_local_like_state(tracks: list[TrackDTO], store: CredentialStore) -> None:
+    liked_ids = store.liked_track_ids()
+    for track in tracks:
+        track.liked = track.id in liked_ids
+
+
+def _service_track_dtos(rows: list[dict], store: CredentialStore) -> list[TrackDTO]:
+    liked_ids = store.liked_track_ids()
+    tracks: list[TrackDTO] = []
+    for row in rows:
+        try:
+            track = TrackDTO.model_validate(row)
+        except ValueError:
+            continue
+        tracks.append(track.model_copy(update={"liked": track.id in liked_ids, "stream_url": None}))
+    return tracks
+
+
+def _service_playlist(identifier: str, title: str, subtitle: str, tracks: list[TrackDTO]) -> PlaylistDTO:
+    duration_ms = sum(track.duration_ms for track in tracks)
+    cover = tracks[0] if tracks else None
+    return PlaylistDTO(
+        id=identifier,
+        title=title,
+        subtitle=subtitle,
+        track_count=len(tracks),
+        duration_minutes=max(1, round(duration_ms / 60_000)) if tracks else 0,
+        cover_url=cover.cover_url if cover else None,
+        cover_tone=cover.cover_tone if cover else None,
+        tracks=tracks,
+    )
+
+
+def _shared_catalog_bootstrap(store: CredentialStore, *, available: bool) -> BootstrapPayload:
+    if not available:
+        return BootstrapPayload(
+            connected=False,
+            demo=False,
+            catalog_available=False,
+            access_locked=False,
+        )
+    recent = _service_track_dtos(store.service_tracks(recent=True, limit=30), store)
+    popular = _service_track_dtos(store.service_tracks(limit=40), store)
+    weekly = _service_track_dtos(store.service_tracks(days=7, limit=30), store)
+    liked = _local_liked_tracks(store)
+    quick = (recent or popular)[:12]
+    playlists = [
+        _service_playlist("xedoc-service-recent", "Сейчас слушают", "Последние прослушивания в XEDOC", recent[:24]),
+        _service_playlist("xedoc-service-popular", "Популярно в XEDOC", "Треки, к которым возвращаются чаще всего", popular[:24]),
+        _service_playlist("xedoc-service-week", "Главное за неделю", "Самое заметное за последние семь дней", weekly[:24]),
+    ]
+    playlists = [playlist for playlist in playlists if playlist.tracks]
+    return BootstrapPayload(
+        connected=False,
+        demo=False,
+        catalog_available=True,
+        access_locked=False,
+        quick_tracks=quick,
+        liked_tracks=liked,
+        liked_count=len(liked),
+        recommendations=playlists,
+        rediscover=(liked[6:18] or popular[12:24]),
+    )
+
+
+def _build_xedoc_session(preferences: SessionPreferences, store: CredentialStore) -> SessionPayload:
+    liked = _local_liked_tracks(store)
+    playlist_tracks: list[TrackDTO] = []
+    for summary in store.list_local_playlists():
+        playlist = store.load_local_playlist(summary["id"])
+        for value in (playlist or {}).get("tracks", []):
+            try:
+                playlist_tracks.append(TrackDTO.model_validate(value))
+            except ValueError:
+                continue
+    familiar = _merge_tracks(liked, playlist_tracks)
+    if preferences.source == "liked":
+        candidates = liked
+    elif preferences.source == "playlists":
+        candidates = _merge_tracks(playlist_tracks)
+    else:
+        service = _service_track_dtos(store.service_tracks(limit=100), store)
+        recent = _service_track_dtos(store.service_tracks(recent=True, limit=100), store)
+        candidates = _merge_tracks(familiar, service, recent)
+    excluded = set(preferences.exclude_track_ids)
+    target_ms = preferences.duration * 60_000
+    selected: list[TrackDTO] = []
+    duration_ms = 0
+    previous_artist = ""
+    for track in candidates:
+        if track.id in excluded:
+            continue
+        artist = track.artists[0].casefold().strip() if track.artists else ""
+        if artist and artist == previous_artist:
+            continue
+        selected.append(track)
+        duration_ms += track.duration_ms
+        previous_artist = artist
+        if duration_ms >= target_ms:
+            break
+    _mark_local_likes(selected, store)
+    return SessionPayload(tracks=selected)
+
+
 def _discovery_context(store: CredentialStore) -> tuple[list[str], set[str]]:
     events = store.list_listening_events(3000)
     known_track_ids = set(store.list_track_stats())
@@ -1675,12 +1853,27 @@ def _discovery_context(store: CredentialStore) -> tuple[list[str], set[str]]:
             if track_id:
                 known_track_ids.add(track_id)
 
+    liked_ids = [track.id for track in _local_liked_tracks(store)]
+    known_track_ids.update(liked_ids)
+    for track_id in liked_ids:
+        if track_id not in fallback_signal_ids:
+            fallback_signal_ids.append(track_id)
+
     seeds = recent_player_ids[:8] or fallback_signal_ids[:8]
     return seeds, known_track_ids
 
 
 def _attach_xedoc_library(payload: BootstrapPayload, store: CredentialStore) -> None:
     payload.local_playlists = [PlaylistDTO.model_validate(item) for item in store.list_local_playlists()]
+    if payload.connected and payload.liked_tracks:
+        store.import_track_likes([
+            _sanitize_shared_track(track.model_copy(update={"liked": True})).model_dump(by_alias=True, exclude_none=True)
+            for track in payload.liked_tracks
+        ])
+    local_likes = _local_liked_tracks(store)
+    payload.liked_tracks = _merge_tracks(local_likes, payload.liked_tracks)
+    payload.liked_count = len(payload.liked_tracks)
+    _mark_local_likes([*payload.quick_tracks, *payload.rediscover], store)
     _decorate_tracks_with_stats([*payload.quick_tracks, *payload.liked_tracks, *payload.rediscover], store)
     candidates: dict[str, TrackDTO] = {}
     for track in [*payload.quick_tracks, *payload.liked_tracks, *payload.rediscover]:

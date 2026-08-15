@@ -11,7 +11,7 @@ vi.mock('./lib/api', async (importOriginal) => {
   return {
     ...original,
     getBootstrap: vi.fn().mockResolvedValue({
-      connected: false, demo: true, accessLocked: false, authenticated: true,
+      connected: false, demo: true, catalogAvailable: false, accessLocked: false, authenticated: true,
       appUser: { id: 'user-listener', username: 'listener', displayName: 'Music Listener', needsPassword: false, isAdmin: false },
       quickTracks: [], playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
       xedocRecommendations: [], xedocCollections: [],

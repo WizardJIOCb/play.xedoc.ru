@@ -121,14 +121,14 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
       </section>
 
       <section className="content-section">
-        <SectionHeader title="Продолжить слушать" action="Показать всё" />
+        <SectionHeader title={data.connected ? 'Продолжить слушать' : 'Сейчас слушают в XEDOC'} hint={data.connected ? undefined : 'Живые прослушивания пользователей сервиса'} action="Показать всё" />
         <div className="quick-grid">
           {data.quickTracks.slice(0, 6).map((track) => <QuickTrack key={track.id} track={track} context={data.quickTracks} />)}
         </div>
       </section>
 
       <section className="content-section">
-        <SectionHeader title="Сделано для вас" hint="Рекомендации Яндекса, но в спокойном порядке" action="Обновить" />
+        <SectionHeader title={data.connected ? 'Сделано для вас' : 'Музыка в XEDOC'} hint={data.connected ? 'Рекомендации Яндекса, но в спокойном порядке' : 'Популярное, недавнее и главное за неделю'} action="Обновить" />
         <div className="playlist-grid">
           {data.recommendations.slice(0, 5).map((playlist) => <PlaylistCard key={playlist.id} playlist={playlist} onOpen={onPlaylist} onPlay={onPlaylistPlay} />)}
         </div>
@@ -142,7 +142,7 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
       </section>
 
       <section className="content-section rediscover-section">
-        <SectionHeader title="Давно не слушали" hint="Любимые треки, которые затерялись в коллекции" action="Ещё 20" />
+        <SectionHeader title={data.connected || data.likedTracks.length ? 'Давно не слушали' : 'Ещё популярное'} hint={data.connected || data.likedTracks.length ? 'Любимые треки, которые затерялись в коллекции' : 'Продолжение общей подборки XEDOC'} action="Ещё 20" />
         <div className="track-table">
           {data.rediscover.map((track, index) => <TrackRow key={track.id} track={track} context={data.rediscover} index={index} />)}
         </div>
@@ -155,13 +155,13 @@ function RecommendationsView({ data }: { data: BootstrapPayload }) {
   const player = usePlayer()
   const [selectedId, setSelectedId] = useState(data.xedocCollections[0]?.id || '')
   const [discovery, setDiscovery] = useState<DiscoveryRecommendations>()
-  const [discoveryLoading, setDiscoveryLoading] = useState(data.connected)
+  const [discoveryLoading, setDiscoveryLoading] = useState(data.catalogAvailable)
   const [discoveryError, setDiscoveryError] = useState('')
   useEffect(() => {
     if (!data.xedocCollections.some((item) => item.id === selectedId)) setSelectedId(data.xedocCollections[0]?.id || '')
   }, [data.xedocCollections, selectedId])
   useEffect(() => {
-    if (!data.connected) {
+    if (!data.catalogAvailable) {
       setDiscoveryLoading(false)
       return
     }
@@ -173,7 +173,7 @@ function RecommendationsView({ data }: { data: BootstrapPayload }) {
       .catch(() => { if (!cancelled) setDiscoveryError('Не удалось подобрать новую музыку. Попробуйте открыть рекомендации чуть позже.') })
       .finally(() => { if (!cancelled) setDiscoveryLoading(false) })
     return () => { cancelled = true }
-  }, [data.connected])
+  }, [data.catalogAvailable])
   const selected = data.xedocCollections.find((item) => item.id === selectedId) || data.xedocCollections[0]
 
   return (
@@ -274,7 +274,7 @@ function LibraryView({ data, onPlaylist, onPlaylistPlay, onSession, onCreate }: 
         <div className="layout-switch"><button className={layout === 'grid' ? 'is-active' : ''} type="button" onClick={() => setLayout('grid')} aria-label="Сетка"><Menu size={17} /></button><button className={layout === 'list' ? 'is-active' : ''} type="button" onClick={() => setLayout('list')} aria-label="Список"><ListMusic size={17} /></button></div>
       </div>
       <section className="content-section content-section--first">
-        <SectionHeader title="Плейлисты" hint={`${data.localPlaylists.length} XEDOC · ${data.playlists.length} из Яндекс Музыки`} action="Новый плейлист" onAction={onCreate} />
+        <SectionHeader title="Плейлисты" hint={data.connected ? `${data.localPlaylists.length} XEDOC · ${data.playlists.length} из Яндекс Музыки` : `${data.localPlaylists.length} личных плейлистов XEDOC`} action="Новый плейлист" onAction={onCreate} />
         <div className={`playlist-grid ${layout === 'list' ? 'playlist-grid--list' : ''}`}>
           {playlists.map((playlist) => <PlaylistCard key={playlist.id} playlist={playlist} wide={layout === 'list'} onOpen={onPlaylist} onPlay={onPlaylistPlay} />)}
         </div>
@@ -476,18 +476,18 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [])
 
   useEffect(() => {
-    if (!topOpen || listeningStats || statsLoading || !data.connected) return
+    if (!topOpen || listeningStats || statsLoading || !data.catalogAvailable) return
     setStatsLoading(true)
     setStatsError('')
     void getListeningStats().then(setListeningStats).catch(() => setStatsError('Не удалось загрузить статистику прослушиваний.')).finally(() => setStatsLoading(false))
-  }, [data.connected, listeningStats, statsLoading, topOpen])
+  }, [data.catalogAvailable, listeningStats, statsLoading, topOpen])
 
   useEffect(() => {
-    if (view !== 'liked' || allLiked || likedLoading || !data.connected) return
+    if (view !== 'liked' || allLiked || likedLoading || !data.catalogAvailable) return
     setLikedLoading(true)
     setLikedError('')
     void getAllLikedTracks().then(setAllLiked).catch(() => setLikedError('Не удалось загрузить все любимые треки.')).finally(() => setLikedLoading(false))
-  }, [allLiked, data.connected, likedLoading, view])
+  }, [allLiked, data.catalogAvailable, likedLoading, view])
 
   useEffect(() => {
     window.addEventListener(PLAYLISTS_CHANGED_EVENT, refresh)
@@ -670,7 +670,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
           <div className="topbar__actions">
             <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined} aria-label="Найти музыку" data-tooltip="Найти музыку (⌘ K)"><Search size={19} /></button>
             <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-pressed={queueOpen}><ListMusic size={18} /><span>Сейчас играет</span></button>
-            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
+            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить Яндекс Музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить Яндекс'}</span></button>
             <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.avatarUrl ? <img src={data.appUser.avatarUrl} alt="" /> : data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
