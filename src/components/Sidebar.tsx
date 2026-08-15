@@ -81,7 +81,7 @@ export function Sidebar({
           <button className="sidebar__section-title" type="button" onClick={() => onView('library')} aria-label="Показать все плейлисты">
             <span>Недавние</span><ListMusic size={16} />
           </button>
-          <button className="sidebar__playlist-create" type="button" onClick={onCreatePlaylist} aria-label="Новый плейлист">+ Новый</button>
+          <button className="sidebar__playlist-create" type="button" onClick={onCreatePlaylist} aria-label="Новый плейлист">+</button>
         </div>
         {playlists.slice(0, 4).map((playlist) => (
           <button key={playlist.id} className="sidebar__playlist" type="button" onClick={() => onPlaylist(playlist)} aria-label={`Открыть плейлист ${playlist.title}`}>
