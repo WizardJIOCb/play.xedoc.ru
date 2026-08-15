@@ -40,6 +40,8 @@ from .models import (
     DeviceAuthStartDTO,
     DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
+    FriendStatusDTO,
+    FriendsPayload,
     ListeningEventRequest,
     NowPlayingRequest,
     ListeningStatsPayload,
@@ -55,8 +57,12 @@ from .models import (
     PublicProfileDTO,
     PublicNowPlayingDTO,
     PublicShareDTO,
+    PollVoteRequest,
     RecommendationCollectionDTO,
     SearchPayload,
+    SocialFeedDTO,
+    SocialPostCreateRequest,
+    SocialPostDTO,
     ShareLinkDTO,
     SessionPayload,
     SessionPreferences,
@@ -953,6 +959,111 @@ def create_app(
             return []
         return [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(query)]
 
+    @app.get("/api/social/feed", response_model=SocialFeedDTO, response_model_exclude_none=True)
+    async def social_feed(
+        request: Request,
+        mode: str = Query(default="for-you", pattern=r"^(for-you|friends)$"),
+        limit: int = Query(default=50, ge=1, le=100),
+        _: None = Depends(require_access),
+    ) -> SocialFeedDTO:
+        require_app_user(request)
+        return SocialFeedDTO(posts=[SocialPostDTO.model_validate(item) for item in store.social_feed(mode, limit)])
+
+    @app.get("/api/social/friends", response_model=FriendsPayload)
+    async def social_friends(_: None = Depends(require_access)) -> FriendsPayload:
+        return FriendsPayload.model_validate(store.list_friends())
+
+    @app.get("/api/social/friends/{username}/status", response_model=FriendStatusDTO)
+    async def social_friend_status(username: str, _: None = Depends(require_access)) -> FriendStatusDTO:
+        try:
+            return FriendStatusDTO(status=store.friend_status(_safe_username(username)))
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    @app.post("/api/social/friends/{username}/request", response_model=FriendStatusDTO)
+    async def social_friend_request(username: str, _: None = Depends(require_access)) -> FriendStatusDTO:
+        try:
+            return FriendStatusDTO(status=store.request_friend(_safe_username(username)))
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    @app.post("/api/social/friends/{username}/accept", response_model=FriendStatusDTO)
+    async def social_friend_accept(username: str, _: None = Depends(require_access)) -> FriendStatusDTO:
+        try:
+            return FriendStatusDTO(status=store.accept_friend(_safe_username(username)))
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    @app.delete("/api/social/friends/{username}", response_model=ActionResponse)
+    async def social_friend_remove(username: str, _: None = Depends(require_access)) -> ActionResponse:
+        store.remove_friend(_safe_username(username))
+        return ActionResponse()
+
+    @app.post("/api/social/posts", response_model=SocialPostDTO, response_model_exclude_none=True)
+    async def create_social_post(
+        body: SocialPostCreateRequest,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> SocialPostDTO:
+        require_app_user(request)
+        if not body.body.strip() and not body.attachments and body.poll is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Добавьте текст или вложение")
+        attachments = [_sanitize_social_attachment(item.model_dump(by_alias=True, exclude_none=True)) for item in body.attachments]
+        poll = body.poll.model_dump(by_alias=True) if body.poll else None
+        return SocialPostDTO.model_validate(
+            store.create_social_post(body.body, body.visibility, attachments, poll)
+        )
+
+    @app.get(
+        "/api/social/profiles/{username}/posts",
+        response_model=list[SocialPostDTO],
+        response_model_exclude_none=True,
+    )
+    async def social_profile_posts(
+        username: str,
+        request: Request,
+        limit: int = Query(default=40, ge=1, le=100),
+    ) -> list[SocialPostDTO]:
+        await enforce_rate_limit(request, "social-profile-posts", maximum=120, window_seconds=60)
+        try:
+            return [
+                SocialPostDTO.model_validate(item)
+                for item in store.list_profile_posts(_safe_username(username), limit)
+            ]
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    @app.delete("/api/social/posts/{post_id}", response_model=ActionResponse)
+    async def delete_social_post(post_id: str, _: None = Depends(require_access)) -> ActionResponse:
+        if not store.delete_social_post(_safe_social_id(post_id)):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
+        return ActionResponse()
+
+    @app.put("/api/social/posts/{post_id}/like", response_model=SocialPostDTO, response_model_exclude_none=True)
+    async def like_social_post(post_id: str, _: None = Depends(require_access)) -> SocialPostDTO:
+        post = store.set_social_post_like(_safe_social_id(post_id), True)
+        if post is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
+        return SocialPostDTO.model_validate(post)
+
+    @app.delete("/api/social/posts/{post_id}/like", response_model=SocialPostDTO, response_model_exclude_none=True)
+    async def unlike_social_post(post_id: str, _: None = Depends(require_access)) -> SocialPostDTO:
+        post = store.set_social_post_like(_safe_social_id(post_id), False)
+        if post is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
+        return SocialPostDTO.model_validate(post)
+
+    @app.post("/api/social/posts/{post_id}/vote", response_model=SocialPostDTO, response_model_exclude_none=True)
+    async def vote_social_post(
+        post_id: str,
+        body: PollVoteRequest,
+        _: None = Depends(require_access),
+    ) -> SocialPostDTO:
+        post = store.vote_social_poll(_safe_social_id(post_id), _safe_social_id(body.option_id))
+        if post is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Опрос или вариант не найден")
+        return SocialPostDTO.model_validate(post)
+
     @app.get("/api/admin/dashboard", response_model=AdminDashboardDTO, response_model_exclude_none=True)
     async def admin_dashboard(
         request: Request,
@@ -1434,6 +1545,39 @@ def _safe_cover_data_url(value: str) -> str:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Изображение повреждено или слишком велико")
     if prefix.endswith("webp;base64,") and payload[8:12] != b"WEBP":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Изображение повреждено")
+    return value
+
+
+def _safe_social_id(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", value):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректный идентификатор")
+    return value
+
+
+def _sanitize_social_attachment(value: dict) -> dict:
+    kind = str(value.get("kind", ""))
+    if kind not in {"image", "video", "link", "track", "playlist"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестный тип вложения")
+    for field in ("url", "imageUrl"):
+        raw = value.get(field)
+        if not raw:
+            continue
+        candidate = str(raw).strip()
+        parsed = urlparse(candidate)
+        is_small_image = kind == "image" and candidate.startswith("data:image/") and len(candidate) <= 2_000_000
+        if not is_small_image and (parsed.scheme not in {"http", "https"} or not parsed.netloc or len(candidate) > 2_000):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Некорректная ссылка во вложении")
+        value[field] = candidate
+    if kind in {"image", "video", "link"} and not value.get("url"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Для вложения нужна ссылка или файл")
+    if kind == "track" and not isinstance(value.get("track"), dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите трек")
+    if kind == "playlist" and not isinstance(value.get("playlist"), dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Выберите плейлист")
+    if isinstance(value.get("track"), dict):
+        value["track"].pop("liked", None)
+        track_id = _safe_identifier(str(value["track"].get("id", "")))
+        value["track"]["streamUrl"] = f"/api/tracks/{quote(track_id, safe='')}/stream"
     return value
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import sqlite3
 import threading
@@ -73,6 +74,7 @@ class CredentialStore:
         connection = sqlite3.connect(self.path, timeout=5)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=5000")
+        connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
     def _initialize(self) -> None:
@@ -262,6 +264,74 @@ class CredentialStore:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_vk_import_job_user ON vk_import_job(user_id, created_at DESC)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_post (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    body TEXT NOT NULL DEFAULT '',
+                    visibility TEXT NOT NULL CHECK (visibility IN ('public', 'friends')),
+                    attachments TEXT NOT NULL DEFAULT '[]',
+                    poll_question TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_social_post_created ON social_post(created_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_social_post_owner ON social_post(owner_id, created_at DESC)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_post_like (
+                    post_id TEXT NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY(post_id, user_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_poll_option (
+                    id TEXT PRIMARY KEY,
+                    post_id TEXT NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
+                    text TEXT NOT NULL,
+                    position INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_poll_vote (
+                    post_id TEXT NOT NULL REFERENCES social_post(id) ON DELETE CASCADE,
+                    option_id TEXT NOT NULL REFERENCES social_poll_option(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY(post_id, user_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_friend (
+                    user_low_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    user_high_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    requested_by TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY(user_low_id, user_high_id),
+                    CHECK(user_low_id < user_high_id)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_social_friend_status ON social_friend(status, updated_at DESC)"
             )
             connection.execute(
                 """
@@ -1247,6 +1317,376 @@ class CredentialStore:
         except (TypeError, json.JSONDecodeError) as exc:
             raise CredentialStoreError("Saved playlist track is invalid") from exc
         return playlist, str(row[9])
+
+    @staticmethod
+    def _friend_pair(first: str, second: str) -> tuple[str, str]:
+        return (first, second) if first < second else (second, first)
+
+    def friend_status(self, username: str) -> str:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            other = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            if other is None:
+                raise CredentialStoreError("Пользователь не найден")
+            other_id = str(other[0])
+            if other_id == viewer_id:
+                return "self"
+            low, high = self._friend_pair(viewer_id, other_id)
+            row = connection.execute(
+                "SELECT requested_by, status FROM social_friend WHERE user_low_id = ? AND user_high_id = ?",
+                (low, high),
+            ).fetchone()
+        if row is None:
+            return "none"
+        if str(row[1]) == "accepted":
+            return "friend"
+        return "outgoing" if str(row[0]) == viewer_id else "incoming"
+
+    def request_friend(self, username: str) -> str:
+        viewer_id = self.current_user_id()
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            other = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            if other is None:
+                raise CredentialStoreError("Пользователь не найден")
+            other_id = str(other[0])
+            if other_id == viewer_id:
+                raise CredentialStoreError("Нельзя добавить в друзья самого себя")
+            low, high = self._friend_pair(viewer_id, other_id)
+            existing = connection.execute(
+                "SELECT requested_by, status FROM social_friend WHERE user_low_id = ? AND user_high_id = ?",
+                (low, high),
+            ).fetchone()
+            if existing:
+                if str(existing[1]) == "accepted":
+                    return "friend"
+                return "outgoing" if str(existing[0]) == viewer_id else "incoming"
+            connection.execute(
+                """
+                INSERT INTO social_friend(user_low_id, user_high_id, requested_by, status, created_at, updated_at)
+                VALUES(?, ?, ?, 'pending', ?, ?)
+                """,
+                (low, high, viewer_id, now, now),
+            )
+        return "outgoing"
+
+    def accept_friend(self, username: str) -> str:
+        viewer_id = self.current_user_id()
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            other = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            if other is None:
+                raise CredentialStoreError("Пользователь не найден")
+            other_id = str(other[0])
+            low, high = self._friend_pair(viewer_id, other_id)
+            cursor = connection.execute(
+                """
+                UPDATE social_friend SET status = 'accepted', updated_at = ?
+                WHERE user_low_id = ? AND user_high_id = ? AND status = 'pending' AND requested_by = ?
+                """,
+                (now, low, high, other_id),
+            )
+            if cursor.rowcount != 1:
+                raise CredentialStoreError("Входящая заявка не найдена")
+        return "friend"
+
+    def remove_friend(self, username: str) -> None:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            other = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            if other is None:
+                return
+            low, high = self._friend_pair(viewer_id, str(other[0]))
+            connection.execute(
+                "DELETE FROM social_friend WHERE user_low_id = ? AND user_high_id = ?", (low, high)
+            )
+
+    def list_friends(self) -> dict[str, list[dict]]:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT u.username, u.display_name, f.status, f.requested_by
+                FROM social_friend f
+                JOIN app_user u ON u.id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+                WHERE f.user_low_id = ? OR f.user_high_id = ?
+                ORDER BY f.updated_at DESC
+                """,
+                (viewer_id, viewer_id, viewer_id),
+            ).fetchall()
+        result: dict[str, list[dict]] = {"friends": [], "incoming": [], "outgoing": []}
+        for username, display_name, status, requested_by in rows:
+            relation = "friend" if status == "accepted" else ("outgoing" if requested_by == viewer_id else "incoming")
+            bucket = "friends" if relation == "friend" else relation
+            result[bucket].append({"username": username, "displayName": display_name, "status": relation})
+        return result
+
+    def create_social_post(
+        self,
+        body: str,
+        visibility: str,
+        attachments: list[dict],
+        poll: dict | None,
+    ) -> dict:
+        owner_id = self.current_user_id()
+        now = int(time.time())
+        post_id = secrets.token_urlsafe(12)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO social_post(id, owner_id, body, visibility, attachments, poll_question, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    post_id,
+                    owner_id,
+                    body.strip(),
+                    visibility,
+                    json.dumps(attachments, ensure_ascii=False, separators=(",", ":")),
+                    poll.get("question") if poll else None,
+                    now,
+                    now,
+                ),
+            )
+            if poll:
+                for position, option in enumerate(poll.get("options", [])):
+                    connection.execute(
+                        "INSERT INTO social_poll_option(id, post_id, text, position) VALUES(?, ?, ?, ?)",
+                        (secrets.token_urlsafe(10), post_id, str(option["text"]).strip(), position),
+                    )
+            row = self._social_post_row(connection, post_id, owner_id)
+        if row is None:
+            raise CredentialStoreError("Не удалось сохранить запись")
+        return row
+
+    def delete_social_post(self, post_id: str) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM social_post WHERE id = ? AND owner_id = ?", (post_id, self.current_user_id())
+            )
+            return cursor.rowcount == 1
+
+    def set_social_post_like(self, post_id: str, liked: bool) -> dict | None:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            if not self._can_view_social_post(connection, post_id, viewer_id):
+                return None
+            if liked:
+                connection.execute(
+                    "INSERT OR IGNORE INTO social_post_like(post_id, user_id, created_at) VALUES(?, ?, ?)",
+                    (post_id, viewer_id, int(time.time())),
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM social_post_like WHERE post_id = ? AND user_id = ?", (post_id, viewer_id)
+                )
+            return self._social_post_row(connection, post_id, viewer_id)
+
+    def vote_social_poll(self, post_id: str, option_id: str) -> dict | None:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            if not self._can_view_social_post(connection, post_id, viewer_id):
+                return None
+            valid = connection.execute(
+                "SELECT 1 FROM social_poll_option WHERE id = ? AND post_id = ?", (option_id, post_id)
+            ).fetchone()
+            if valid is None:
+                return None
+            connection.execute(
+                """
+                INSERT INTO social_poll_vote(post_id, option_id, user_id, created_at)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(post_id, user_id) DO UPDATE SET option_id = excluded.option_id, created_at = excluded.created_at
+                """,
+                (post_id, option_id, viewer_id, int(time.time())),
+            )
+            return self._social_post_row(connection, post_id, viewer_id)
+
+    def list_profile_posts(self, username: str, limit: int = 40) -> list[dict]:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            owner = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            if owner is None:
+                raise CredentialStoreError("Пользователь не найден")
+            owner_id = str(owner[0])
+            can_see_friends = owner_id == viewer_id or self._are_friends(connection, viewer_id, owner_id)
+            rows = connection.execute(
+                """
+                SELECT id FROM social_post
+                WHERE owner_id = ? AND (visibility = 'public' OR ?)
+                ORDER BY created_at DESC LIMIT ?
+                """,
+                (owner_id, int(can_see_friends), max(1, min(limit, 100))),
+            ).fetchall()
+            return [post for row in rows if (post := self._social_post_row(connection, str(row[0]), viewer_id))]
+
+    def social_feed(self, mode: str = "for-you", limit: int = 50) -> list[dict]:
+        viewer_id = self.current_user_id()
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            friend_rows = connection.execute(
+                """
+                SELECT CASE WHEN user_low_id = ? THEN user_high_id ELSE user_low_id END
+                FROM social_friend
+                WHERE status = 'accepted' AND (user_low_id = ? OR user_high_id = ?)
+                """,
+                (viewer_id, viewer_id, viewer_id),
+            ).fetchall()
+            friend_ids = {str(row[0]) for row in friend_rows}
+            rows = connection.execute(
+                """
+                SELECT id, owner_id, created_at FROM social_post
+                WHERE visibility = 'public' OR owner_id = ?
+                   OR (visibility = 'friends' AND owner_id IN (
+                       SELECT CASE WHEN user_low_id = ? THEN user_high_id ELSE user_low_id END
+                       FROM social_friend
+                       WHERE status = 'accepted' AND (user_low_id = ? OR user_high_id = ?)
+                   ))
+                ORDER BY created_at DESC LIMIT 500
+                """,
+                (viewer_id, viewer_id, viewer_id, viewer_id),
+            ).fetchall()
+            taste_tracks, taste_artists = self._social_taste_profile(connection, viewer_id)
+            ranked: list[tuple[float, dict]] = []
+            for post_id, owner_id, created_at in rows:
+                owner_id = str(owner_id)
+                if mode == "friends" and owner_id != viewer_id and owner_id not in friend_ids:
+                    continue
+                post = self._social_post_row(connection, str(post_id), viewer_id)
+                if post is None:
+                    continue
+                age_hours = max(0.0, (now - int(created_at)) / 3600)
+                freshness = 4.0 * math.exp(-age_hours / 48.0)
+                network = 3.5 if owner_id in friend_ids else (2.0 if owner_id == viewer_id else 0.0)
+                affinity = self._social_attachment_affinity(post["attachments"], taste_tracks, taste_artists)
+                engagement = min(2.5, math.log1p(post["likeCount"]) * 0.7)
+                score = freshness + network + affinity + engagement
+                if owner_id in friend_ids:
+                    post["rankingReason"] = "Друг в XEDOC"
+                elif affinity > 0:
+                    post["rankingReason"] = "Похожий музыкальный вкус"
+                elif post["likeCount"] > 1:
+                    post["rankingReason"] = "Обсуждают в XEDOC"
+                else:
+                    post["rankingReason"] = "Свежая запись"
+                ranked.append((score, post))
+        ranked.sort(key=lambda item: (item[0], item[1]["createdAt"]), reverse=True)
+        return [post for _, post in ranked[: max(1, min(limit, 100))]]
+
+    @staticmethod
+    def _are_friends(connection: sqlite3.Connection, first: str, second: str) -> bool:
+        if first == ANONYMOUS_USER_ID or second == ANONYMOUS_USER_ID:
+            return False
+        low, high = CredentialStore._friend_pair(first, second)
+        return connection.execute(
+            "SELECT 1 FROM social_friend WHERE user_low_id = ? AND user_high_id = ? AND status = 'accepted'",
+            (low, high),
+        ).fetchone() is not None
+
+    @staticmethod
+    def _can_view_social_post(connection: sqlite3.Connection, post_id: str, viewer_id: str) -> bool:
+        row = connection.execute(
+            "SELECT owner_id, visibility FROM social_post WHERE id = ?", (post_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        owner_id, visibility = str(row[0]), str(row[1])
+        return visibility == "public" or owner_id == viewer_id or CredentialStore._are_friends(
+            connection, viewer_id, owner_id
+        )
+
+    @staticmethod
+    def _social_taste_profile(connection: sqlite3.Connection, user_id: str) -> tuple[set[str], set[str]]:
+        rows = connection.execute(
+            """
+            SELECT track_id, payload FROM user_track_listening_stat
+            WHERE user_id = ? ORDER BY play_count DESC, total_listened_ms DESC LIMIT 100
+            """,
+            (user_id,),
+        ).fetchall()
+        track_ids: set[str] = set()
+        artists: set[str] = set()
+        for track_id, raw_payload in rows:
+            track_ids.add(str(track_id))
+            try:
+                payload = json.loads(str(raw_payload))
+                artists.update(str(value).casefold() for value in payload.get("artists", []) if value)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return track_ids, artists
+
+    @staticmethod
+    def _social_attachment_affinity(attachments: list[dict], track_ids: set[str], artists: set[str]) -> float:
+        score = 0.0
+        for attachment in attachments:
+            track = attachment.get("track") if isinstance(attachment, dict) else None
+            if not isinstance(track, dict):
+                continue
+            if str(track.get("id", "")) in track_ids:
+                score = max(score, 2.5)
+            elif any(str(artist).casefold() in artists for artist in track.get("artists", [])):
+                score = max(score, 1.2)
+        return score
+
+    @staticmethod
+    def _social_post_row(connection: sqlite3.Connection, post_id: str, viewer_id: str) -> dict | None:
+        row = connection.execute(
+            """
+            SELECT p.id, p.owner_id, u.username, u.display_name, p.body, p.visibility,
+                   p.attachments, p.poll_question, p.created_at,
+                   (SELECT COUNT(*) FROM social_post_like l WHERE l.post_id = p.id),
+                   EXISTS(SELECT 1 FROM social_post_like l WHERE l.post_id = p.id AND l.user_id = ?)
+            FROM social_post p JOIN app_user u ON u.id = p.owner_id
+            WHERE p.id = ?
+            """,
+            (viewer_id, post_id),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            attachments = json.loads(str(row[6]))
+        except (json.JSONDecodeError, TypeError):
+            attachments = []
+        result = {
+            "id": str(row[0]),
+            "author": {"username": str(row[2]), "displayName": str(row[3])},
+            "body": str(row[4]),
+            "visibility": str(row[5]),
+            "attachments": attachments if isinstance(attachments, list) else [],
+            "createdAt": int(row[8]),
+            "likeCount": int(row[9]),
+            "liked": bool(row[10]),
+            "isOwner": str(row[1]) == viewer_id,
+        }
+        if row[7]:
+            options = connection.execute(
+                """
+                SELECT o.id, o.text,
+                       (SELECT COUNT(*) FROM social_poll_vote v WHERE v.option_id = o.id),
+                       EXISTS(SELECT 1 FROM social_poll_vote v WHERE v.option_id = o.id AND v.user_id = ?)
+                FROM social_poll_option o WHERE o.post_id = ? ORDER BY o.position
+                """,
+                (viewer_id, post_id),
+            ).fetchall()
+            result["poll"] = {
+                "question": str(row[7]),
+                "options": [
+                    {"id": str(option[0]), "text": str(option[1]), "votes": int(option[2]), "selected": bool(option[3])}
+                    for option in options
+                ],
+                "totalVotes": sum(int(option[2]) for option in options),
+            }
+        return result
 
     @staticmethod
     def _playlist_row(row: tuple) -> dict:

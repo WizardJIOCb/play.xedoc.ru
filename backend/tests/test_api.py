@@ -550,6 +550,82 @@ def test_registration_login_and_tenant_isolation(client: TestClient, store: Cred
     assert first_bootstrap["localPlaylists"][0]["title"] == "Only mine"
 
 
+def test_social_posts_support_rich_blocks_likes_and_polls(client: TestClient) -> None:
+    unlock(client)
+    created = client.post(
+        "/api/social/posts",
+        json={
+            "body": "Что включить вечером?",
+            "visibility": "public",
+            "attachments": [
+                {"kind": "link", "url": "https://example.com/review", "title": "Рецензия"},
+                {"kind": "track", "track": {
+                    "id": "101", "title": "Test Signal", "artists": ["Fixture Artist"], "durationMs": 201_000,
+                    "liked": True,
+                }},
+            ],
+            "poll": {"question": "Ваш выбор?", "options": [{"text": "Первый"}, {"text": "Второй"}]},
+        },
+    )
+    assert created.status_code == 200
+    post = created.json()
+    assert post["attachments"][1]["track"]["streamUrl"] == "/api/tracks/101/stream"
+    assert "liked" not in post["attachments"][1]["track"]
+
+    liked = client.put(f"/api/social/posts/{post['id']}/like")
+    assert liked.status_code == 200
+    assert liked.json()["liked"] is True
+    assert liked.json()["likeCount"] == 1
+
+    option_id = post["poll"]["options"][0]["id"]
+    voted = client.post(f"/api/social/posts/{post['id']}/vote", json={"optionId": option_id})
+    assert voted.status_code == 200
+    assert voted.json()["poll"]["totalVotes"] == 1
+    assert voted.json()["poll"]["options"][0]["selected"] is True
+
+    feed = client.get("/api/social/feed")
+    assert feed.status_code == 200
+    assert feed.json()["algorithm"] == "xedoc-social-v1"
+    assert feed.json()["posts"][0]["id"] == post["id"]
+    assert feed.json()["posts"][0]["rankingReason"]
+
+    client.cookies.clear()
+    public_wall = client.get("/api/social/profiles/testuser/posts")
+    assert public_wall.status_code == 200
+    assert public_wall.json()[0]["liked"] is False
+
+
+def test_friend_request_unlocks_friends_only_wall_and_feed(client: TestClient) -> None:
+    unlock(client)
+    client.post("/api/account/logout")
+    registered = client.post(
+        "/api/account/register",
+        json={"username": "listener-two", "displayName": "Second Listener", "password": "another-secure-password"},
+    )
+    assert registered.status_code == 200
+    assert client.post("/api/social/friends/testuser/request").json()["status"] == "outgoing"
+    private_post = client.post(
+        "/api/social/posts", json={"body": "Только для друзей", "visibility": "friends"}
+    ).json()
+
+    client.post("/api/account/logout")
+    assert client.post(
+        "/api/account/login", json={"username": "testuser", "password": "a-secure-test-password"}
+    ).status_code == 200
+    assert client.put(f"/api/social/posts/{private_post['id']}/like").status_code == 404
+    friends = client.get("/api/social/friends").json()
+    assert friends["incoming"][0]["username"] == "listener-two"
+    assert client.post("/api/social/friends/listener-two/accept").json()["status"] == "friend"
+
+    friend_feed = client.get("/api/social/feed", params={"mode": "friends"}).json()["posts"]
+    assert private_post["id"] in {post["id"] for post in friend_feed}
+    wall = client.get("/api/social/profiles/listener-two/posts").json()
+    assert wall[0]["body"] == "Только для друзей"
+
+    assert client.delete("/api/social/friends/listener-two").status_code == 200
+    assert client.get("/api/social/friends/listener-two/status").json()["status"] == "none"
+
+
 def test_password_change_requires_current_password(client: TestClient) -> None:
     unlock(client)
     missing = client.put("/api/account/password", json={"password": "new-secure-password"})

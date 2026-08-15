@@ -1,12 +1,13 @@
-import { ArrowLeft, CalendarDays, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Pause, Play, Radio, UserRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Check, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Pause, Play, Radio, UserMinus, UserPlus, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist } from '../lib/api'
+import { acceptFriend, getFriendStatus, getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist, getSocialProfilePosts, removeFriend, requestFriend } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
-import type { Playlist, PublicNowPlaying, PublicProfile } from '../types'
+import type { FriendStatus, Playlist, PublicNowPlaying, PublicProfile, SocialPost } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { PlayerBar } from './PlayerBar'
 import { TrackRow } from './TrackRow'
+import { SocialPostCard } from './SocialPostCard'
 
 function listeningTime(milliseconds: number) {
   if (!milliseconds) return '0 мин'
@@ -26,6 +27,8 @@ export function PublicProfilePage({ username }: { username: string }) {
   const [loading, setLoading] = useState(true)
   const [playlistLoading, setPlaylistLoading] = useState(false)
   const [error, setError] = useState('')
+  const [posts, setPosts] = useState<SocialPost[]>([])
+  const [friendStatus, setFriendStatus] = useState<FriendStatus>()
   const player = usePlayer()
 
   useEffect(() => {
@@ -40,6 +43,8 @@ export function PublicProfilePage({ username }: { username: string }) {
       })
       .catch(() => active && setError('Такого профиля нет или он больше недоступен.'))
       .finally(() => active && setLoading(false))
+    void getSocialProfilePosts(username).then((value) => active && setPosts(value)).catch(() => undefined)
+    void getFriendStatus(username).then((value) => active && setFriendStatus(value)).catch(() => undefined)
     return () => { active = false }
   }, [username])
 
@@ -68,6 +73,13 @@ export function PublicProfilePage({ username }: { username: string }) {
     } finally {
       setPlaylistLoading(false)
     }
+  }
+
+  const changeFriendStatus = async () => {
+    if (!friendStatus || friendStatus === 'self') return
+    if (friendStatus === 'none') setFriendStatus(await requestFriend(username))
+    else if (friendStatus === 'incoming') setFriendStatus(await acceptFriend(username))
+    else { await removeFriend(username); setFriendStatus('none') }
   }
 
   if (loading) return <main className="public-share-state"><LoaderCircle className="spin" size={28} /><span>Открываем профиль…</span></main>
@@ -102,7 +114,7 @@ export function PublicProfilePage({ username }: { username: string }) {
           <>
             <section className="public-profile-hero">
               <div className="public-profile-avatar">{profile.displayName.trim().charAt(0).toUpperCase() || 'X'}</div>
-              <div className="public-profile-identity"><span className="eyebrow">ПРОФИЛЬ XEDOC</span><h1>{profile.displayName}</h1><p>@{profile.username}</p><small><CalendarDays size={14} /> В XEDOC с {memberDate(profile.memberSince)}</small></div>
+              <div className="public-profile-identity"><span className="eyebrow">ПРОФИЛЬ XEDOC</span><h1>{profile.displayName}</h1><p>@{profile.username}</p><small><CalendarDays size={14} /> В XEDOC с {memberDate(profile.memberSince)}</small>{friendStatus && friendStatus !== 'self' && <button className="secondary-button public-profile-friend" type="button" onClick={() => void changeFriendStatus()}>{friendStatus === 'none' ? <><UserPlus size={16} /> Добавить в друзья</> : friendStatus === 'incoming' ? <><Check size={16} /> Принять заявку</> : friendStatus === 'outgoing' ? <><UserMinus size={16} /> Заявка отправлена</> : <><UserMinus size={16} /> В друзьях</>}</button>}</div>
             </section>
 
             {nowPlaying && <section className="public-profile-now-playing" aria-label="Слушает сейчас">
@@ -122,6 +134,11 @@ export function PublicProfilePage({ username }: { username: string }) {
               <article><Disc3 size={20} /><span><strong>{profile.stats.uniqueTracks.toLocaleString('ru-RU')}</strong><small>разных треков</small></span></article>
               <article><Clock3 size={20} /><span><strong>{listeningTime(profile.stats.totalListenedMs)}</strong><small>в музыке</small></span></article>
               <article><Library size={20} /><span><strong>{profile.publicPlaylistCount}</strong><small>публичных плейлистов</small></span></article>
+            </section>
+
+            <section className="public-profile-section public-profile-wall">
+              <header><div><span className="eyebrow">ЗАПИСИ</span><h2>Стена</h2></div></header>
+              {posts.length ? <div className="social-feed-list">{posts.map((post) => <SocialPostCard key={post.id} post={post} readonly={!friendStatus} />)}</div> : <div className="public-profile-empty"><Globe2 size={25} /><strong>Пока нет записей</strong><span>Здесь появятся посты, музыка, видео и опросы пользователя.</span></div>}
             </section>
 
             <section className="public-profile-section">

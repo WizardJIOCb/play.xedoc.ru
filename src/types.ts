@@ -164,6 +164,59 @@ export interface PublicProfile {
   nowPlaying?: PublicNowPlaying
 }
 
+export type SocialAttachment =
+  | { kind: 'image'; url: string; title?: string }
+  | { kind: 'video'; url: string; title?: string }
+  | { kind: 'link'; url: string; title?: string; description?: string; imageUrl?: string }
+  | { kind: 'track'; track: Track }
+  | { kind: 'playlist'; playlist: Playlist }
+
+export interface SocialPollOption {
+  id: string
+  text: string
+  votes: number
+  selected: boolean
+}
+
+export interface SocialPoll {
+  question: string
+  options: SocialPollOption[]
+  totalVotes: number
+}
+
+export interface SocialPost {
+  id: string
+  author: { username: string; displayName: string }
+  body: string
+  visibility: 'public' | 'friends'
+  attachments: SocialAttachment[]
+  poll?: SocialPoll
+  createdAt: number
+  likeCount: number
+  liked: boolean
+  isOwner: boolean
+  rankingReason?: string
+}
+
+export interface SocialFeed {
+  posts: SocialPost[]
+  algorithm: string
+}
+
+export interface Friend {
+  username: string
+  displayName: string
+  status: 'friend' | 'incoming' | 'outgoing'
+}
+
+export interface FriendsPayload {
+  friends: Friend[]
+  incoming: Friend[]
+  outgoing: Friend[]
+}
+
+export type FriendStatus = 'self' | 'none' | 'friend' | 'incoming' | 'outgoing'
+
 export interface PublicNowPlaying {
   track: Track
   updatedAt: number
@@ -212,7 +265,7 @@ export interface VKImportJob {
   updatedAt: number
 }
 
-export type ViewId = 'home' | 'discover' | 'library' | 'liked' | 'history'
+export type ViewId = 'home' | 'feed' | 'friends' | 'discover' | 'library' | 'liked' | 'history'
 
 export interface SessionPreferences {
   duration: 25 | 50 | 90

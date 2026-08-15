@@ -135,6 +135,92 @@ class PublicProfileDTO(APIModel):
     now_playing: PublicNowPlayingDTO | None = None
 
 
+SocialAttachmentKind = Literal["image", "video", "link", "track", "playlist"]
+
+
+class SocialAttachmentDTO(APIModel):
+    kind: SocialAttachmentKind
+    url: str | None = None
+    title: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    track: TrackDTO | None = None
+    playlist: PlaylistDTO | None = None
+
+
+class PollOptionCreate(APIModel):
+    text: str = Field(min_length=1, max_length=120)
+
+
+class PollCreate(APIModel):
+    question: str = Field(min_length=1, max_length=240)
+    options: list[PollOptionCreate] = Field(min_length=2, max_length=8)
+
+
+class PollOptionDTO(APIModel):
+    id: str
+    text: str
+    votes: int = 0
+    selected: bool = False
+
+
+class PollDTO(APIModel):
+    question: str
+    options: list[PollOptionDTO] = Field(default_factory=list)
+    total_votes: int = 0
+
+
+class SocialPostCreateRequest(APIModel):
+    body: str = Field(default="", max_length=5000)
+    visibility: Literal["public", "friends"] = "public"
+    attachments: list[SocialAttachmentDTO] = Field(default_factory=list, max_length=8)
+    poll: PollCreate | None = None
+
+
+class SocialPostAuthorDTO(APIModel):
+    username: str
+    display_name: str
+
+
+class SocialPostDTO(APIModel):
+    id: str
+    author: SocialPostAuthorDTO
+    body: str
+    visibility: Literal["public", "friends"]
+    attachments: list[SocialAttachmentDTO] = Field(default_factory=list)
+    poll: PollDTO | None = None
+    created_at: int
+    like_count: int = 0
+    liked: bool = False
+    is_owner: bool = False
+    ranking_reason: str | None = None
+
+
+class SocialFeedDTO(APIModel):
+    posts: list[SocialPostDTO] = Field(default_factory=list)
+    algorithm: str = "xedoc-social-v1"
+
+
+class FriendDTO(APIModel):
+    username: str
+    display_name: str
+    status: Literal["friend", "incoming", "outgoing"]
+
+
+class FriendsPayload(APIModel):
+    friends: list[FriendDTO] = Field(default_factory=list)
+    incoming: list[FriendDTO] = Field(default_factory=list)
+    outgoing: list[FriendDTO] = Field(default_factory=list)
+
+
+class FriendStatusDTO(APIModel):
+    status: Literal["self", "none", "friend", "incoming", "outgoing"]
+
+
+class PollVoteRequest(APIModel):
+    option_id: str = Field(min_length=8, max_length=64)
+
+
 class BootstrapPayload(APIModel):
     connected: bool
     demo: bool
