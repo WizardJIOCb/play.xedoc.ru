@@ -15,7 +15,6 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, s
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
-from .demo import demo_bootstrap
 from .gateway import (
     DeviceAuthorization,
     DeviceFlowRejected,
@@ -503,7 +502,35 @@ def create_app(
     async def bootstrap(request: Request) -> BootstrapPayload:
         app_user = optional_app_user(request)
         if app_user is None:
-            payload = demo_bootstrap(access_locked=True)
+            try:
+                catalog_credential = store.load_catalog_credential()
+            except CredentialStoreError as exc:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+            payload = _shared_catalog_bootstrap(store, available=catalog_credential is not None, personalized=False)
+            public_tracks: dict[str, TrackDTO] = {}
+
+            def public_track(track: TrackDTO) -> TrackDTO:
+                cached = public_tracks.get(track.id)
+                if cached is not None:
+                    return cached
+                decorated = track.model_copy(update={
+                    "liked": None,
+                    "total_listened_ms": None,
+                    "last_played_at": None,
+                    "stream_url": (
+                        f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                        f"?ticket={quote(signer.issue(f'public-search:{track.id}', 86_400), safe='')}"
+                    ),
+                })
+                public_tracks[track.id] = decorated
+                return decorated
+
+            payload.quick_tracks = [public_track(track) for track in payload.quick_tracks]
+            payload.rediscover = [public_track(track) for track in payload.rediscover]
+            payload.recommendations = [
+                playlist.model_copy(update={"tracks": [public_track(track) for track in (playlist.tracks or [])]})
+                for playlist in payload.recommendations
+            ]
             payload.authenticated = False
             return payload
 
@@ -1732,15 +1759,15 @@ def _set_local_like_state(tracks: list[TrackDTO], store: CredentialStore) -> Non
         track.liked = track.id in liked_ids
 
 
-def _service_track_dtos(rows: list[dict], store: CredentialStore) -> list[TrackDTO]:
-    liked_ids = store.liked_track_ids()
+def _service_track_dtos(rows: list[dict], store: CredentialStore, *, include_likes: bool = True) -> list[TrackDTO]:
+    liked_ids = store.liked_track_ids() if include_likes else set()
     tracks: list[TrackDTO] = []
     for row in rows:
         try:
             track = TrackDTO.model_validate(row)
         except ValueError:
             continue
-        tracks.append(track.model_copy(update={"liked": track.id in liked_ids, "stream_url": None}))
+        tracks.append(track.model_copy(update={"liked": track.id in liked_ids if include_likes else None, "stream_url": None}))
     return tracks
 
 
@@ -1759,7 +1786,7 @@ def _service_playlist(identifier: str, title: str, subtitle: str, tracks: list[T
     )
 
 
-def _shared_catalog_bootstrap(store: CredentialStore, *, available: bool) -> BootstrapPayload:
+def _shared_catalog_bootstrap(store: CredentialStore, *, available: bool, personalized: bool = True) -> BootstrapPayload:
     if not available:
         return BootstrapPayload(
             connected=False,
@@ -1767,10 +1794,10 @@ def _shared_catalog_bootstrap(store: CredentialStore, *, available: bool) -> Boo
             catalog_available=False,
             access_locked=False,
         )
-    recent = _service_track_dtos(store.service_tracks(recent=True, limit=30), store)
-    popular = _service_track_dtos(store.service_tracks(limit=40), store)
-    weekly = _service_track_dtos(store.service_tracks(days=7, limit=30), store)
-    liked = _local_liked_tracks(store)
+    recent = _service_track_dtos(store.service_tracks(recent=True, limit=30), store, include_likes=personalized)
+    popular = _service_track_dtos(store.service_tracks(limit=40), store, include_likes=personalized)
+    weekly = _service_track_dtos(store.service_tracks(days=7, limit=30), store, include_likes=personalized)
+    liked = _local_liked_tracks(store) if personalized else []
     quick = (recent or popular)[:12]
     playlists = [
         _service_playlist("xedoc-service-recent", "Сейчас слушают", "Последние прослушивания в XEDOC", recent[:24]),

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { getBootstrap } from './lib/api'
 import { PlayerProvider } from './player/PlayerContext'
 import type { Track } from './types'
 import { filterCollectionTracks, stabilizeTrackOrder } from './App'
@@ -32,6 +33,7 @@ describe('favorite collection filtering', () => {
   afterEach(() => {
     cleanup()
     window.history.replaceState(null, '', '/')
+    window.localStorage.clear()
     vi.unstubAllGlobals()
   })
 
@@ -57,6 +59,26 @@ describe('favorite collection filtering', () => {
     expect(screen.getByRole('button', { name: 'Настроить сессию' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Включить подборку' })).toBeDisabled()
     expect(screen.queryByText('58%')).not.toBeInTheDocument()
+  })
+
+  it('lets a guest open the home catalog and requests authentication for protected sections', async () => {
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [{ id: 'popular', title: 'Popular', artists: ['Artist'], durationMs: 180_000, streamUrl: '/api/public-search/tracks/popular/stream?ticket=signed-ticket' }],
+      playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+
+    expect(await screen.findByRole('heading', { name: /Музыка играет сразу/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить популярное' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Войти' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Лента' })[0])
+    expect(await screen.findByRole('dialog', { name: 'Вход или регистрация' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Войдите в XEDOC.' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/')
   })
 
   it('keeps the same audio instance while opening a profile and returning through the logo', async () => {

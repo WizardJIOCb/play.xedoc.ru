@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPlaylistShare, createTrackShare } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
 import type { Playlist, Track } from '../types'
+import { useAuthPrompt } from '../auth/AuthPromptContext'
 
 type ShareButtonProps = ({ track: Track; playlist?: never } | { playlist: Playlist; track?: never }) & {
   labeled?: boolean
@@ -30,6 +31,7 @@ async function copyText(value: string) {
 }
 
 export function ShareButton({ track, playlist, labeled = false, className = '' }: ShareButtonProps) {
+  const auth = useAuthPrompt()
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const title = track?.title || playlist?.title || 'Музыка'
   const unavailable = Boolean(track?.id.startsWith('demo-') || playlist?.id.startsWith('demo-'))
@@ -43,6 +45,7 @@ export function ShareButton({ track, playlist, labeled = false, className = '' }
   const share = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     if (state === 'loading') return
+    if (!auth.requireAuth()) return
     setState('loading')
     try {
       const link = track ? await createTrackShare(track) : await createPlaylistShare(playlist!.id)

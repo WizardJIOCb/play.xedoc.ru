@@ -10,6 +10,7 @@ import {
   KeyRound,
   ListMusic,
   LoaderCircle,
+  LogIn,
   LogOut,
   Menu,
   Play,
@@ -24,6 +25,7 @@ import {
   WandSparkles,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AuthPromptProvider } from './auth/AuthPromptContext'
 import { ConnectModal } from './components/ConnectModal'
 import { AdminDashboardPage } from './components/AdminDashboardPage'
 import { AuthGate } from './components/AuthGate'
@@ -99,29 +101,30 @@ function SectionHeader({ title, hint, action, onAction }: { title: string; hint?
   )
 }
 
-function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendations }: { data: BootstrapPayload; onSession: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onRecommendations: () => void }) {
+function HomeView({ data, authenticated, onSession, onRequireAuth, onPlaylist, onPlaylistPlay, onRecommendations }: { data: BootstrapPayload; authenticated: boolean; onSession: () => void; onRequireAuth: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onRecommendations: () => void }) {
   const player = usePlayer()
   return (
     <>
       <section className="hero-session">
         <div className="hero-session__copy">
-          <span className="hero-session__label"><WandSparkles size={14} /> XEDOC SESSION</span>
-          <h2>Сессия под ваши правила.<br /><em>Настройте — и слушайте.</em></h2>
-          <p>{data.connected ? 'Выберите длительность, баланс знакомого и нового, источник музыки и период без повторов.' : 'Выберите длительность, источник музыки и период без повторов. Подборка строится по музыке, которую слушают в XEDOC.'}</p>
+          <span className="hero-session__label"><WandSparkles size={14} /> {authenticated ? 'XEDOC SESSION' : 'XEDOC PLAY · ГОСТЕВОЙ РЕЖИМ'}</span>
+          <h2>{authenticated ? <>Сессия под ваши правила.<br /><em>Настройте — и слушайте.</em></> : <>Музыка играет сразу.<br /><em>Без регистрации.</em></>}</h2>
+          <p>{authenticated ? (data.connected ? 'Выберите длительность, баланс знакомого и нового, источник музыки и период без повторов.' : 'Выберите длительность, источник музыки и период без повторов. Подборка строится по музыке, которую слушают в XEDOC.') : 'Слушайте популярное и ищите музыку в общем каталоге. Прослушивания не привязываются к профилю и не влияют на рекомендации.'}</p>
           <div className="hero-session__actions">
-            <button className="primary-button" type="button" onClick={onSession}><Sparkles size={18} /> Настроить сессию</button>
-            <button className="secondary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить подборку</button>
+            {authenticated
+              ? <><button className="primary-button" type="button" onClick={onSession}><Sparkles size={18} /> Настроить сессию</button><button className="secondary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить подборку</button></>
+              : <><button className="primary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить популярное</button><button className="secondary-button" type="button" onClick={onRequireAuth}><LogIn size={17} /> Войти или зарегистрироваться</button></>}
           </div>
         </div>
         <div className="hero-session__visual">
           <div className="hero-session__settings">
-            <span className="hero-session__settings-label">Что можно настроить</span>
+            <span className="hero-session__settings-label">{authenticated ? 'Что можно настроить' : 'Что доступно без входа'}</span>
             <div className="hero-session__setting-list">
-              <article><Clock3 size={19} /><span><strong>25 · 50 · 90 минут</strong><small>Длительность сессии</small></span></article>
-              {data.connected
+              <article><Clock3 size={19} /><span><strong>{authenticated ? '25 · 50 · 90 минут' : 'Популярное сейчас'}</strong><small>{authenticated ? 'Длительность сессии' : 'Общая подборка XEDOC'}</small></span></article>
+              {authenticated && data.connected
                 ? <article><Shuffle size={19} /><span><strong>0–100% открытий</strong><small>Баланс знакомого и нового</small></span></article>
                 : <article><Radio size={19} /><span><strong>Каталог XEDOC</strong><small>Популярное и недавнее в сервисе</small></span></article>}
-              <article><History size={19} /><span><strong>7 · 30 · 90 дней</strong><small>Период без повторов</small></span></article>
+              <article><History size={19} /><span><strong>{authenticated ? '7 · 30 · 90 дней' : 'Без учёта профиля'}</strong><small>{authenticated ? 'Период без повторов' : 'Не привязываем к аккаунту'}</small></span></article>
             </div>
             <p><Headphones size={17} /><span>{data.quickTracks.length ? `${data.quickTracks.length} треков готовы к быстрому запуску` : 'Быстрая подборка пока формируется'}</span></p>
           </div>
@@ -142,12 +145,12 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
         </div>
       </section>
 
-      <section className="content-section xedoc-recommendations">
+      {Boolean(data.xedocRecommendations.length) && <section className="content-section xedoc-recommendations">
         <SectionHeader title="XEDOC рекомендует" hint={data.recommendationInsight || 'Персональная выдача учится на ваших прослушиваниях'} action="Все рекомендации" onAction={onRecommendations} />
         <div className="track-table">
           {data.xedocRecommendations.slice(0, 8).map((track, index) => <TrackRow key={`xedoc-${track.id}`} track={track} context={data.xedocRecommendations} index={index} />)}
         </div>
-      </section>
+      </section>}
 
       <section className="content-section rediscover-section">
         <SectionHeader title={data.connected || data.likedTracks.length ? 'Давно не слушали' : 'Ещё популярное'} hint={data.connected || data.likedTracks.length ? 'Любимые треки, которые затерялись в коллекции' : 'Продолжение общей подборки XEDOC'} action="Ещё 20" />
@@ -414,10 +417,18 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   const [playlistError, setPlaylistError] = useState('')
   const [playlistEditorOpen, setPlaylistEditorOpen] = useState(false)
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist>()
+  const [authOpen, setAuthOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const vkImportStarted = useRef(false)
   const queueRequest = useRef(0)
   const player = usePlayer()
+  const authenticated = data.authenticated && Boolean(data.appUser)
+
+  const requireAuth = useCallback(() => {
+    if (authenticated) return true
+    setAuthOpen(true)
+    return false
+  }, [authenticated])
 
   const navigatePath = useCallback((nextPath: string) => {
     if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
@@ -461,13 +472,13 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [data.appUser])
 
   useEffect(() => {
-    const userId = data.appUser?.id
-    if (!userId) return
+    if (loading) return
+    const userId = data.appUser?.id || 'guest'
     const ownerKey = 'xedoc-play-history-owner-v1'
     const previousOwner = window.localStorage.getItem(ownerKey)
     if (previousOwner && previousOwner !== userId) player.clear()
     window.localStorage.setItem(ownerKey, userId)
-  }, [data.appUser?.id, player])
+  }, [data.appUser?.id, loading, player])
 
   useEffect(() => {
     const onPopState = () => {
@@ -484,18 +495,18 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [])
 
   useEffect(() => {
-    if (!topOpen || listeningStats || statsLoading || !data.catalogAvailable) return
+    if (!authenticated || !topOpen || listeningStats || statsLoading || !data.catalogAvailable) return
     setStatsLoading(true)
     setStatsError('')
     void getListeningStats().then(setListeningStats).catch(() => setStatsError('Не удалось загрузить статистику прослушиваний.')).finally(() => setStatsLoading(false))
-  }, [data.catalogAvailable, listeningStats, statsLoading, topOpen])
+  }, [authenticated, data.catalogAvailable, listeningStats, statsLoading, topOpen])
 
   useEffect(() => {
-    if (view !== 'liked' || allLiked || likedLoading || !data.catalogAvailable) return
+    if (!authenticated || view !== 'liked' || allLiked || likedLoading || !data.catalogAvailable) return
     setLikedLoading(true)
     setLikedError('')
     void getAllLikedTracks().then(setAllLiked).catch(() => setLikedError('Не удалось загрузить все любимые треки.')).finally(() => setLikedLoading(false))
-  }, [allLiked, data.catalogAvailable, likedLoading, view])
+  }, [allLiked, authenticated, data.catalogAvailable, likedLoading, view])
 
   useEffect(() => {
     window.addEventListener(PLAYLISTS_CHANGED_EVENT, refresh)
@@ -565,6 +576,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [notice])
 
   const changeView = useCallback((nextView: ViewId) => {
+    if (nextView !== 'home' && !requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
@@ -574,9 +586,10 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : '/'
     navigatePath(nextPath)
     setView(nextView)
-  }, [navigatePath])
+  }, [navigatePath, requireAuth])
 
   const openRecommendations = useCallback(() => {
+    if (!requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(true)
@@ -584,9 +597,10 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setAdminOpen(false)
     setSearchOpen(false)
     if (!isRecommendationsPath()) navigatePath('/recommendations')
-  }, [navigatePath])
+  }, [navigatePath, requireAuth])
 
   const openTop = useCallback(() => {
+    if (!requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
@@ -595,9 +609,10 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setSearchOpen(false)
     setListeningStats(undefined)
     if (!isTopPath()) navigatePath('/top')
-  }, [navigatePath])
+  }, [navigatePath, requireAuth])
 
   const openAdmin = useCallback(() => {
+    if (!requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
@@ -605,7 +620,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setAdminOpen(true)
     setSearchOpen(false)
     if (!isAdminPath()) navigatePath('/admin')
-  }, [navigatePath])
+  }, [navigatePath, requireAuth])
 
   const openSearch = useCallback(() => {
     setQueueOpen(false)
@@ -641,9 +656,21 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
 
   const title = viewTitles[view]
   const openSession = useCallback((discovery = 58) => {
+    if (!requireAuth()) return
     setSessionDiscovery(discovery)
     setSessionOpen(true)
-  }, [])
+  }, [requireAuth])
+
+  useEffect(() => {
+    if (loading || authenticated || profileUsername || searchOpen) return
+    if (view === 'home' && !recommendationsOpen && !topOpen && !adminOpen) return
+    setView('home')
+    setRecommendationsOpen(false)
+    setTopOpen(false)
+    setAdminOpen(false)
+    navigatePath('/')
+    setAuthOpen(true)
+  }, [adminOpen, authenticated, loading, navigatePath, profileUsername, recommendationsOpen, searchOpen, topOpen, view])
   const content = useMemo(() => {
     if (profileUsername) return <PublicProfilePage username={profileUsername} embedded viewer={data.appUser} onBack={() => changeView('home')} onProfileUpdated={(user) => setData((value) => ({ ...value, appUser: user }))} />
     if (queueOpen) return <QueueContentView playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} />
@@ -652,14 +679,14 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
-    if (view === 'home') return <HomeView data={data} onSession={() => openSession()} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
+    if (view === 'home') return <HomeView data={data} authenticated={authenticated} onSession={() => openSession()} onRequireAuth={() => setAuthOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
     if (view === 'feed') return <SocialFeedPage user={data.appUser} tracks={data.quickTracks.concat(data.likedTracks)} playlists={data.localPlaylists.concat(data.playlists)} />
     if (view === 'friends') return <FriendsPage username={data.appUser?.username} />
     if (view === 'discover') return <DiscoverView data={data} onSession={(settings) => openSession(settings.novelty)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, changeView, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, authenticated, changeView, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -670,33 +697,34 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }
 
   return (
+    <AuthPromptProvider authenticated={authenticated} onRequireAuth={() => setAuthOpen(true)}>
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
-      <Sidebar view={searchOpen || profileUsername ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
+      <Sidebar view={searchOpen || profileUsername ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={openPlaylist} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!profileUsername && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist && !profileUsername ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <div className="topbar__actions">
             <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined} aria-label="Найти музыку" data-tooltip="Найти музыку (⌘ K)"><Search size={19} /></button>
             <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-pressed={queueOpen}><ListMusic size={18} /><span>Сейчас играет</span></button>
-            <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить Яндекс Музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить Яндекс'}</span></button>
-            <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.avatarUrl ? <img src={data.appUser.avatarUrl} alt="" /> : data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            {authenticated ? <><button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить Яндекс Музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить Яндекс'}</span></button>
+            <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.avatarUrl ? <img src={data.appUser.avatarUrl} alt="" /> : data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div></> : <button className="guest-login-button" type="button" onClick={() => setAuthOpen(true)}><LogIn size={17} /><span>Войти</span></button>}
           </div>
         </header>
 
         <div className="page-content">
           {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
-            <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
+            <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{!authenticated && view === 'home' ? 'Популярная музыка XEDOC — можно слушать без регистрации.' : title.description}</p></div>
           </header>}
           {content}
         </div>
       </main>
 
       <PlayerBar onQueue={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} />
-      <SessionBuilder open={sessionOpen} initialDiscovery={sessionDiscovery} onClose={() => setSessionOpen(false)} />
-      <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />
-      <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />
-      <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />
-      <PasswordChangeModal open={passwordChangeOpen} onClose={() => setPasswordChangeOpen(false)} />
+      {authenticated && <SessionBuilder open={sessionOpen} initialDiscovery={sessionDiscovery} onClose={() => setSessionOpen(false)} />}
+      {authenticated && <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} onConnected={refresh} />}
+      {authenticated && <SourcesModal open={sourcesOpen} yandexConnected={data.connected} onClose={() => { setSourcesOpen(false); if (new URLSearchParams(window.location.search).has('vkImport')) window.history.replaceState(null, '', window.location.pathname) }} onConnectYandex={() => setConnectOpen(true)} onChanged={refresh} />}
+      {authenticated && <PasswordSetupModal open={Boolean(data.appUser?.needsPassword)} onSaved={refresh} />}
+      {authenticated && <PasswordChangeModal open={passwordChangeOpen} onClose={() => setPasswordChangeOpen(false)} />}
       <PlaylistEditor
         open={playlistEditorOpen}
         playlist={editingPlaylist}
@@ -717,7 +745,9 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
 
       {notice && <div className="app-notice" role="status">{notice}</div>}
       {data.demo && <div className="demo-badge" data-tooltip="Сейчас показывается резервная демонстрационная коллекция"><span>{data.connected ? 'Яндекс временно недоступен · резервная выдача' : 'Демо-режим'}</span>{!data.connected && <button type="button" onClick={() => setConnectOpen(true)}>Подключить коллекцию <ChevronRight size={14} /></button>}</div>}
+      {authOpen && <AuthGate modal onClose={() => setAuthOpen(false)} onAuthenticated={() => { setAuthOpen(false); refresh() }} />}
     </div>
+    </AuthPromptProvider>
   )
 }
 

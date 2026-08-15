@@ -43,17 +43,28 @@ def test_health_returns_503_when_storage_is_unhealthy(
     assert response.json()["status"] == "degraded"
 
 
-def test_access_gate_and_shared_catalog_bootstrap(client: TestClient, store: CredentialStore) -> None:
-    locked = client.get("/api/bootstrap")
-    assert locked.status_code == 200
-    assert locked.json()["accessLocked"] is True
-    assert locked.json()["quickTracks"] == []
-    assert "access_locked" not in locked.json()
+def test_guest_and_authenticated_shared_catalog_bootstrap(client: TestClient, store: CredentialStore) -> None:
+    empty_guest = client.get("/api/bootstrap")
+    assert empty_guest.status_code == 200
+    assert empty_guest.json()["accessLocked"] is False
+    assert empty_guest.json()["authenticated"] is False
+    assert empty_guest.json()["quickTracks"] == []
+    assert "appUser" not in empty_guest.json()
+    assert "access_locked" not in empty_guest.json()
 
     denied = client.post("/api/account/login", json={"username": "nobody", "password": "wrong-password"})
     assert denied.status_code == 401
 
     seed_shared_catalog(store)
+    guest = client.get("/api/bootstrap")
+    assert guest.status_code == 200
+    assert guest.json()["authenticated"] is False
+    assert guest.json()["likedTracks"] == []
+    assert guest.json()["likedCount"] == 0
+    assert "liked" not in guest.json()["quickTracks"][0]
+    assert guest.json()["quickTracks"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+    assert guest.json()["recommendations"][0]["tracks"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+
     unlock(client)
     catalog = client.get("/api/bootstrap")
     assert catalog.status_code == 200

@@ -19,6 +19,7 @@ backend/data/
 *.db
 __pycache__/
 .pytest_cache/
+.artifacts/
 
 # Editor directories and files
 .vscode/*
