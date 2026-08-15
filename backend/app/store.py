@@ -30,6 +30,7 @@ class AppUser:
     display_name: str
     password_hash: str | None
     created_at: int
+    avatar_url: str | None = None
     is_admin: bool = False
 
 
@@ -92,6 +93,7 @@ class CredentialStore:
                 """
             )
             self._ensure_column(connection, "app_user", "is_admin", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(connection, "app_user", "avatar_url", "TEXT")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_session (
@@ -458,7 +460,7 @@ class CredentialStore:
     def user_by_username(self, username: str) -> AppUser | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, username, display_name, password_hash, created_at, is_admin FROM app_user WHERE username = ? COLLATE NOCASE",
+                "SELECT id, username, display_name, password_hash, created_at, avatar_url, is_admin FROM app_user WHERE username = ? COLLATE NOCASE",
                 (username.strip(),),
             ).fetchone()
         return AppUser(*row) if row else None
@@ -466,7 +468,7 @@ class CredentialStore:
     def user_by_id(self, user_id: str) -> AppUser | None:
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, username, display_name, password_hash, created_at, is_admin FROM app_user WHERE id = ?",
+                "SELECT id, username, display_name, password_hash, created_at, avatar_url, is_admin FROM app_user WHERE id = ?",
                 (user_id,),
             ).fetchone()
         return AppUser(*row) if row else None
@@ -475,6 +477,20 @@ class CredentialStore:
         with self._lock, self._connect() as connection:
             cursor = connection.execute("UPDATE app_user SET password_hash = ? WHERE id = ?", (password_hash, user_id))
         return bool(cursor.rowcount)
+
+    def update_user_profile(self, user_id: str, display_name: str, avatar_url: str | None = None) -> AppUser | None:
+        with self._lock, self._connect() as connection:
+            if avatar_url is None:
+                connection.execute(
+                    "UPDATE app_user SET display_name = ? WHERE id = ?",
+                    (display_name.strip(), user_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE app_user SET display_name = ?, avatar_url = ? WHERE id = ?",
+                    (display_name.strip(), avatar_url, user_id),
+                )
+        return self.user_by_id(user_id)
 
     def set_user_admin(self, username: str, is_admin: bool) -> bool:
         with self._lock, self._connect() as connection:
@@ -496,7 +512,7 @@ class CredentialStore:
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at, u.is_admin
+                SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at, u.avatar_url, u.is_admin
                 FROM app_session s JOIN app_user u ON u.id = s.user_id
                 WHERE s.token_hash = ? AND s.expires_at >= ?
                 """,
@@ -1144,7 +1160,7 @@ class CredentialStore:
     def load_public_profile(self, username: str) -> dict | None:
         with self._lock, self._connect() as connection:
             user = connection.execute(
-                "SELECT id, username, display_name, created_at FROM app_user WHERE username = ? COLLATE NOCASE",
+                "SELECT id, username, display_name, created_at, avatar_url FROM app_user WHERE username = ? COLLATE NOCASE",
                 (username,),
             ).fetchone()
             if user is None:
@@ -1193,6 +1209,7 @@ class CredentialStore:
             "username": str(user[1]),
             "displayName": str(user[2]),
             "memberSince": int(user[3]),
+            "avatarUrl": str(user[4]) if user[4] else None,
             "publicPlaylistCount": len(playlists),
             "stats": {
                 "totalPlays": int(stats[0] or 0),

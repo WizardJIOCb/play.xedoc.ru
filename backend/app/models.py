@@ -67,6 +67,7 @@ class AppUserDTO(APIModel):
     id: str
     username: str
     display_name: str
+    avatar_url: str | None = None
     needs_password: bool = False
     is_admin: bool = False
 
@@ -127,6 +128,7 @@ class PublicNowPlayingDTO(APIModel):
 class PublicProfileDTO(APIModel):
     username: str
     display_name: str
+    avatar_url: str | None = None
     member_since: int
     public_playlist_count: int = 0
     stats: PublicProfileStatsDTO = Field(default_factory=PublicProfileStatsDTO)
@@ -309,6 +311,11 @@ class AccountLoginRequest(APIModel):
 class AccountPasswordRequest(APIModel):
     password: str = Field(min_length=10, max_length=128)
     current_password: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class AccountProfileUpdateRequest(APIModel):
+    display_name: str = Field(min_length=1, max_length=80)
+    avatar_data_url: str | None = Field(default=None, max_length=2_800_000)
 
 
 class DeviceAuthStartDTO(APIModel):

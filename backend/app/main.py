@@ -29,6 +29,7 @@ from .gateway import (
 from .models import (
     AccountLoginRequest,
     AccountPasswordRequest,
+    AccountProfileUpdateRequest,
     AccountRegisterRequest,
     AccessUnlockRequest,
     ActionResponse,
@@ -157,6 +158,7 @@ def create_app(
             id=user.id,
             username=user.username,
             display_name=user.display_name,
+            avatar_url=user.avatar_url,
             needs_password=user.password_hash is None,
             is_admin=user.is_admin,
         )
@@ -480,6 +482,21 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Текущий пароль указан неверно")
         store.set_user_password(user.id, hash_password(body.password))
         return ActionResponse()
+
+    @app.put("/api/account/profile", response_model=AppUserDTO, response_model_exclude_none=True)
+    async def update_account_profile(
+        body: AccountProfileUpdateRequest,
+        request: Request,
+    ) -> AppUserDTO:
+        user = require_app_user(request)
+        display_name = body.display_name.strip()
+        if not display_name:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Укажите имя профиля")
+        avatar_url = _safe_cover_data_url(body.avatar_data_url) if body.avatar_data_url else None
+        updated = store.update_user_profile(user.id, display_name, avatar_url)
+        if updated is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
+        return app_user_dto(updated)
 
     @app.get("/api/bootstrap", response_model=BootstrapPayload, response_model_exclude_none=True)
     async def bootstrap(request: Request) -> BootstrapPayload:

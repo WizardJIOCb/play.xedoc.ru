@@ -58,6 +58,13 @@ export async function setAccountPassword(password: string, currentPassword?: str
   await request('/account/password', { method: 'PUT', body: JSON.stringify({ password, ...(currentPassword ? { currentPassword } : {}) }) })
 }
 
+export async function updateAccountProfile(displayName: string, avatarDataUrl?: string): Promise<AppUser> {
+  return request<AppUser>('/account/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ displayName, ...(avatarDataUrl ? { avatarDataUrl } : {}) }),
+  })
+}
+
 export async function startDeviceAuth(): Promise<DeviceAuthStart> {
   return request<DeviceAuthStart>('/auth/device/start', { method: 'POST' })
 }

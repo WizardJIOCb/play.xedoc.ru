@@ -67,6 +67,7 @@ const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '')
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
 const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
+const APP_NAVIGATE_EVENT = 'xedoc:app-navigate'
 const pathView = (): ViewId => {
   const path = window.location.pathname.replace(/\/+$/, '')
   if (path === '/feed') return 'feed'
@@ -375,7 +376,7 @@ function QueueContentView({ playlistTitle, loading = false, error = '' }: { play
   )
 }
 
-function PrivateApp() {
+function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   const [data, setData] = useState<BootstrapPayload>(() => ({ ...demoBootstrap, accessLocked: true }))
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -409,6 +410,11 @@ function PrivateApp() {
   const vkImportStarted = useRef(false)
   const queueRequest = useRef(0)
   const player = usePlayer()
+
+  const navigatePath = useCallback((nextPath: string) => {
+    if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
+    window.dispatchEvent(new Event(APP_NAVIGATE_EVENT))
+  }, [])
 
   useEffect(() => {
     if (selectedPlaylist) {
@@ -558,9 +564,9 @@ function PrivateApp() {
     setAdminOpen(false)
     setSearchOpen(false)
     const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : '/'
-    if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath)
+    navigatePath(nextPath)
     setView(nextView)
-  }, [])
+  }, [navigatePath])
 
   const openRecommendations = useCallback(() => {
     setQueueOpen(false)
@@ -569,8 +575,8 @@ function PrivateApp() {
     setTopOpen(false)
     setAdminOpen(false)
     setSearchOpen(false)
-    if (!isRecommendationsPath()) window.history.pushState(null, '', '/recommendations')
-  }, [])
+    if (!isRecommendationsPath()) navigatePath('/recommendations')
+  }, [navigatePath])
 
   const openTop = useCallback(() => {
     setQueueOpen(false)
@@ -580,8 +586,8 @@ function PrivateApp() {
     setAdminOpen(false)
     setSearchOpen(false)
     setListeningStats(undefined)
-    if (!isTopPath()) window.history.pushState(null, '', '/top')
-  }, [])
+    if (!isTopPath()) navigatePath('/top')
+  }, [navigatePath])
 
   const openAdmin = useCallback(() => {
     setQueueOpen(false)
@@ -590,8 +596,8 @@ function PrivateApp() {
     setTopOpen(false)
     setAdminOpen(true)
     setSearchOpen(false)
-    if (!isAdminPath()) window.history.pushState(null, '', '/admin')
-  }, [])
+    if (!isAdminPath()) navigatePath('/admin')
+  }, [navigatePath])
 
   const openSearch = useCallback(() => {
     setQueueOpen(false)
@@ -600,9 +606,9 @@ function PrivateApp() {
     setTopOpen(false)
     setAdminOpen(false)
     setSearchOpen(true)
-    if (!isSearchPath()) window.history.pushState(null, '', '/search')
+    if (!isSearchPath()) navigatePath('/search')
     window.setTimeout(() => document.querySelector<HTMLInputElement>('.search-page__input input')?.focus(), 40)
-  }, [])
+  }, [navigatePath])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -631,6 +637,7 @@ function PrivateApp() {
     setSessionOpen(true)
   }, [])
   const content = useMemo(() => {
+    if (profileUsername) return <PublicProfilePage username={profileUsername} embedded viewer={data.appUser} onBack={() => changeView('home')} onProfileUpdated={(user) => setData((value) => ({ ...value, appUser: user }))} />
     if (queueOpen) return <QueueContentView playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} />
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
@@ -644,28 +651,32 @@ function PrivateApp() {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={() => { setEditingPlaylist(undefined); setPlaylistEditorOpen(true) }} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, allLiked, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, allLiked, changeView, data, likedError, likedLoading, listeningStats, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
-  if (data.accessLocked) return <AuthGate onAuthenticated={refresh} />
+  if (data.accessLocked) {
+    if (profileUsername) return <PublicProfilePage username={profileUsername} />
+    if (isSearchPath()) return <PublicSearchPage />
+    return <AuthGate onAuthenticated={refresh} />
+  }
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
-      <Sidebar view={searchOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={recommendationsOpen} topActive={topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
+      <Sidebar view={searchOpen || profileUsername ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onPlaylist={(playlist) => { changeView('library'); openPlaylist(playlist) }} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
       <main className="main-view">
         <header className="topbar">
-          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
+          <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!profileUsername && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen} onClick={() => selectedPlaylist && !profileUsername ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
           <div className="topbar__actions">
             <button className={`topbar__search ${searchOpen ? 'is-active' : ''}`} type="button" onClick={openSearch} aria-current={searchOpen ? 'page' : undefined} aria-label="Найти музыку" data-tooltip="Найти музыку (⌘ K)"><Search size={19} /></button>
             <button className={`queue-toggle ${queueOpen ? 'is-active' : ''}`} type="button" onClick={() => { setQueuePlaylistTitle(''); setQueueLoading(false); setQueueError(''); setQueueOpen((value) => !value) }} aria-pressed={queueOpen}><ListMusic size={18} /><span>Сейчас играет</span></button>
             <button className="connect-button" type="button" onClick={() => setSourcesOpen(true)} aria-label={data.connected ? 'Источники' : 'Подключить музыку'}><Headphones size={17} /><span>{data.connected ? 'Источники' : 'Подключить музыку'}</span></button>
-            <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
+            <div className="profile-chip"><a className="profile-chip__avatar" href={`/users/${encodeURIComponent(data.appUser?.username || '')}`} data-tooltip="Открыть публичный профиль" aria-label="Открыть публичный профиль">{data.appUser?.avatarUrl ? <img src={data.appUser.avatarUrl} alt="" /> : data.appUser?.displayName?.[0] || 'X'}</a><span><strong>{data.appUser?.displayName || 'Мой профиль'}</strong><small>@{data.appUser?.username}</small></span>{data.appUser?.isAdmin && <button className="icon-button" type="button" onClick={openAdmin} data-tooltip="Открыть админку" aria-label="Открыть админку"><ShieldCheck size={16} /></button>}<button className="icon-button" type="button" onClick={() => setPasswordChangeOpen(true)} data-tooltip="Изменить пароль" aria-label="Изменить пароль"><KeyRound size={16} /></button><button className="icon-button" type="button" onClick={() => { player.clear(); void logoutAccount().then(refresh) }} data-tooltip="Выйти из XEDOC" aria-label="Выйти из XEDOC"><LogOut size={16} /></button></div>
           </div>
         </header>
 
         <div className="page-content">
-          {!queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
+          {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !adminOpen && !searchOpen && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{title.description}</p></div>
           </header>}
           {content}
@@ -720,15 +731,16 @@ export default function App() {
       updatePathname()
     }
     window.addEventListener('popstate', updatePathname)
+    window.addEventListener(APP_NAVIGATE_EVENT, updatePathname)
     document.addEventListener('click', navigateToProfile)
     return () => {
       window.removeEventListener('popstate', updatePathname)
+      window.removeEventListener(APP_NAVIGATE_EVENT, updatePathname)
       document.removeEventListener('click', navigateToProfile)
     }
   }, [])
 
   const shareMatch = pathname.match(/^\/share\/([A-Za-z0-9_-]{20,80})\/?$/)
   const profileMatch = pathname.match(/^\/users\/([A-Za-z0-9_.-]{3,32})\/?$/)
-  const publicSearch = pathname.replace(/\/+$/, '') === '/search'
-  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : profileMatch ? <PublicProfilePage username={profileMatch[1]} /> : publicSearch ? <PublicSearchPage /> : <PrivateApp />}<GlobalTooltip /></>
+  return <>{shareMatch ? <PublicSharePage token={shareMatch[1]} /> : <PrivateApp profileUsername={profileMatch?.[1]} />}<GlobalTooltip /></>
 }

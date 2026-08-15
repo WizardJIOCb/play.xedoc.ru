@@ -25,6 +25,9 @@ vi.mock('../lib/api', async (importOriginal) => {
       id: 'local-open', title: 'Open mix', trackCount: 1, isPublic: true,
       tracks: [{ id: 'live', title: 'Live track', artists: ['Live artist'], durationMs: 180_000, streamUrl: '/api/live' }],
     }),
+    updateAccountProfile: vi.fn().mockResolvedValue({
+      id: 'user-listener', username: 'listener', displayName: 'Renamed Listener', needsPassword: false, isAdmin: false,
+    }),
   }
 })
 
@@ -42,5 +45,16 @@ describe('PublicProfilePage', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /Open mix/ })[0])
     expect(await screen.findByRole('heading', { name: 'Open mix' })).toBeInTheDocument()
+  })
+
+  it('lets the profile owner change the displayed name', async () => {
+    render(<PlayerProvider><PublicProfilePage username="listener" embedded viewer={{ id: 'user-listener', username: 'listener', displayName: 'Music Listener', needsPassword: false, isAdmin: false }} /></PlayerProvider>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Изменить профиль' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Отображаемое имя' }), { target: { value: 'Renamed Listener' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(await screen.findByRole('heading', { name: 'Renamed Listener' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

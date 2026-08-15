@@ -40,6 +40,7 @@ export interface AppUser {
   id: string
   username: string
   displayName: string
+  avatarUrl?: string
   needsPassword: boolean
   isAdmin: boolean
 }
@@ -156,6 +157,7 @@ export interface PublicProfileStats {
 export interface PublicProfile {
   username: string
   displayName: string
+  avatarUrl?: string
   memberSince: number
   publicPlaylistCount: number
   stats: PublicProfileStats

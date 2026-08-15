@@ -699,6 +699,35 @@ def test_password_change_requires_current_password(client: TestClient) -> None:
     ).status_code == 200
 
 
+def test_profile_owner_can_update_display_name_and_avatar(client: TestClient) -> None:
+    unlock(client)
+    avatar = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    updated = client.put(
+        "/api/account/profile",
+        json={"displayName": "Updated Listener", "avatarDataUrl": avatar},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["displayName"] == "Updated Listener"
+    assert updated.json()["avatarUrl"] == avatar
+
+    bootstrap = client.get("/api/bootstrap").json()
+    assert bootstrap["appUser"]["displayName"] == "Updated Listener"
+    assert bootstrap["appUser"]["avatarUrl"] == avatar
+
+    public_profile = client.get("/api/profiles/testuser").json()
+    assert public_profile["displayName"] == "Updated Listener"
+    assert public_profile["avatarUrl"] == avatar
+
+    rejected = client.put(
+        "/api/account/profile",
+        json={"displayName": "Updated Listener", "avatarDataUrl": "data:image/svg+xml;base64,PHN2Zy8+"},
+    )
+    assert rejected.status_code == 400
+
+
 def test_vk_taste_import_works_before_yandex_connection(client: TestClient) -> None:
     unlock(client)
     imported = client.post(
