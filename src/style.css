@@ -380,10 +380,6 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .orbit--two { width: 238px; height: 238px; animation-direction: reverse; animation-duration: 24s; transform: rotate(50deg); }
 .orbit--two i { background: var(--violet); box-shadow: 0 0 14px var(--violet); }
 .orbit--three { width: 302px; height: 302px; border-style: dashed; opacity: .45; animation-duration: 34s; }
-.hero-session__note { position: absolute; padding: 9px 11px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 9px; background: rgba(14,16,20,.75); color: var(--muted); font-size: var(--type-caption); backdrop-filter: blur(12px); }
-.hero-session__note svg { color: var(--acid); }
-.note--top { top: 70px; right: 22px; }
-.note--bottom { bottom: 54px; left: 12px; }
 @keyframes orbit-spin { to { transform: rotate(360deg); } }
 
 /* Personal recommendations */
@@ -997,6 +993,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .public-profile-stats strong { font-size: 22px; white-space: nowrap; }
 .public-profile-stats small { color: var(--muted); font-size: var(--type-caption); }
 .public-profile-section, .public-profile-tracklist { width: min(1080px,100%); margin: 28px auto 0; }
+.public-profile-wall { max-width: none; }
 .public-profile-section > header, .public-profile-tracklist > header { min-height: 58px; display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .public-profile-section h2, .public-profile-tracklist h2 { margin: 5px 0 0; font-size: 27px; }
 .public-profile-section > header > small, .public-profile-tracklist > header > span { color: var(--muted); font-size: var(--type-caption); }

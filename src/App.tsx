@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   ChevronRight,
   CalendarDays,
-  Clock3,
   Flame,
   Headphones,
   Heart,
@@ -22,7 +21,6 @@ import {
   TrendingUp,
   Trophy,
   WandSparkles,
-  Zap,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectModal } from './components/ConnectModal'
@@ -118,8 +116,6 @@ function HomeView({ data, onSession, onPlaylist, onPlaylistPlay, onRecommendatio
           <span className="orbit orbit--two"><i /></span>
           <span className="orbit orbit--three"><i /></span>
           <div className="hero-session__core"><strong>58%</strong><small>нового</small></div>
-          <div className="hero-session__note note--top"><Zap size={15} /> мягкая энергия</div>
-          <div className="hero-session__note note--bottom"><Clock3 size={15} /> cooldown 30 дней</div>
         </div>
       </section>
 
