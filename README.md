@@ -17,6 +17,17 @@ Multi-user web player that brings a Yandex Music library and VK taste signals in
 - A social layer with public/friends-only posts, images, video and web links, playable track/playlist cards and polls.
 - Mutual friend requests, profile walls and separate “For You”/friends feeds.
 - Transparent `xedoc-social-v1` ranking: freshness + friendship + music-taste affinity + social response. It uses the listener's own play history for track/artist affinity and keeps visibility filtering separate from ranking.
+- WebMCP site tools for ChatGPT Work and Codex: catalog search, player state, queue inspection, playback, add-next, session building, playlist access and listening statistics through the open signed-in page.
+
+## WebMCP site tools
+
+When XEDOC Play is open in the built-in browser of the ChatGPT desktop app, compatible ChatGPT Work and Codex clients can discover these tools:
+
+- `search_music`, `get_player_state`, `get_queue`, `list_playlists` and `get_listening_stats` are read-only.
+- `play_track`, `add_next` and `build_session` change local playback or the queue.
+- `add_to_playlist` adds a known track to an editable XEDOC playlist owned by the signed-in user.
+
+Tools reuse the same API calls, HttpOnly session and server-side authorization as the visible interface. Track IDs returned by search, queue, session and statistics tools can be passed to the playback and playlist tools. Browser autoplay rules can leave a selected track paused until the user presses Play; `get_player_state` reports the actual playback state. Browsers without [`document.modelContext`](https://learn.chatgpt.com/docs/webmcp) continue to receive the normal application without site tools.
 
 ## Local development
 
