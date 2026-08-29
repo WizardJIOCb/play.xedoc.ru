@@ -39,6 +39,32 @@ class FakeAudio {
   }
 }
 
+class FakeBroadcastChannel {
+  static instances: FakeBroadcastChannel[] = []
+  listeners = new Set<(event: MessageEvent) => void>()
+
+  constructor(public name: string) {
+    FakeBroadcastChannel.instances.push(this)
+  }
+
+  addEventListener(_name: string, listener: (event: MessageEvent) => void) {
+    this.listeners.add(listener)
+  }
+
+  postMessage(data: unknown) {
+    for (const channel of FakeBroadcastChannel.instances) {
+      if (channel !== this && channel.name === this.name) {
+        channel.listeners.forEach((listener) => listener({ data } as MessageEvent))
+      }
+    }
+  }
+
+  close() {
+    FakeBroadcastChannel.instances = FakeBroadcastChannel.instances.filter((channel) => channel !== this)
+    this.listeners.clear()
+  }
+}
+
 const track = (id: string, title: string, liked = false): Track => ({
   id,
   title,
@@ -49,9 +75,18 @@ const track = (id: string, title: string, liked = false): Track => ({
 })
 
 let player: ReturnType<typeof usePlayer>
+let firstPlayer: ReturnType<typeof usePlayer>
+let secondPlayer: ReturnType<typeof usePlayer>
 
 function Probe() {
   player = usePlayer()
+  return null
+}
+
+function PairProbe({ slot }: { slot: 'first' | 'second' }) {
+  const value = usePlayer()
+  if (slot === 'first') firstPlayer = value
+  else secondPlayer = value
   return null
 }
 
@@ -63,11 +98,13 @@ describe('PlayerProvider state', () => {
   beforeEach(() => {
     window.localStorage.clear()
     FakeAudio.instances = []
+    FakeBroadcastChannel.instances = []
     api.toggleLike.mockReset().mockResolvedValue(undefined)
     api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
     api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
     api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('Audio', FakeAudio)
+    vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel)
   })
 
   afterEach(() => {
@@ -217,6 +254,25 @@ describe('PlayerProvider state', () => {
     act(() => FakeAudio.instances.at(-1)?.emit('loadedmetadata'))
     expect(FakeAudio.instances.at(-1)?.currentTime).toBe(83)
     expect(FakeAudio.instances.at(-1)?.play).toHaveBeenCalled()
+  })
+
+  it('pauses playback in the other tab when a new tab starts playing', async () => {
+    render(<>
+      <PlayerProvider><PairProbe slot="first" /></PlayerProvider>
+      <PlayerProvider><PairProbe slot="second" /></PlayerProvider>
+    </>)
+
+    act(() => firstPlayer.playQueue([track('first-tab', 'First tab')]))
+    await waitFor(() => expect(firstPlayer.isPlaying).toBe(true))
+    expect(FakeAudio.instances[0].play).toHaveBeenCalled()
+
+    act(() => secondPlayer.playQueue([track('second-tab', 'Second tab')]))
+    await waitFor(() => {
+      expect(secondPlayer.isPlaying).toBe(true)
+      expect(firstPlayer.isPlaying).toBe(false)
+    })
+    expect(FakeAudio.instances[0].pause).toHaveBeenCalled()
+    expect(FakeAudio.instances[1].play).toHaveBeenCalled()
   })
 
   it('ignores invalid persisted playback data', () => {
