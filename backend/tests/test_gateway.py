@@ -115,3 +115,42 @@ def test_liked_collection_marks_hydrated_track_as_liked_when_short_id_contains_a
     assert result.total == 1
     assert result.tracks[0].id == "liked-track"
     assert result.tracks[0].liked is True
+
+
+def test_artist_tracks_resolves_exact_artist_and_returns_their_catalog(settings, monkeypatch) -> None:
+    gateway = YandexMusicGateway(settings)
+
+    class ArtistClient:
+        async def search(self, query, *, type_, page):
+            assert (query, type_, page) == ("GUNSHIP", "artist", 0)
+            artists = [
+                SimpleNamespace(id=1, name="Gunship Soundtrack"),
+                SimpleNamespace(id=2, name="Gunship"),
+            ]
+            return SimpleNamespace(artists=SimpleNamespace(results=artists))
+
+        async def artists_tracks(self, artist_id, *, page, page_size):
+            assert (artist_id, page, page_size) == (2, 0, 100)
+            return SimpleNamespace(tracks=[_track("one", "GUNSHIP"), _track("two", "GUNSHIP")])
+
+        async def users_likes_tracks(self, *, user_id):
+            assert user_id == 42
+            return SimpleNamespace(tracks=[])
+
+    async def authorized_client(_credential):
+        return ArtistClient()
+
+    monkeypatch.setattr(gateway, "_authorized_client", authorized_client)
+    credential = Credential(
+        access_token="token",
+        refresh_token=None,
+        expires_at=None,
+        device_id="device",
+        user_uid="42",
+        user_name="Test",
+    )
+
+    result = asyncio.run(gateway.artist_tracks(credential, "GUNSHIP"))
+
+    assert [track.id for track in result.tracks] == ["one", "two"]
+    assert all(track.artists == ["GUNSHIP"] for track in result.tracks)

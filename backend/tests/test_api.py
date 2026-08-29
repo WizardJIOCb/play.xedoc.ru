@@ -602,6 +602,12 @@ def test_public_search_uses_signed_guest_stream(
     assert stream.headers["cache-control"] == "public, no-store, max-age=0"
     assert fake_gateway.search_queries[-1] == "signal"
 
+    artist_search = client.get("/api/search", params={"q": "Fixture Artist", "artist": "true"})
+    assert artist_search.status_code == 200
+    assert artist_search.json()["playlists"] == []
+    assert artist_search.json()["tracks"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+    assert fake_gateway.artist_queries[-1] == "Fixture Artist"
+
     separator = "&" if "?" in stream_path else "?"
     rejected = client.get(f"{stream_path}{separator}ticket=invalid-ticket-value", follow_redirects=False)
     assert rejected.status_code == 403

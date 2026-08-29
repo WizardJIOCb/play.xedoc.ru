@@ -918,13 +918,18 @@ def create_app(
     async def search(
         request: Request,
         q: str = Query(min_length=1, max_length=200),
+        artist: bool = Query(default=False),
     ) -> SearchPayload:
         await enforce_rate_limit(request, "music-search", maximum=90, window_seconds=60)
         query = q.strip()
         if not query:
             return SearchPayload()
         profile_query = query.removeprefix("@").strip()
-        profiles = [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(profile_query)]
+        profiles = (
+            []
+            if artist
+            else [ProfileSearchItemDTO.model_validate(item) for item in store.search_users(profile_query)]
+        )
         music_query = profile_query if query.startswith("@") else query
         public_search = optional_app_user(request) is None
         personal_credential = None if public_search else optional_credential(request)
@@ -936,7 +941,11 @@ def create_app(
         if credential is None:
             return SearchPayload(profiles=profiles)
         try:
-            result = await gateway.search(credential, music_query)
+            result = (
+                await gateway.artist_tracks(credential, music_query)
+                if artist
+                else await gateway.search(credential, music_query)
+            )
             if public_search:
                 result.tracks = [
                     track.model_copy(update={

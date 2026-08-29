@@ -73,6 +73,7 @@ class FakeGateway:
         self.likes: list[tuple[str, bool]] = []
         self.playlist_ids: list[str] = []
         self.search_queries: list[str] = []
+        self.artist_queries: list[str] = []
         self.discovery_contexts: list[tuple[list[str], set[str]]] = []
         self.discovery_account_signals: list[bool] = []
 
@@ -106,6 +107,10 @@ class FakeGateway:
     async def search(self, credential: Credential, query: str) -> SearchPayload:
         self.search_queries.append(query)
         return SearchPayload(tracks=[TEST_TRACK], playlists=[TEST_PLAYLIST])
+
+    async def artist_tracks(self, credential: Credential, artist_name: str) -> SearchPayload:
+        self.artist_queries.append(artist_name)
+        return SearchPayload(tracks=[TEST_TRACK])
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         return LikedTracksPayload(tracks=[TEST_TRACK], total=1)

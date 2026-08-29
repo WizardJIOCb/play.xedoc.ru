@@ -51,7 +51,7 @@ describe('player like controls', () => {
   it('initializes from the current track, persists the change, and resets for another track', async () => {
     const view = render(<PlayerProvider><PlayingBar track={likedTrack} /></PlayerProvider>)
     const unlike = await screen.findByRole('button', { name: 'Убрать лайк' })
-    expect(screen.getByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist')
+    expect(screen.getByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist&type=artist')
     fireEvent.click(unlike)
 
     await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: 'one' }), false))

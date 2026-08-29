@@ -88,6 +88,8 @@ class MusicGateway(Protocol):
 
     async def search(self, credential: Credential, query: str) -> SearchPayload: ...
 
+    async def artist_tracks(self, credential: Credential, artist_name: str) -> SearchPayload: ...
+
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload: ...
 
     async def discovery_recommendations(
@@ -276,6 +278,33 @@ class YandexMusicGateway:
             tracks=[map_track(track, liked_ids=liked_ids) for track in tracks],
             playlists=[map_playlist(item, include_tracks=False) for item in playlists],
         )
+
+    async def artist_tracks(self, credential: Credential, artist_name: str) -> SearchPayload:
+        client = await self._authorized_client(credential)
+        try:
+            result = await client.search(artist_name, type_="artist", page=0)
+            artists = list(getattr(getattr(result, "artists", None), "results", None) or [])
+            normalized_name = artist_name.strip().casefold()
+            artist = next(
+                (
+                    item
+                    for item in artists
+                    if str(getattr(item, "name", "")).strip().casefold() == normalized_name
+                    and getattr(item, "id", None) is not None
+                ),
+                None,
+            )
+            if artist is None:
+                return SearchPayload()
+            artist_page = await client.artists_tracks(artist.id, page=0, page_size=100)
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("Yandex Music artist tracks are temporarily unavailable") from exc
+
+        tracks = list(getattr(artist_page, "tracks", None) or [])
+        liked_ids = await self._liked_ids(client, credential.user_uid)
+        return SearchPayload(tracks=[map_track(track, liked_ids=liked_ids) for track in tracks])
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         client = await self._authorized_client(credential)

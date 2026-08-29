@@ -2,7 +2,7 @@ import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Play, S
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
-import { navigateApp } from '../lib/navigation'
+import { APP_NAVIGATE_EVENT, navigateApp } from '../lib/navigation'
 import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
@@ -14,6 +14,7 @@ const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles
 export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false }: { suggestions: Track[]; onPlaylistPlay: (playlist: Playlist) => void; publicMode?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
+  const [artistOnly, setArtistOnly] = useState(() => new URLSearchParams(window.location.search).get('type') === 'artist')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [results, setResults] = useState<SearchPayload>(emptyResults)
@@ -26,9 +27,17 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
   }, [])
 
   useEffect(() => {
-    const syncQuery = () => setQuery(new URLSearchParams(window.location.search).get('q') || '')
+    const syncQuery = () => {
+      const params = new URLSearchParams(window.location.search)
+      setQuery(params.get('q') || '')
+      setArtistOnly(params.get('type') === 'artist')
+    }
     window.addEventListener('popstate', syncQuery)
-    return () => window.removeEventListener('popstate', syncQuery)
+    window.addEventListener(APP_NAVIGATE_EVENT, syncQuery)
+    return () => {
+      window.removeEventListener('popstate', syncQuery)
+      window.removeEventListener(APP_NAVIGATE_EVENT, syncQuery)
+    }
   }, [])
 
   useEffect(() => {
@@ -51,7 +60,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
     setLoading(true)
     setError('')
     const timeout = window.setTimeout(() => {
-      void searchMusic(query.trim())
+      void searchMusic(query.trim(), artistOnly)
         .then((payload) => requestId === requestRef.current && setResults(payload))
         .catch(() => {
           if (requestId !== requestRef.current) return
@@ -64,7 +73,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
       window.clearTimeout(timeout)
       if (requestId === requestRef.current) requestRef.current += 1
     }
-  }, [query])
+  }, [artistOnly, query])
 
   const tracks = query.trim() ? results.tracks : suggestions
   const playFirst = () => {
@@ -106,11 +115,11 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
 
         <div className="search-page__content" aria-live="polite">
           <div className="search-page__caption">
-            <span>{query.trim() ? 'Треки' : publicMode ? 'Начните с запроса' : 'Можно включить сразу'}</span>
+            <span>{query.trim() ? artistOnly ? 'Треки исполнителя' : 'Треки' : publicMode ? 'Начните с запроса' : 'Можно включить сразу'}</span>
             {!query.trim() && <small><Clock3 size={13} /> {publicMode ? 'без регистрации' : 'быстрый выбор'}</small>}
           </div>
           <div className="search-results">
-            {tracks.slice(0, 12).map((track) => (
+            {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => (
               <div key={track.id} className={`search-result ${publicMode ? 'search-result--public' : ''}`}>
                 <div className="search-result__main" role="button" tabIndex={0} aria-label={`Включить ${track.title}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) } }}>
                   <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />

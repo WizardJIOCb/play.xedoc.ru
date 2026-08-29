@@ -111,9 +111,9 @@ export async function getLatestVKImportJob(): Promise<VKImportJob | null> {
   return request<VKImportJob | null>('/import/vk/jobs/latest')
 }
 
-export async function searchMusic(query: string): Promise<SearchPayload> {
+export async function searchMusic(query: string, artistOnly = false): Promise<SearchPayload> {
   if (!query.trim()) return { tracks: [], playlists: [], profiles: [] }
-  return request<SearchPayload>(`/search?q=${encodeURIComponent(query)}`)
+  return request<SearchPayload>(`/search?q=${encodeURIComponent(query)}${artistOnly ? '&artist=true' : ''}`)
 }
 
 export async function searchProfiles(query: string): Promise<ProfileSummary[]> {

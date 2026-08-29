@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react'
 import { navigateApp } from '../lib/navigation'
 
 export function artistSearchHref(artist: string) {
-  return `/search?q=${encodeURIComponent(artist)}`
+  return `/search?q=${encodeURIComponent(artist)}&type=artist`
 }
 
 export function ArtistLinks({ artists, className = '' }: { artists: string[]; className?: string }) {
