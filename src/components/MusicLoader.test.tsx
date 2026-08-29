@@ -10,5 +10,8 @@ describe('MusicLoader', () => {
     expect(loader).toHaveTextContent('Ловим нужную волну')
     expect(loader).toHaveTextContent('Загружаем музыку')
     expect(loader.querySelector('.app-loader__visual')).toHaveAttribute('aria-hidden', 'true')
+    expect(loader.querySelectorAll('.app-loader__vinyl')).toHaveLength(1)
+    expect(loader.querySelector('.app-loader__tonearm')).not.toBeInTheDocument()
+    expect(loader.querySelector('.app-loader__equalizer')).not.toBeInTheDocument()
   })
 })
