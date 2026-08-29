@@ -739,6 +739,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .player-bar__track strong, .player-bar__track span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .player-bar__track strong { font-size: var(--type-body); }
 .player-bar__track span { color: var(--muted); font-size: var(--type-caption); }
+.player-bar__track .player-bar__source-status { color: var(--acid); font-size: var(--type-micro); }
 .player-bar__center { display: grid; gap: 7px; }
 .player-bar__controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .player-bar__controls .icon-button { width: 31px; height: 31px; }

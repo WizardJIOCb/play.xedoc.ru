@@ -26,6 +26,8 @@ interface PlayerContextValue {
   volume: number
   shuffle: boolean
   repeat: boolean
+  playbackSource?: PlaybackSource
+  isRemotePlayback: boolean
   playTrack: (track: Track, context?: Track[], startIndex?: number, source?: PlaybackSource) => void
   playQueue: (tracks: Track[], startIndex?: number, source?: PlaybackSource, startAtSeconds?: number) => void
   togglePlayback: () => void
@@ -48,6 +50,10 @@ const HISTORY_STORAGE_KEY = 'xedoc-play-history-v1'
 const PLAYER_STORAGE_KEY = 'xedoc-player-state-v1'
 const PLAYBACK_FOCUS_CHANNEL = 'xedoc-playback-focus-v1'
 const PLAYBACK_FOCUS_STORAGE_KEY = 'xedoc-playback-focus-v1'
+const PLAYBACK_SYNC_CHANNEL = 'xedoc-playback-sync-v1'
+const PLAYBACK_SYNC_STATE_STORAGE_KEY = 'xedoc-playback-sync-state-v1'
+const PLAYBACK_SYNC_EVENT_STORAGE_KEY = 'xedoc-playback-sync-event-v1'
+const PLAYBACK_SYNC_MAX_AGE_MS = 15_000
 const HISTORY_LIMIT = 50
 const QUEUE_STORAGE_LIMIT = 300
 const coverTones = new Set(['lime', 'violet', 'coral', 'blue', 'amber', 'mono'])
@@ -67,6 +73,30 @@ interface PersistedPlaybackState {
   repeat: boolean
   playbackSource?: PlaybackSource
 }
+
+interface PlaybackSyncStateMessage {
+  type: 'state'
+  sourceId: string
+  updatedAt: number
+  isPlaying: boolean
+  state: PersistedPlaybackState
+}
+
+interface PlaybackSyncRequestMessage {
+  type: 'request'
+  sourceId: string
+  requestedAt: number
+}
+
+interface PlaybackSyncCommandMessage {
+  type: 'command'
+  sourceId: string
+  targetId: string
+  command: 'pause'
+  issuedAt: number
+}
+
+type PlaybackSyncMessage = PlaybackSyncStateMessage | PlaybackSyncRequestMessage | PlaybackSyncCommandMessage
 
 function safeHistoryTrack(value: unknown): Track | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -154,36 +184,39 @@ function safePlaybackSource(value: unknown): PlaybackSource | undefined {
     : undefined
 }
 
+function safePlaybackState(value: unknown): PersistedPlaybackState | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<PersistedPlaybackState>
+  if (!Array.isArray(candidate.queue)) return undefined
+  const queue = candidate.queue.flatMap((item): Track[] => {
+    const track = safePlaybackTrack(item)
+    return track ? [track] : []
+  }).slice(0, QUEUE_STORAGE_LIMIT)
+  if (!queue.length || typeof candidate.currentIndex !== 'number' || !Number.isInteger(candidate.currentIndex)) return undefined
+  const currentIndex = Math.max(0, Math.min(candidate.currentIndex, queue.length - 1))
+  const duration = queue[currentIndex].durationMs / 1000
+  const progress = typeof candidate.progress === 'number' && Number.isFinite(candidate.progress)
+    ? Math.max(0, Math.min(candidate.progress, duration))
+    : 0
+  const volume = typeof candidate.volume === 'number' && Number.isFinite(candidate.volume)
+    ? Math.max(0, Math.min(candidate.volume, 1))
+    : .74
+  return {
+    queue,
+    currentIndex,
+    progress,
+    volume,
+    shuffle: candidate.shuffle === true,
+    repeat: candidate.repeat === true,
+    playbackSource: safePlaybackSource(candidate.playbackSource),
+  }
+}
+
 function readPlaybackState(): PersistedPlaybackState | undefined {
   if (typeof window === 'undefined') return undefined
   try {
     const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : undefined
-    if (!parsed || typeof parsed !== 'object') return undefined
-    const candidate = parsed as Partial<PersistedPlaybackState>
-    if (!Array.isArray(candidate.queue)) return undefined
-    const queue = candidate.queue.flatMap((value): Track[] => {
-      const track = safePlaybackTrack(value)
-      return track ? [track] : []
-    }).slice(0, QUEUE_STORAGE_LIMIT)
-    if (!queue.length || typeof candidate.currentIndex !== 'number' || !Number.isInteger(candidate.currentIndex)) return undefined
-    const currentIndex = Math.max(0, Math.min(candidate.currentIndex, queue.length - 1))
-    const duration = queue[currentIndex].durationMs / 1000
-    const progress = typeof candidate.progress === 'number' && Number.isFinite(candidate.progress)
-      ? Math.max(0, Math.min(candidate.progress, duration))
-      : 0
-    const volume = typeof candidate.volume === 'number' && Number.isFinite(candidate.volume)
-      ? Math.max(0, Math.min(candidate.volume, 1))
-      : .74
-    return {
-      queue,
-      currentIndex,
-      progress,
-      volume,
-      shuffle: candidate.shuffle === true,
-      repeat: candidate.repeat === true,
-      playbackSource: safePlaybackSource(candidate.playbackSource),
-    }
+    return safePlaybackState(raw ? JSON.parse(raw) : undefined)
   } catch {
     return undefined
   }
@@ -256,6 +289,57 @@ function playbackFocusNow() {
   return Number.isFinite(value) ? value : Date.now()
 }
 
+function playbackSyncMessage(value: unknown): PlaybackSyncMessage | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<PlaybackSyncMessage>
+  if (typeof candidate.sourceId !== 'string') return undefined
+  if (candidate.type === 'state') {
+    const state = safePlaybackState(candidate.state)
+    return state
+      && typeof candidate.updatedAt === 'number'
+      && Number.isFinite(candidate.updatedAt)
+      && typeof candidate.isPlaying === 'boolean'
+      ? { type: 'state', sourceId: candidate.sourceId, updatedAt: candidate.updatedAt, isPlaying: candidate.isPlaying, state }
+      : undefined
+  }
+  if (candidate.type === 'request') {
+    return typeof candidate.requestedAt === 'number' && Number.isFinite(candidate.requestedAt)
+      ? { type: 'request', sourceId: candidate.sourceId, requestedAt: candidate.requestedAt }
+      : undefined
+  }
+  if (candidate.type === 'command') {
+    return typeof candidate.targetId === 'string'
+      && candidate.command === 'pause'
+      && typeof candidate.issuedAt === 'number'
+      && Number.isFinite(candidate.issuedAt)
+      ? {
+        type: 'command',
+        sourceId: candidate.sourceId,
+        targetId: candidate.targetId,
+        command: 'pause',
+        issuedAt: candidate.issuedAt,
+      }
+      : undefined
+  }
+  return undefined
+}
+
+function samePlaybackQueue(left: Track[], right: Track[]) {
+  return left.length === right.length && left.every((track, index) => {
+    const candidate = right[index]
+    return track.id === candidate.id
+      && track.title === candidate.title
+      && track.durationMs === candidate.durationMs
+      && track.streamUrl === candidate.streamUrl
+      && track.album === candidate.album
+      && track.coverUrl === candidate.coverUrl
+      && track.coverTone === candidate.coverTone
+      && track.liked === candidate.liked
+      && track.explicit === candidate.explicit
+      && track.artists.join('\u0000') === candidate.artists.join('\u0000')
+  })
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [restoredPlayback] = useState(readPlaybackState)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -265,14 +349,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const presenceActiveRef = useRef(false)
   const recordedSelectionRef = useRef<number>(-1)
   const playbackChannelRef = useRef<BroadcastChannel | null>(null)
+  const playbackSyncChannelRef = useRef<BroadcastChannel | null>(null)
   const playbackTabIdRef = useRef(`${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`)
   const lastPlaybackFocusRef = useRef<PlaybackFocusClaim>({ type: 'playing', sourceId: '', claimedAt: 0 })
+  const lastPlaybackSyncRef = useRef({ sourceId: '', updatedAt: 0 })
+  const lastPublishedSyncAtRef = useRef(0)
+  const playbackOwnerRef = useRef<string | undefined>(undefined)
   const pendingSeekRef = useRef<number | null>(restoredPlayback?.progress ?? null)
   const playbackSnapshotRef = useRef<PersistedPlaybackState | undefined>(undefined)
   const [current, setCurrent] = useState<Track | undefined>(() => restoredPlayback?.queue[restoredPlayback.currentIndex])
   const [currentIndex, setCurrentIndex] = useState(() => restoredPlayback?.currentIndex ?? -1)
   const [queue, setQueue] = useState<Track[]>(() => restoredPlayback?.queue ?? [])
   const [playbackSource, setPlaybackSource] = useState<PlaybackSource | undefined>(() => restoredPlayback?.playbackSource)
+  const [playbackOwnerId, setPlaybackOwnerId] = useState<string | undefined>(undefined)
   const [historyEntries, setHistoryEntries] = useState<ListeningHistoryEntry[]>(readHistoryEntries)
   const [trackLikes, setTrackLikes] = useState<Record<string, boolean>>({})
   const [selectionVersion, setSelectionVersion] = useState(0)
@@ -284,11 +373,60 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeat, setRepeat] = useState(() => restoredPlayback?.repeat ?? false)
   const isPlayingRef = useRef(isPlaying)
   isPlayingRef.current = isPlaying
+  const isRemotePlayback = Boolean(playbackOwnerId && playbackOwnerId !== playbackTabIdRef.current)
+
+  const setPlaybackOwner = useCallback((sourceId?: string) => {
+    playbackOwnerRef.current = sourceId
+    setPlaybackOwnerId(sourceId)
+  }, [])
 
   const clearDemoTimer = useCallback(() => {
     if (timerRef.current !== null) window.clearInterval(timerRef.current)
     timerRef.current = null
   }, [])
+
+  const sendPlaybackSyncMessage = useCallback((message: PlaybackSyncMessage) => {
+    try {
+      playbackSyncChannelRef.current?.postMessage(message)
+    } catch {
+      // The storage event below remains available when BroadcastChannel closes unexpectedly.
+    }
+    try {
+      const key = message.type === 'state' ? PLAYBACK_SYNC_STATE_STORAGE_KEY : PLAYBACK_SYNC_EVENT_STORAGE_KEY
+      window.localStorage.setItem(key, JSON.stringify(message))
+    } catch {
+      // Cross-tab state is best-effort when browser storage is unavailable.
+    }
+  }, [])
+
+  const publishPlaybackState = useCallback((playing = isPlayingRef.current) => {
+    const state = playbackSnapshotRef.current
+    if (!state) return
+    const updatedAt = Math.max(playbackFocusNow(), lastPublishedSyncAtRef.current + 1)
+    lastPublishedSyncAtRef.current = updatedAt
+    sendPlaybackSyncMessage({
+      type: 'state',
+      sourceId: playbackTabIdRef.current,
+      updatedAt,
+      isPlaying: playing,
+      state,
+    })
+  }, [sendPlaybackSyncMessage])
+
+  const pauseRemotePlayback = useCallback(() => {
+    const targetId = playbackOwnerRef.current
+    if (!targetId || targetId === playbackTabIdRef.current) return false
+    sendPlaybackSyncMessage({
+      type: 'command',
+      sourceId: playbackTabIdRef.current,
+      targetId,
+      command: 'pause',
+      issuedAt: playbackFocusNow(),
+    })
+    isPlayingRef.current = false
+    setIsPlaying(false)
+    return true
+  }, [sendPlaybackSyncMessage])
 
   const claimPlaybackFocus = useCallback(() => {
     const previous = lastPlaybackFocusRef.current
@@ -317,6 +455,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       lastPlaybackFocusRef.current = claim
       clearDemoTimer()
       audioRef.current?.pause()
+      setPlaybackOwner(claim.sourceId)
       isPlayingRef.current = false
       setIsPlaying(false)
     }
@@ -344,7 +483,95 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       playbackChannelRef.current = null
       channel?.close()
     }
-  }, [clearDemoTimer])
+  }, [clearDemoTimer, setPlaybackOwner])
+
+  useEffect(() => {
+    const acceptSyncMessage = (value: unknown, allowStoredState = false) => {
+      const message = playbackSyncMessage(value)
+      if (!message || message.sourceId === playbackTabIdRef.current) return
+      if (message.type === 'request') {
+        if (playbackOwnerRef.current === playbackTabIdRef.current) publishPlaybackState()
+        return
+      }
+      if (message.type === 'command') {
+        if (message.targetId !== playbackTabIdRef.current || playbackOwnerRef.current !== playbackTabIdRef.current) return
+        clearDemoTimer()
+        audioRef.current?.pause()
+        isPlayingRef.current = false
+        setIsPlaying(false)
+        return
+      }
+      if (allowStoredState && playbackFocusNow() - message.updatedAt > PLAYBACK_SYNC_MAX_AGE_MS) return
+      const lastSync = lastPlaybackSyncRef.current
+      if (message.updatedAt < lastSync.updatedAt || (message.updatedAt === lastSync.updatedAt && message.sourceId <= lastSync.sourceId)) return
+      lastPlaybackSyncRef.current = { sourceId: message.sourceId, updatedAt: message.updatedAt }
+      const remoteCurrent = message.state.queue[message.state.currentIndex]
+      if (!remoteCurrent) return
+      clearDemoTimer()
+      audioRef.current?.pause()
+      pendingSeekRef.current = message.state.progress
+      setPlaybackOwner(message.sourceId)
+      setQueue((items) => samePlaybackQueue(items, message.state.queue) ? items : message.state.queue)
+      setCurrent((track) => track && samePlaybackQueue([track], [remoteCurrent]) ? track : remoteCurrent)
+      setCurrentIndex(message.state.currentIndex)
+      setProgress(message.state.progress)
+      setDuration(remoteCurrent.durationMs / 1000)
+      setVolumeState(message.state.volume)
+      setShuffle(message.state.shuffle)
+      setRepeat(message.state.repeat)
+      setPlaybackSource((source) => (
+        source?.playlistId === message.state.playbackSource?.playlistId
+        && source?.playlistTitle === message.state.playbackSource?.playlistTitle
+          ? source
+          : message.state.playbackSource
+      ))
+      isPlayingRef.current = message.isPlaying
+      setIsPlaying(message.isPlaying)
+    }
+
+    let channel: BroadcastChannel | undefined
+    try {
+      channel = new BroadcastChannel(PLAYBACK_SYNC_CHANNEL)
+      playbackSyncChannelRef.current = channel
+      channel.addEventListener('message', (event) => acceptSyncMessage(event.data))
+    } catch {
+      playbackSyncChannelRef.current = null
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if ((event.key !== PLAYBACK_SYNC_STATE_STORAGE_KEY && event.key !== PLAYBACK_SYNC_EVENT_STORAGE_KEY) || !event.newValue) return
+      try {
+        acceptSyncMessage(JSON.parse(event.newValue), event.key === PLAYBACK_SYNC_STATE_STORAGE_KEY)
+      } catch {
+        // Ignore malformed or unrelated values.
+      }
+    }
+    window.addEventListener('storage', onStorage)
+
+    try {
+      const stored = window.localStorage.getItem(PLAYBACK_SYNC_STATE_STORAGE_KEY)
+      if (stored) acceptSyncMessage(JSON.parse(stored), true)
+    } catch {
+      // A live request below can still obtain the active state.
+    }
+    sendPlaybackSyncMessage({
+      type: 'request',
+      sourceId: playbackTabIdRef.current,
+      requestedAt: playbackFocusNow(),
+    })
+
+    const stopOwnedPlayback = () => {
+      if (playbackOwnerRef.current === playbackTabIdRef.current && isPlayingRef.current) publishPlaybackState(false)
+    }
+    window.addEventListener('pagehide', stopOwnedPlayback)
+    return () => {
+      stopOwnedPlayback()
+      window.removeEventListener('pagehide', stopOwnedPlayback)
+      window.removeEventListener('storage', onStorage)
+      playbackSyncChannelRef.current = null
+      channel?.close()
+    }
+  }, [clearDemoTimer, publishPlaybackState, sendPlaybackSyncMessage, setPlaybackOwner])
 
   const selectTrackAt = useCallback((items: Track[], index: number, startAtSeconds = 0) => {
     const track = items[index]
@@ -356,9 +583,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent(track)
     setProgress(startAt)
     setDuration(track.durationMs / 1000)
+    setPlaybackOwner(playbackTabIdRef.current)
+    isPlayingRef.current = true
     setIsPlaying(true)
     setSelectionVersion((value) => value + 1)
-  }, [])
+  }, [setPlaybackOwner])
 
   const next = useCallback(() => {
     if (!current || queue.length === 0 || currentIndex < 0) return
@@ -455,6 +684,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current?.id, currentIndex, persistedProgressSecond, playbackSource, queue, repeat, shuffle, volume])
 
   useEffect(() => {
+    if (playbackOwnerId !== playbackTabIdRef.current || !current) return
+    publishPlaybackState(isPlaying)
+  }, [current?.id, currentIndex, isPlaying, persistedProgressSecond, playbackOwnerId, playbackSource, publishPlaybackState, queue, repeat, shuffle, volume])
+
+  useEffect(() => {
     const persist = () => writePlaybackState(playbackSnapshotRef.current)
     window.addEventListener('pagehide', persist)
     return () => window.removeEventListener('pagehide', persist)
@@ -469,17 +703,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current?.id, selectionVersion])
 
   useEffect(() => {
-    if (!current || !isPlaying || recordedSelectionRef.current === selectionVersion) return
+    if (!current || !isPlaying || isRemotePlayback || recordedSelectionRef.current === selectionVersion) return
     if (current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) return
     const timeout = window.setTimeout(() => {
       recordedSelectionRef.current = selectionVersion
       void recordListeningEvent(current, 20_000).catch(() => undefined)
     }, 20_000)
     return () => window.clearTimeout(timeout)
-  }, [current, isPlaying, selectionVersion])
+  }, [current, isPlaying, isRemotePlayback, selectionVersion])
 
   useEffect(() => {
-    if (!current || !isPlaying || current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) {
+    if (!current || !isPlaying || isRemotePlayback || current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) {
       if (presenceActiveRef.current) {
         presenceActiveRef.current = false
         void clearNowPlaying().catch(() => undefined)
@@ -491,11 +725,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     heartbeat()
     const interval = window.setInterval(heartbeat, 15_000)
     return () => window.clearInterval(interval)
-  }, [current, isPlaying, playbackSource?.playlistId, selectionVersion])
+  }, [current, isPlaying, isRemotePlayback, playbackSource?.playlistId, selectionVersion])
 
   useEffect(() => {
     const audio = audioRef.current
     if (!current || !audio) return
+    if (isRemotePlayback) {
+      clearDemoTimer()
+      audio.pause()
+      return
+    }
     setDuration(current.durationMs / 1000)
     setProgress(pendingSeekRef.current ?? 0)
     clearDemoTimer()
@@ -505,12 +744,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     audio.src = streamUrl(current)
     audio.load()
-  }, [clearDemoTimer, current?.id, selectionVersion])
+  }, [clearDemoTimer, current?.id, isRemotePlayback, selectionVersion])
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio || !current) return
     clearDemoTimer()
+    if (isRemotePlayback) {
+      audio.pause()
+      return
+    }
     if (current.id.startsWith('demo-')) {
       audio.pause()
       if (isPlaying) {
@@ -538,7 +781,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })
     else audio.pause()
     return undefined
-  }, [claimPlaybackFocus, clearDemoTimer, current?.id, isPlaying, selectionVersion])
+  }, [claimPlaybackFocus, clearDemoTimer, current?.id, isPlaying, isRemotePlayback, selectionVersion])
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !current) return
@@ -548,11 +791,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       album: current.album,
       artwork: current.coverUrl ? [{ src: current.coverUrl.replace('%%', '400x400') }] : [],
     })
-    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true))
-    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false))
-    navigator.mediaSession.setActionHandler('nexttrack', next)
-    navigator.mediaSession.setActionHandler('previoustrack', previous)
-  }, [current, next, previous])
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (playbackOwnerRef.current !== playbackTabIdRef.current) {
+        pendingSeekRef.current = progress
+        setPlaybackOwner(playbackTabIdRef.current)
+        setSelectionVersion((value) => value + 1)
+      }
+      isPlayingRef.current = true
+      setIsPlaying(true)
+    })
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (pauseRemotePlayback()) return
+      isPlayingRef.current = false
+      setIsPlaying(false)
+    })
+    navigator.mediaSession.setActionHandler('nexttrack', isRemotePlayback ? null : next)
+    navigator.mediaSession.setActionHandler('previoustrack', isRemotePlayback ? null : previous)
+  }, [current, isRemotePlayback, next, pauseRemotePlayback, previous, progress, setPlaybackOwner])
 
   const playTrack = useCallback((track: Track, context: Track[] = [track], startIndex?: number, source?: PlaybackSource) => {
     let tracks = normalizeQueue(context.length ? context : [track])
@@ -584,22 +839,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (queue.length) selectTrackAt(queue, 0)
       return
     }
-    if (!isPlaying) trackGoal('music_resume', { source: playbackSource ? 'playlist' : 'player' })
-    setIsPlaying((value) => !value)
-  }, [current, isPlaying, playbackSource, queue, selectTrackAt])
+    if (isPlaying && pauseRemotePlayback()) return
+    if (!isPlaying) {
+      trackGoal('music_resume', { source: playbackSource ? 'playlist' : 'player' })
+      if (playbackOwnerRef.current !== playbackTabIdRef.current) {
+        pendingSeekRef.current = progress
+        setPlaybackOwner(playbackTabIdRef.current)
+        setSelectionVersion((value) => value + 1)
+      }
+    }
+    isPlayingRef.current = !isPlaying
+    setIsPlaying(!isPlaying)
+  }, [current, isPlaying, pauseRemotePlayback, playbackSource, progress, queue, selectTrackAt, setPlaybackOwner])
 
   const seek = useCallback((seconds: number) => {
+    if (isRemotePlayback) return
     const value = Math.max(0, Math.min(seconds, duration || 0))
     pendingSeekRef.current = null
     setProgress(value)
     if (audioRef.current && current && !current.id.startsWith('demo-')) audioRef.current.currentTime = value
-  }, [current, duration])
+  }, [current, duration, isRemotePlayback])
 
   const changeVolume = useCallback((value: number) => {
+    if (isRemotePlayback) return
     const normalized = Math.max(0, Math.min(value, 1))
     setVolumeState(normalized)
     if (audioRef.current) audioRef.current.volume = normalized
-  }, [])
+  }, [isRemotePlayback])
 
   const addNext = useCallback((track: Track) => {
     setQueue((items) => {
@@ -646,6 +912,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [applyTrackLike, isTrackLiked])
 
   const clear = useCallback(() => {
+    if (playbackOwnerRef.current === playbackTabIdRef.current) publishPlaybackState(false)
     clearDemoTimer()
     pendingSeekRef.current = null
     writePlaybackState()
@@ -659,12 +926,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentIndex(-1)
     setQueue([])
     setPlaybackSource(undefined)
+    setPlaybackOwner(undefined)
+    isPlayingRef.current = false
     setIsPlaying(false)
     setProgress(0)
     setDuration(0)
     setTrackLikes({})
     setHistoryEntries([])
-  }, [clearDemoTimer])
+  }, [clearDemoTimer, publishPlaybackState, setPlaybackOwner])
 
   const upNext = useMemo(() => {
     if (!queue.length) return []
@@ -687,6 +956,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     volume,
     shuffle,
     repeat,
+    playbackSource,
+    isRemotePlayback,
     playTrack,
     playQueue,
     togglePlayback,
@@ -701,7 +972,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isTrackLiked,
     setTrackLiked,
     clear,
-  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isTrackLiked, next, playQueue, playTrack, previous, progress, queue, removeFromQueue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
+  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isRemotePlayback, isTrackLiked, next, playQueue, playTrack, playbackSource, previous, progress, queue, removeFromQueue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
 }

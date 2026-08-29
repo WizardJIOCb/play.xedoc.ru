@@ -256,20 +256,59 @@ describe('PlayerProvider state', () => {
     expect(FakeAudio.instances.at(-1)?.play).toHaveBeenCalled()
   })
 
-  it('pauses playback in the other tab when a new tab starts playing', async () => {
+  it('mirrors active playback into a newly opened tab without starting a second audio stream', async () => {
+    render(<PlayerProvider><PairProbe slot="first" /></PlayerProvider>)
+    const tracks = [track('first-tab', 'First tab'), track('up-next', 'Up next')]
+
+    act(() => firstPlayer.playQueue(tracks, 0, { playlistId: 'road-trip', playlistTitle: 'Road trip' }))
+    act(() => firstPlayer.seek(37))
+    await waitFor(() => expect(FakeAudio.instances[0].play).toHaveBeenCalled())
+
+    render(<PlayerProvider><PairProbe slot="second" /></PlayerProvider>)
+    await waitFor(() => {
+      expect(secondPlayer.current?.id).toBe('first-tab')
+      expect(secondPlayer.queue.map((item) => item.id)).toEqual(['first-tab', 'up-next'])
+      expect(secondPlayer.progress).toBe(37)
+      expect(secondPlayer.isPlaying).toBe(true)
+      expect(secondPlayer.isRemotePlayback).toBe(true)
+      expect(secondPlayer.playbackSource).toEqual({ playlistId: 'road-trip', playlistTitle: 'Road trip' })
+    })
+    expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
+  })
+
+  it('lets a mirrored tab pause the tab that owns the audio', async () => {
+    render(<PlayerProvider><PairProbe slot="first" /></PlayerProvider>)
+    act(() => firstPlayer.playQueue([track('first-tab', 'First tab')]))
+    await waitFor(() => expect(FakeAudio.instances[0].play).toHaveBeenCalled())
+
+    render(<PlayerProvider><PairProbe slot="second" /></PlayerProvider>)
+    await waitFor(() => expect(secondPlayer.isRemotePlayback).toBe(true))
+
+    act(() => secondPlayer.togglePlayback())
+    await waitFor(() => {
+      expect(firstPlayer.isPlaying).toBe(false)
+      expect(secondPlayer.isPlaying).toBe(false)
+    })
+    expect(FakeAudio.instances[0].pause).toHaveBeenCalled()
+    expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
+  })
+
+  it('moves playback ownership when another tab starts a different track', async () => {
     render(<>
       <PlayerProvider><PairProbe slot="first" /></PlayerProvider>
       <PlayerProvider><PairProbe slot="second" /></PlayerProvider>
     </>)
 
     act(() => firstPlayer.playQueue([track('first-tab', 'First tab')]))
-    await waitFor(() => expect(firstPlayer.isPlaying).toBe(true))
-    expect(FakeAudio.instances[0].play).toHaveBeenCalled()
+    await waitFor(() => expect(FakeAudio.instances[0].play).toHaveBeenCalled())
 
     act(() => secondPlayer.playQueue([track('second-tab', 'Second tab')]))
     await waitFor(() => {
       expect(secondPlayer.isPlaying).toBe(true)
-      expect(firstPlayer.isPlaying).toBe(false)
+      expect(secondPlayer.isRemotePlayback).toBe(false)
+      expect(firstPlayer.current?.id).toBe('second-tab')
+      expect(firstPlayer.isPlaying).toBe(true)
+      expect(firstPlayer.isRemotePlayback).toBe(true)
     })
     expect(FakeAudio.instances[0].pause).toHaveBeenCalled()
     expect(FakeAudio.instances[1].play).toHaveBeenCalled()
