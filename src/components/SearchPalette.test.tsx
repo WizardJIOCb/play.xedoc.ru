@@ -16,7 +16,22 @@ vi.mock('../lib/api', () => api)
 vi.mock('../lib/analytics', () => ({ trackGoal: vi.fn() }))
 
 const suggestion: Track = { id: 'quick', title: 'Быстрый трек', artists: ['Исполнитель'], durationMs: 180_000 }
+const secondSuggestion: Track = { id: 'second', title: 'Другой трек', artists: ['Другой исполнитель'], durationMs: 175_000 }
 const result: Track = { id: 'result', title: 'Найденный трек', artists: ['Новый артист'], durationMs: 190_000 }
+
+class FakeAudio {
+  preload = ''
+  volume = 1
+  currentTime = 0
+  duration = 180
+  src = ''
+  play = vi.fn().mockResolvedValue(undefined)
+  pause = vi.fn()
+  load = vi.fn()
+  addEventListener = vi.fn()
+  removeEventListener = vi.fn()
+  removeAttribute = vi.fn()
+}
 
 describe('content search page', () => {
   beforeEach(() => {
@@ -26,9 +41,13 @@ describe('content search page', () => {
     api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
     api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
     api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
+    vi.stubGlobal('Audio', FakeAudio)
   })
 
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   it('renders inline and keeps results in the content area', async () => {
     const view = render(<PlayerProvider><SearchPalette suggestions={[suggestion]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
@@ -43,6 +62,18 @@ describe('content search page', () => {
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(view.container.querySelector('.search-page__content')).toContainElement(screen.getByText('Найденный трек'))
     expect(screen.getByRole('button', { name: 'Добавить Найденный трек в плейлист или очередь' })).toBeInTheDocument()
+  })
+
+  it('shows pause only for the search result that is currently playing', () => {
+    render(<PlayerProvider><SearchPalette suggestions={[suggestion, secondSuggestion]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Быстрый трек' }))
+
+    expect(screen.getByRole('button', { name: 'Пауза Быстрый трек' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить Другой трек' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Пауза Быстрый трек' }))
+    expect(screen.getByRole('button', { name: 'Включить Быстрый трек' })).toBeInTheDocument()
   })
 
   it('offers track search without registration in public mode', async () => {
