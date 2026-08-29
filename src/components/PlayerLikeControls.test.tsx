@@ -67,6 +67,15 @@ describe('player like controls', () => {
 
     await waitFor(() => expect(api.toggleLike).toHaveBeenCalledWith(expect.objectContaining({ id: 'one' }), false))
     expect(screen.getByRole('button', { name: 'Поставить лайк' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить One' })).toBeInTheDocument()
+  })
+
+  it('starts playback when the track row itself is clicked', async () => {
+    render(<PlayerProvider><TrackRow track={unlikedTrack} context={[unlikedTrack]} /></PlayerProvider>)
+
+    fireEvent.click(screen.getByText('Two'))
+
+    expect(await screen.findByRole('button', { name: 'Пауза' })).toBeInTheDocument()
   })
 
   it('shows playlist and remove actions for a track in the queue', () => {
