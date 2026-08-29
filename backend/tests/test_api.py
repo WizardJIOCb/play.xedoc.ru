@@ -793,6 +793,7 @@ def test_social_posts_support_rich_blocks_likes_and_polls(client: TestClient) ->
     )
     assert created.status_code == 200
     post = created.json()
+    assert post["viewCount"] == 0
     assert post["attachments"][1]["track"]["streamUrl"] == "/api/tracks/101/stream"
     assert "liked" not in post["attachments"][1]["track"]
 
@@ -807,16 +808,23 @@ def test_social_posts_support_rich_blocks_likes_and_polls(client: TestClient) ->
     assert voted.json()["poll"]["totalVotes"] == 1
     assert voted.json()["poll"]["options"][0]["selected"] is True
 
+    viewed = client.post(f"/api/social/posts/{post['id']}/view")
+    assert viewed.status_code == 200
+    assert viewed.json() == {"viewCount": 1}
+
     feed = client.get("/api/social/feed")
     assert feed.status_code == 200
     assert feed.json()["algorithm"] == "xedoc-social-v1"
     assert feed.json()["posts"][0]["id"] == post["id"]
+    assert feed.json()["posts"][0]["viewCount"] == 1
     assert feed.json()["posts"][0]["rankingReason"]
 
     client.cookies.clear()
     public_wall = client.get("/api/social/profiles/testuser/posts")
     assert public_wall.status_code == 200
     assert public_wall.json()[0]["liked"] is False
+    assert public_wall.json()[0]["viewCount"] == 1
+    assert client.post(f"/api/social/posts/{post['id']}/view").json() == {"viewCount": 2}
 
 
 def test_social_comments_support_nested_replies_and_collapsed_branches(client: TestClient) -> None:
@@ -885,9 +893,11 @@ def test_friend_request_unlocks_friends_only_wall_and_feed(client: TestClient) -
         "/api/account/login", json={"username": "testuser", "password": "a-secure-test-password"}
     ).status_code == 200
     assert client.put(f"/api/social/posts/{private_post['id']}/like").status_code == 404
+    assert client.post(f"/api/social/posts/{private_post['id']}/view").status_code == 404
     friends = client.get("/api/social/friends").json()
     assert friends["incoming"][0]["username"] == "listener-two"
     assert client.post("/api/social/friends/listener-two/accept").json()["status"] == "friend"
+    assert client.post(f"/api/social/posts/{private_post['id']}/view").json() == {"viewCount": 1}
 
     friend_feed = client.get("/api/social/feed", params={"mode": "friends"}).json()["posts"]
     assert private_post["id"] in {post["id"] for post in friend_feed}

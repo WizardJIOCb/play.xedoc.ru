@@ -257,6 +257,7 @@ class SocialPostDTO(APIModel):
     created_at: int
     like_count: int = 0
     comment_count: int = 0
+    view_count: int = 0
     liked: bool = False
     is_owner: bool = False
     ranking_reason: str | None = None
@@ -265,6 +266,10 @@ class SocialPostDTO(APIModel):
 class SocialFeedDTO(APIModel):
     posts: list[SocialPostDTO] = Field(default_factory=list)
     algorithm: str = "xedoc-social-v1"
+
+
+class SocialPostViewDTO(APIModel):
+    view_count: int
 
 
 class SocialCommentDTO(APIModel):

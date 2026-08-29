@@ -45,6 +45,9 @@
 
 @media (max-width:700px){.social-comments{margin-left:0}.comment-node__branch{margin-left:34px}.comment-node__children{margin-left:2px;padding-left:8px}.comment-node>.comment-composer{margin-left:34px}.comment-node__content header{display:grid;gap:1px}.comment-node__content header small{white-space:normal}}
 
+.social-card__actions { align-items: center; }
+.social-card__views { display: flex; align-items: center; gap: 6px; color: var(--muted); padding: 7px 10px; }
+
 * { box-sizing: border-box; }
 
 html, body, #app { width: 100%; height: 100%; }

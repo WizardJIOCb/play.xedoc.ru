@@ -13,6 +13,7 @@ const post: SocialPost = {
   createdAt: 1_700_000_000,
   likeCount: 0,
   commentCount: 3,
+  viewCount: 7,
   liked: false,
   isOwner: true,
 }
@@ -62,24 +63,40 @@ const commentTree: SocialComment[] = [{
 const apiMocks = vi.hoisted(() => ({
   getSocialComments: vi.fn(),
   createSocialComment: vi.fn(),
+  recordSocialPostView: vi.fn(),
 }))
 
 vi.mock('../lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/api')>()),
   getSocialComments: apiMocks.getSocialComments,
   createSocialComment: apiMocks.createSocialComment,
+  recordSocialPostView: apiMocks.recordSocialPostView,
 }))
 
 describe('SocialPostCard comments', () => {
   afterEach(() => {
     cleanup()
     window.localStorage.clear()
+    window.sessionStorage.clear()
     vi.unstubAllGlobals()
   })
 
   beforeEach(() => {
     apiMocks.getSocialComments.mockReset().mockResolvedValue(commentTree)
     apiMocks.createSocialComment.mockReset().mockResolvedValue(commentTree[0])
+    apiMocks.recordSocialPostView.mockReset().mockResolvedValue({ viewCount: 8 })
+  })
+
+  it('records one visible view per browser session and shows its count', async () => {
+    const first = render(<PlayerProvider><SocialPostCard post={post} readonly /></PlayerProvider>)
+
+    await waitFor(() => expect(apiMocks.recordSocialPostView).toHaveBeenCalledWith(post.id))
+    expect(await screen.findByLabelText('Просмотры: 8')).toBeInTheDocument()
+    first.unmount()
+    render(<PlayerProvider><SocialPostCard post={post} readonly /></PlayerProvider>)
+
+    await waitFor(() => expect(apiMocks.recordSocialPostView).toHaveBeenCalledTimes(1))
+    expect(screen.getByLabelText('Просмотры: 7')).toBeInTheDocument()
   })
 
   it('loads comments lazily and expands every reply level', async () => {
