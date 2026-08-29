@@ -368,7 +368,7 @@ describe('PlayerProvider state', () => {
     act(() => player.playQueue([track('often-played', 'Often played')]))
 
     await waitFor(() => expect(api.getTrackPlayCount).toHaveBeenCalledWith('often-played'))
-    expect(screen.getByText(/Играет/)).toHaveTextContent('Играет (666-й раз)')
+    expect(screen.getByText(/Играет/)).toHaveTextContent('Играет 666-й раз')
   })
 
   it('keeps the play ordinal when an older owner tab omits it from sync state', async () => {

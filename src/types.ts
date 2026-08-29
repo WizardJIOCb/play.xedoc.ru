@@ -5,6 +5,7 @@ export interface Track {
   title: string
   artists: string[]
   album?: string
+  albumId?: string
   releaseDate?: string
   durationMs: number
   coverUrl?: string

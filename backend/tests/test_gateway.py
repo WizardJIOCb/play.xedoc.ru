@@ -12,7 +12,7 @@ def _track(identifier: str, artist: str) -> SimpleNamespace:
         id=identifier,
         title=f"Track {identifier}",
         artists=[SimpleNamespace(id=artist, name=artist)],
-        albums=[SimpleNamespace(title="Discovery", release_date="2026-08-29")],
+        albums=[SimpleNamespace(id="album-discovery", title="Discovery", release_date="2026-08-29")],
         duration_ms=180_000,
         cover_uri=None,
         explicit=False,
@@ -154,6 +154,57 @@ def test_artist_tracks_resolves_exact_artist_and_returns_their_catalog(settings,
 
     assert [track.id for track in result.tracks] == ["one", "two"]
     assert all(track.artists == ["GUNSHIP"] for track in result.tracks)
+
+
+def test_album_resolves_exact_title_and_artist_and_returns_all_volumes(settings, monkeypatch) -> None:
+    gateway = YandexMusicGateway(settings)
+
+    class AlbumClient:
+        async def search(self, query, *, type_, page):
+            assert (query, type_, page) == ("PILOTE 3 To The Floor", "album", 0)
+            albums = [
+                SimpleNamespace(id=11, title="3 To The Floor", artists=[SimpleNamespace(name="Another Artist")]),
+                SimpleNamespace(id=12, title="3 To The Floor", artists=[SimpleNamespace(name="PILOTE")]),
+            ]
+            return SimpleNamespace(albums=SimpleNamespace(results=albums))
+
+        async def albums_with_tracks(self, album_id):
+            assert album_id == 12
+            return SimpleNamespace(
+                id=12,
+                title="3 To The Floor",
+                artists=[SimpleNamespace(name="PILOTE")],
+                cover_uri=None,
+                og_image=None,
+                release_date="2023-10-06",
+                genre="electronic",
+                volumes=[[_track("volume-one", "PILOTE")], [_track("volume-two", "PILOTE")]],
+            )
+
+        async def users_likes_tracks(self, *, user_id):
+            assert user_id == 42
+            return SimpleNamespace(tracks=[])
+
+    async def authorized_client(_credential):
+        return AlbumClient()
+
+    monkeypatch.setattr(gateway, "_authorized_client", authorized_client)
+    credential = Credential(
+        access_token="token",
+        refresh_token=None,
+        expires_at=None,
+        device_id="device",
+        user_uid="42",
+        user_name="Test",
+    )
+
+    result = asyncio.run(gateway.album(credential, None, "3 To The Floor", "PILOTE"))
+
+    assert result.id == "12"
+    assert result.title == "3 To The Floor"
+    assert result.artists == ["PILOTE"]
+    assert [track.id for track in result.tracks] == ["volume-one", "volume-two"]
+    assert all(track.album_id == "album-discovery" for track in result.tracks)
 
 
 def test_genre_rankings_keep_separate_international_and_russian_catalogs(settings) -> None:

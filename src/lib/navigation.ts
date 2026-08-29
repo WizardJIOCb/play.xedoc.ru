@@ -2,7 +2,7 @@ import { isGlobalTopRoutePath } from './globalTopRoutes'
 
 export const APP_NAVIGATE_EVENT = 'xedoc:app-navigate'
 
-const appPathPattern = /^(?:\/(?:feed|friends|genres|liked|recommendations|top|admin|search)\/?|\/users\/[A-Za-z0-9_.-]{3,32}\/?|\/share\/[A-Za-z0-9_-]{20,80}\/?|\/)$/
+const appPathPattern = /^(?:\/(?:feed|friends|genres|liked|recommendations|top|admin|search|album)\/?|\/users\/[A-Za-z0-9_.-]{3,32}\/?|\/share\/[A-Za-z0-9_-]{20,80}\/?|\/)$/
 
 export function isAppPath(pathname: string) {
   return appPathPattern.test(pathname) || isGlobalTopRoutePath(pathname)
