@@ -151,6 +151,17 @@ def test_global_top_sections_are_public_and_paginated(
     assert genre.json()["title"] == "Electronic"
     assert genre.json()["description"] == "По порядку в подборке «100 electronic hits»"
     assert [track["id"] for track in genre.json()["tracks"]] == ["202"]
+    assert genre.json()["tracks"][0]["releaseDate"] == "2026-08-29"
+
+    modern = client.get("/api/global-top/section", params={"kind": "genre", "id": "electronic", "period": "2020s"})
+    assert modern.status_code == 200
+    assert modern.json()["total"] == 1
+    assert [track["id"] for track in modern.json()["tracks"]] == ["202"]
+
+    classic = client.get("/api/global-top/section", params={"kind": "genre", "id": "electronic", "period": "classic"})
+    assert classic.status_code == 200
+    assert classic.json()["total"] == 0
+    assert classic.json()["tracks"] == []
 
     missing = client.get("/api/global-top/section", params={"kind": "genre", "id": "missing"})
     assert missing.status_code == 404

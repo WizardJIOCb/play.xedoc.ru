@@ -44,6 +44,9 @@ describe('recent playlists sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Показать все плейлисты' }))
     expect(onView).toHaveBeenCalledWith('library')
 
+    fireEvent.click(screen.getByRole('button', { name: 'Жанры' }))
+    expect(onView).toHaveBeenCalledWith('genres')
+
     fireEvent.click(screen.getByRole('button', { name: 'Новый плейлист' }))
     expect(onCreatePlaylist).toHaveBeenCalledTimes(1)
 

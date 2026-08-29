@@ -10,6 +10,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Literal
 from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
@@ -231,6 +232,31 @@ def create_app(
         _set_local_like_state(tracks, store)
         _decorate_tracks_with_stats(tracks, store)
         return tracks
+
+    def genre_period_tracks(
+        tracks: list[TrackDTO],
+        period: Literal["all", "recent", "2020s", "2010s", "classic"],
+    ) -> list[TrackDTO]:
+        if period == "all":
+            return tracks
+
+        cutoff = date.today() - timedelta(days=365)
+
+        def matches(track: TrackDTO) -> bool:
+            raw_date = (track.release_date or "").strip()[:10]
+            try:
+                released = date.fromisoformat(raw_date)
+            except ValueError:
+                return False
+            if period == "recent":
+                return released >= cutoff
+            if period == "2020s":
+                return 2020 <= released.year <= 2029
+            if period == "2010s":
+                return 2010 <= released.year <= 2019
+            return released.year < 2010
+
+        return [track for track in tracks if matches(track)]
 
     async def enforce_rate_limit(
         request: Request,
@@ -1049,6 +1075,7 @@ def create_app(
         section_id: str | None = Query(default=None, alias="id", max_length=60),
         offset: int = Query(default=0, ge=0, le=10_000),
         limit: int = Query(default=20, ge=1, le=50),
+        period: Literal["all", "recent", "2020s", "2010s", "classic"] = Query(default="all"),
     ) -> GlobalTopSectionPayload:
         await enforce_rate_limit(request, "global-top-section", maximum=180, window_seconds=60)
         try:
@@ -1064,7 +1091,7 @@ def create_app(
                 if not re.fullmatch(r"[a-z0-9-]{1,60}", genre_id):
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рейтинг не найден")
                 genre = await gateway.global_genre(credential, genre_id)
-                all_tracks = genre.tracks
+                all_tracks = genre_period_tracks(genre.tracks, period)
                 page_tracks = decorate_global_tracks(request, all_tracks[offset:offset + limit])
                 total = len(all_tracks)
                 return GlobalTopSectionPayload(

@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -215,9 +215,10 @@ export async function getGlobalTop(): Promise<GlobalTopPayload> {
   return request<GlobalTopPayload>('/global-top')
 }
 
-export async function getGlobalTopSection(kind: GlobalTopSection['kind'], id: string | undefined, offset = 0, limit = 20): Promise<GlobalTopSection> {
+export async function getGlobalTopSection(kind: GlobalTopSection['kind'], id: string | undefined, offset = 0, limit = 20, period: GenrePeriod = 'all'): Promise<GlobalTopSection> {
   const params = new URLSearchParams({ kind, offset: String(offset), limit: String(limit) })
   if (id) params.set('id', id)
+  if (kind === 'genre' && period !== 'all') params.set('period', period)
   return request<GlobalTopSection>(`/global-top/section?${params}`)
 }
 

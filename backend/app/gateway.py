@@ -86,12 +86,92 @@ class GenreRankingSpec:
 
 GENRE_RANKING_SPECS = (
     GenreRankingSpec("rock", "Рок", "international", "rock", 0),
+    GenreRankingSpec(
+        "postrock",
+        "Пост-рок",
+        "international",
+        None,
+        playlist_uid="553947738",
+        playlist_kind=1022,
+    ),
+    GenreRankingSpec(
+        "shoegaze",
+        "Шугейз",
+        "international",
+        None,
+        playlist_uid="553947738",
+        playlist_kind=1077,
+    ),
     GenreRankingSpec("metal", "Метал", "international", "metal", 1),
+    GenreRankingSpec(
+        "metalcore",
+        "Металкор",
+        "international",
+        None,
+        playlist_uid="414787002",
+        playlist_kind=1149,
+    ),
+    GenreRankingSpec(
+        "heavyhardcore",
+        "Тяжёлый хардкор",
+        "international",
+        None,
+        playlist_uid="460142547",
+        playlist_kind=20456,
+    ),
     GenreRankingSpec("punk", "Панк", "international", "punk", 3),
+    GenreRankingSpec(
+        "hardcorepunk",
+        "Хардкор и панк",
+        "international",
+        None,
+        playlist_uid="837761439",
+        playlist_kind=1053,
+    ),
+    GenreRankingSpec(
+        "posthardcore",
+        "Постхардкор",
+        "international",
+        None,
+        playlist_uid="553947738",
+        playlist_kind=1012,
+    ),
     GenreRankingSpec("alternative", "Альтернатива", "international", "alternative", 3),
     GenreRankingSpec("pop", "Поп", "international", "pop", 2),
     GenreRankingSpec("hiphop", "Хип-хоп", "international", "rap", 1),
     GenreRankingSpec("electronic", "Электроника", "international", "electronic", 2),
+    GenreRankingSpec(
+        "ambient",
+        "Эмбиент",
+        "international",
+        None,
+        playlist_uid="553947738",
+        playlist_kind=1007,
+    ),
+    GenreRankingSpec(
+        "lofi",
+        "Lo-fi",
+        "international",
+        None,
+        playlist_uid="103372440",
+        playlist_kind=2620,
+    ),
+    GenreRankingSpec(
+        "idm",
+        "IDM",
+        "international",
+        None,
+        playlist_uid="553947738",
+        playlist_kind=1152,
+    ),
+    GenreRankingSpec(
+        "synthwave",
+        "Синтвейв",
+        "international",
+        None,
+        playlist_uid="1029882573",
+        playlist_kind=1003,
+    ),
     GenreRankingSpec("indie", "Инди", "international", "indie", 2),
     GenreRankingSpec("rnb", "R&B", "international", "rnb", 2),
     GenreRankingSpec("jazz", "Джаз", "international", "jazz", 0),
@@ -971,6 +1051,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
     ]
     albums = list(getattr(track, "albums", None) or [])
     album = getattr(albums[0], "title", None) if albums else None
+    release_date = getattr(albums[0], "release_date", None) if albums else None
     explicit_value = getattr(track, "explicit", None)
     if explicit_value is None:
         explicit_value = getattr(track, "content_warning", None) == "explicit"
@@ -980,6 +1061,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
         title=str(getattr(track, "title", None) or "Без названия"),
         artists=artists or ["Неизвестный исполнитель"],
         album=str(album) if album else None,
+        release_date=str(release_date).strip() or None if release_date else None,
         duration_ms=max(0, int(getattr(track, "duration_ms", None) or 0)),
         cover_url=_image_url(getattr(track, "cover_uri", None) or getattr(track, "og_image", None)),
         cover_tone=_tone_for(str(track_id)),

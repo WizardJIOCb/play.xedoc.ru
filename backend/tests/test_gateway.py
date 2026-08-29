@@ -12,7 +12,7 @@ def _track(identifier: str, artist: str) -> SimpleNamespace:
         id=identifier,
         title=f"Track {identifier}",
         artists=[SimpleNamespace(id=artist, name=artist)],
-        albums=[SimpleNamespace(title="Discovery")],
+        albums=[SimpleNamespace(title="Discovery", release_date="2026-08-29")],
         duration_ms=180_000,
         cover_uri=None,
         explicit=False,
@@ -176,7 +176,12 @@ def test_genre_rankings_keep_separate_international_and_russian_catalogs(setting
             if (user_id, kind) == ("103372440", 1628):
                 track.title = "Русский метал"
             else:
-                assert user_id == "curator"
+                direct_playlists = {
+                    (spec.playlist_uid, spec.playlist_kind)
+                    for spec in GENRE_RANKING_SPECS
+                    if spec.playlist_uid is not None and spec.playlist_kind is not None
+                }
+                assert user_id == "curator" or (user_id, kind) in direct_playlists
             return SimpleNamespace(
                 title=f"Playlist {kind}",
                 tracks=[SimpleNamespace(track=track)],
@@ -185,9 +190,27 @@ def test_genre_rankings_keep_separate_international_and_russian_catalogs(setting
     rankings = asyncio.run(gateway._genre_rankings(GenreClient()))
 
     assert [genre.id for genre in rankings] == [spec.id for spec in GENRE_RANKING_SPECS]
-    assert len([genre for genre in rankings if genre.scope == "international"]) == 12
-    assert len([genre for genre in rankings if genre.scope == "russian"]) == 8
+    assert len([genre for genre in rankings if genre.scope == "international"]) == len([
+        spec for spec in GENRE_RANKING_SPECS if spec.scope == "international"
+    ])
+    assert len([genre for genre in rankings if genre.scope == "russian"]) == len([
+        spec for spec in GENRE_RANKING_SPECS if spec.scope == "russian"
+    ])
+    assert {
+        "postrock",
+        "shoegaze",
+        "ambient",
+        "lofi",
+        "idm",
+        "synthwave",
+        "hardcorepunk",
+        "posthardcore",
+        "metalcore",
+        "heavyhardcore",
+    }.issubset({genre.id for genre in rankings})
     assert next(genre for genre in rankings if genre.id == "metal").source_title == "Playlist metal-1"
+    assert next(genre for genre in rankings if genre.id == "postrock").source_title == "Playlist 1022"
+    assert next(genre for genre in rankings if genre.id == "heavyhardcore").source_title == "Playlist 20456"
     assert next(genre for genre in rankings if genre.id == "rusmetal").tracks[0].title == "Русский метал"
     assert next(genre for genre in rankings if genre.id == "ruspunk").tracks[0].id == "track-punk-1"
 

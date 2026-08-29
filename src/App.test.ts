@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App, { QuickTrack, filterCollectionTracks, stabilizeTrackOrder } from './App'
-import { getBootstrap, getGlobalTop, getListeningStats, getPublicShare } from './lib/api'
+import { getBootstrap, getGlobalTop, getGlobalTopSection, getListeningStats, getPublicShare } from './lib/api'
 import { PlayerProvider } from './player/PlayerContext'
 import type { Track } from './types'
 
@@ -30,6 +30,11 @@ vi.mock('./lib/api', async (importOriginal) => {
       generatedAt: 1_700_000_000, editionDate: '2026-08-29', chartTitle: 'Мировой чарт', chartDescription: 'Главные треки мира сегодня',
       chart: [{ id: 'world-one', title: 'World One', artists: ['Global Artist'], durationMs: 180_000, streamUrl: '/api/public-search/tracks/world-one/stream?ticket=signed-ticket' }],
       releases: [], genres: [],
+    }),
+    getGlobalTopSection: vi.fn().mockResolvedValue({
+      kind: 'chart', id: 'chart', title: 'Мировой чарт', total: 1, offset: 0, limit: 20, hasMore: false,
+      tracks: [{ id: 'world-one', title: 'World One', artists: ['Global Artist'], durationMs: 180_000, streamUrl: '/api/public-search/tracks/world-one/stream?ticket=signed-ticket' }],
+      releases: [],
     }),
     getPublicShare: vi.fn().mockResolvedValue({
       token: 'public-share-token-123456', kind: 'track', sharedBy: 'Rodion', createdAt: 1_700_000_000,
@@ -160,6 +165,40 @@ describe('favorite collection filtering', () => {
     expect(screen.getByRole('heading', { name: 'Мировой чарт' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Слушать мировой топ' })).toBeEnabled()
     expect(window.location.pathname).toBe('/global-top')
+  })
+
+  it('opens the public genre browser from the main menu', async () => {
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [], playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+    fireEvent.click(await screen.findByRole('button', { name: 'Жанры' }))
+
+    expect(await screen.findByRole('heading', { name: /Найдите свой жанр/ })).toBeInTheDocument()
+    expect(getGlobalTop).toHaveBeenCalled()
+    expect(window.location.pathname).toBe('/genres')
+    expect(screen.queryByRole('dialog', { name: 'Вход или регистрация' })).not.toBeInTheDocument()
+  })
+
+  it('opens a global top rubric from its direct link', async () => {
+    window.history.replaceState(null, '', '/global-top/chart')
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [], playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+    vi.mocked(getGlobalTopSection).mockClear()
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+
+    expect(await screen.findByRole('heading', { name: 'Мировой чарт' })).toBeInTheDocument()
+    expect(await screen.findByText('World One')).toBeInTheDocument()
+    expect(getGlobalTop).toHaveBeenCalled()
+    expect(getGlobalTopSection).toHaveBeenCalledWith('chart', undefined, 0, 20)
+    expect(window.location.pathname).toBe('/global-top/chart')
   })
 
   it('keeps the same audio instance while opening a profile and returning through the logo', async () => {
