@@ -11,16 +11,40 @@ function editionLabel(value: string) {
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(date)
 }
 
+type GenreScope = 'international' | 'russian'
+
+const genreScopeLabels: Record<GenreScope, string> = {
+  international: 'Зарубежная',
+  russian: 'Русская',
+}
+
 export function GlobalTopPage({ data, loading, error }: { data?: GlobalTopPayload; loading: boolean; error?: string }) {
   const player = usePlayer()
+  const [genreScope, setGenreScope] = useState<GenreScope>('international')
   const [genreId, setGenreId] = useState('')
+  const genresByScope = useMemo(() => ({
+    international: data?.genres.filter((genre) => genre.scope === 'international') || [],
+    russian: data?.genres.filter((genre) => genre.scope === 'russian') || [],
+  }), [data])
+  const scopedGenres = genresByScope[genreScope]
   useEffect(() => {
-    if (!data?.genres.some((genre) => genre.id === genreId)) setGenreId(data?.genres[0]?.id || '')
-  }, [data, genreId])
+    if (scopedGenres.length || !data?.genres.length) return
+    const nextScope: GenreScope = genresByScope.international.length ? 'international' : 'russian'
+    setGenreScope(nextScope)
+    setGenreId(genresByScope[nextScope][0]?.id || '')
+  }, [data, genresByScope, scopedGenres.length])
+  useEffect(() => {
+    if (!scopedGenres.some((genre) => genre.id === genreId)) setGenreId(scopedGenres[0]?.id || '')
+  }, [genreId, scopedGenres])
   const selectedGenre = useMemo(
-    () => data?.genres.find((genre) => genre.id === genreId) || data?.genres[0],
-    [data, genreId],
+    () => scopedGenres.find((genre) => genre.id === genreId) || scopedGenres[0],
+    [genreId, scopedGenres],
   )
+
+  const selectGenreScope = (scope: GenreScope) => {
+    setGenreScope(scope)
+    setGenreId(genresByScope[scope][0]?.id || '')
+  }
 
   if (loading) return <div className="global-top-state"><LoaderCircle className="spin" size={26} /><span>Собираем мировой чарт и свежие релизы…</span></div>
   if (error || !data) return <div className="global-top-state global-top-state--error"><Globe2 size={28} /><strong>Глобальный топ пока недоступен</strong><span>{error || 'Каталог ещё не подключён.'}</span></div>
@@ -67,12 +91,17 @@ export function GlobalTopPage({ data, loading, error }: { data?: GlobalTopPayloa
       </section>}
 
       {selectedGenre && <section className="global-top-section global-top-genres">
-        <header><div><span className="eyebrow">ИСКАТЬ ПО ЗВУЧАНИЮ</span><h2>Топ по жанрам</h2><p>Переключайтесь между жанрами, которые сегодня заметны в мировом чарте.</p></div><Disc3 size={22} /></header>
-        <div className="global-genre-tabs" role="tablist" aria-label="Жанры мирового чарта">
-          {data.genres.map((genre) => <button key={genre.id} className={genre.id === selectedGenre.id ? 'is-active' : ''} type="button" role="tab" aria-selected={genre.id === selectedGenre.id} onClick={() => setGenreId(genre.id)}>{genre.title}<small>{genre.tracks.length}</small></button>)}
+        <header><div><span className="eyebrow">РЕЙТИНГИ ПО ЗВУЧАНИЮ</span><h2>Жанровые рейтинги</h2><p>Отдельные топы зарубежной и русской музыки: от рока, метала и панка до попа, электроники, джаза и классики.</p></div><Disc3 size={22} /></header>
+        <div className="global-genre-scopes" role="tablist" aria-label="Регион жанрового рейтинга">
+          {(Object.keys(genreScopeLabels) as GenreScope[]).filter((scope) => genresByScope[scope].length).map((scope) => (
+            <button key={scope} className={scope === genreScope ? 'is-active' : ''} type="button" role="tab" aria-selected={scope === genreScope} onClick={() => selectGenreScope(scope)}>{genreScopeLabels[scope]}<small>{genresByScope[scope].length} жанров</small></button>
+          ))}
         </div>
-        <div className="global-genre-panel" role="tabpanel">
-          <div><span className="eyebrow">В ФОКУСЕ</span><h3>{selectedGenre.title}</h3><button className="secondary-button" type="button" disabled={!selectedGenre.tracks.length} onClick={() => player.playQueue(selectedGenre.tracks)}><Play size={16} fill="currentColor" /> Слушать жанр</button></div>
+        <div className="global-genre-tabs" role="tablist" aria-label={`Жанры: ${genreScopeLabels[genreScope].toLowerCase()} музыка`}>
+          {scopedGenres.map((genre) => <button key={genre.id} className={genre.id === selectedGenre.id ? 'is-active' : ''} type="button" role="tab" aria-selected={genre.id === selectedGenre.id} aria-controls="global-genre-panel" onClick={() => setGenreId(genre.id)}>{genre.title}<small>{genre.tracks.length}</small></button>)}
+        </div>
+        <div className="global-genre-panel" id="global-genre-panel" role="tabpanel">
+          <div><span className="eyebrow">{genreScope === 'international' ? 'ЗАРУБЕЖНЫЙ ТОП' : 'РУССКИЙ ТОП'}</span><h3>{selectedGenre.title}</h3>{selectedGenre.sourceTitle && <p>По порядку в подборке «{selectedGenre.sourceTitle}»</p>}<button className="secondary-button" type="button" disabled={!selectedGenre.tracks.length} onClick={() => player.playQueue(selectedGenre.tracks)}><Play size={16} fill="currentColor" /> Слушать жанр</button></div>
           <div className="track-table">
             {selectedGenre.tracks.map((track, index) => <TrackRow key={`${selectedGenre.id}-${track.id}`} track={track} context={selectedGenre.tracks} index={index} compact />)}
           </div>

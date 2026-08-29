@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from app.gateway import YandexMusicGateway
+from app.gateway import GENRE_RANKING_SPECS, YandexMusicGateway
 from app.store import Credential
 
 
@@ -154,3 +154,30 @@ def test_artist_tracks_resolves_exact_artist_and_returns_their_catalog(settings,
 
     assert [track.id for track in result.tracks] == ["one", "two"]
     assert all(track.artists == ["GUNSHIP"] for track in result.tracks)
+
+
+def test_genre_rankings_keep_separate_international_and_russian_catalogs(settings) -> None:
+    gateway = YandexMusicGateway(settings)
+
+    class GenreClient:
+        async def tags(self, tag_id):
+            max_index = max(spec.playlist_index for spec in GENRE_RANKING_SPECS if spec.tag_id == tag_id)
+            return SimpleNamespace(ids=[
+                SimpleNamespace(kind=f"{tag_id}-{index}", uid="curator")
+                for index in range(max_index + 1)
+            ])
+
+        async def users_playlists(self, *, kind, user_id):
+            assert user_id == "curator"
+            return SimpleNamespace(
+                title=f"Playlist {kind}",
+                tracks=[SimpleNamespace(track=_track(f"track-{kind}", f"artist-{kind}"))],
+            )
+
+    rankings = asyncio.run(gateway._genre_rankings(GenreClient()))
+
+    assert [genre.id for genre in rankings] == [spec.id for spec in GENRE_RANKING_SPECS]
+    assert len([genre for genre in rankings if genre.scope == "international"]) == 12
+    assert len([genre for genre in rankings if genre.scope == "russian"]) == 7
+    assert next(genre for genre in rankings if genre.id == "metal").source_title == "Playlist metal-1"
+    assert next(genre for genre in rankings if genre.id == "ruspunk").tracks[0].id == "track-punk-1"

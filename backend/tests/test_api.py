@@ -117,6 +117,8 @@ def test_global_top_is_public_and_uses_signed_catalog_streams(
     assert [track["id"] for track in body["chart"]] == ["101", "202"]
     assert body["releases"][0]["title"] == "Fresh Fixture"
     assert body["genres"][0]["title"] == "Electronic"
+    assert body["genres"][0]["scope"] == "international"
+    assert body["genres"][0]["sourceTitle"] == "100 electronic hits"
     assert "liked" not in body["chart"][0]
     assert body["chart"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
 

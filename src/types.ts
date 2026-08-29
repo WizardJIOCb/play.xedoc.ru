@@ -215,6 +215,8 @@ export interface GlobalRelease {
 export interface GlobalGenre {
   id: string
   title: string
+  scope: 'international' | 'russian'
+  sourceTitle?: string
   tracks: Track[]
 }
 

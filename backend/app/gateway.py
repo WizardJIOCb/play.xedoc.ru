@@ -72,6 +72,38 @@ class DeviceFlowRejected(GatewayError):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class GenreRankingSpec:
+    id: str
+    title: str
+    scope: str
+    tag_id: str
+    playlist_index: int
+
+
+GENRE_RANKING_SPECS = (
+    GenreRankingSpec("rock", "Рок", "international", "rock", 0),
+    GenreRankingSpec("metal", "Метал", "international", "metal", 1),
+    GenreRankingSpec("punk", "Панк", "international", "punk", 3),
+    GenreRankingSpec("alternative", "Альтернатива", "international", "alternative", 3),
+    GenreRankingSpec("pop", "Поп", "international", "pop", 2),
+    GenreRankingSpec("hiphop", "Хип-хоп", "international", "rap", 1),
+    GenreRankingSpec("electronic", "Электроника", "international", "electronic", 2),
+    GenreRankingSpec("indie", "Инди", "international", "indie", 2),
+    GenreRankingSpec("rnb", "R&B", "international", "rnb", 2),
+    GenreRankingSpec("jazz", "Джаз", "international", "jazz", 0),
+    GenreRankingSpec("blues", "Блюз", "international", "blues", 1),
+    GenreRankingSpec("classical", "Классика", "international", "classical", 1),
+    GenreRankingSpec("rusrock", "Русский рок", "russian", "rusrock", 0),
+    GenreRankingSpec("ruspunk", "Русский панк", "russian", "punk", 1),
+    GenreRankingSpec("rusrap", "Русский рэп", "russian", "rusrap", 0),
+    GenreRankingSpec("ruspop", "Русская поп-музыка", "russian", "ruspop", 0),
+    GenreRankingSpec("rusindie", "Русское инди", "russian", "indie", 0),
+    GenreRankingSpec("rusalternative", "Наша альтернатива", "russian", "alternative", 10),
+    GenreRankingSpec("rusclassical", "Русская классика", "russian", "classical", 9),
+)
+
+
 @dataclass(slots=True)
 class DeviceAuthorization:
     upstream_device_id: str
@@ -355,9 +387,12 @@ class YandexMusicGateway:
             release_ids = [] if isinstance(releases_result, Exception) else list(
                 getattr(releases_result, "new_releases", None) or []
             )[:12]
-            album_results = await asyncio.gather(
-                *(client.albums_with_tracks(album_id) for album_id in release_ids),
-                return_exceptions=True,
+            album_results, curated_genres = await asyncio.gather(
+                asyncio.gather(
+                    *(client.albums_with_tracks(album_id) for album_id in release_ids),
+                    return_exceptions=True,
+                ),
+                self._genre_rankings(client),
             )
         except UnauthorizedError as exc:
             raise GatewayUnauthorized("Yandex Music session expired") from exc
@@ -398,10 +433,11 @@ class YandexMusicGateway:
             if genre_id:
                 buckets.setdefault(genre_id, []).append(track)
         ranked_genres = sorted(buckets.items(), key=lambda item: len(item[1]), reverse=True)[:6]
-        genres = [
+        fallback_genres = [
             GlobalGenreDTO(
                 id=genre_id,
                 title=genre_titles.get(genre_id, genre_id.replace("-", " ").title()),
+                scope="international",
                 tracks=[map_track(track) for track in tracks[:10]],
             )
             for genre_id, tracks in ranked_genres
@@ -414,10 +450,72 @@ class YandexMusicGateway:
             chart_description=(str(getattr(chart_result, "chart_description", "")).strip() or None),
             chart=chart,
             releases=releases,
-            genres=genres,
+            genres=curated_genres or fallback_genres,
         )
         self._global_top_cache = (time.monotonic() + 900, payload.model_copy(deep=True))
         return payload
+
+    async def _genre_rankings(self, client: Any) -> list[GlobalGenreDTO]:
+        tag_ids = list(dict.fromkeys(spec.tag_id for spec in GENRE_RANKING_SPECS))
+        tag_results = await asyncio.gather(
+            *(client.tags(tag_id) for tag_id in tag_ids),
+            return_exceptions=True,
+        )
+        tags_by_id = dict(zip(tag_ids, tag_results, strict=True))
+
+        selections: list[tuple[GenreRankingSpec, Any]] = []
+        for spec in GENRE_RANKING_SPECS:
+            tag_result = tags_by_id[spec.tag_id]
+            if isinstance(tag_result, Exception) or tag_result is None:
+                continue
+            playlist_ids = list(getattr(tag_result, "ids", None) or [])
+            if spec.playlist_index >= len(playlist_ids):
+                continue
+            selections.append((spec, playlist_ids[spec.playlist_index]))
+
+        playlist_results = await asyncio.gather(
+            *(
+                client.users_playlists(
+                    kind=getattr(playlist_id, "kind", None),
+                    user_id=getattr(playlist_id, "uid", None),
+                )
+                for _, playlist_id in selections
+            ),
+            return_exceptions=True,
+        )
+        shorts_by_selection: list[list[Any]] = []
+        for playlist in playlist_results:
+            if isinstance(playlist, Exception) or playlist is None:
+                shorts_by_selection.append([])
+            else:
+                shorts_by_selection.append(list(getattr(playlist, "tracks", None) or [])[:10])
+        hydrated_results = await asyncio.gather(
+            *(self._hydrate_shorts(client, shorts) for shorts in shorts_by_selection),
+            return_exceptions=True,
+        )
+
+        rankings: list[GlobalGenreDTO] = []
+        for (spec, _), playlist, shorts, hydrated in zip(
+            selections,
+            playlist_results,
+            shorts_by_selection,
+            hydrated_results,
+            strict=True,
+        ):
+            if isinstance(playlist, Exception) or isinstance(hydrated, Exception):
+                continue
+            tracks = _restore_short_order(shorts, list(hydrated or []))
+            if not tracks:
+                continue
+            source_title = str(getattr(playlist, "title", None) or "").strip() or None
+            rankings.append(GlobalGenreDTO(
+                id=spec.id,
+                title=spec.title,
+                scope=spec.scope,
+                source_title=source_title,
+                tracks=[map_track(track) for track in tracks[:10]],
+            ))
+        return rankings
 
     async def discovery_recommendations(
         self,
@@ -932,6 +1030,33 @@ def _identifier_aliases(value: str) -> set[str]:
     if ":" in identifier:
         aliases.add(identifier.split(":", 1)[0])
     return aliases
+
+
+def _restore_short_order(shorts: list[Any], hydrated: list[Any]) -> list[Any]:
+    tracks_by_alias: dict[str, Any] = {}
+    for track in hydrated:
+        for alias in _identifier_aliases(_track_id(track)):
+            tracks_by_alias.setdefault(alias, track)
+
+    ordered: list[Any] = []
+    seen: set[str] = set()
+    for item in shorts:
+        track = getattr(item, "track", None)
+        if track is None:
+            short_id = _short_track_id(item)
+            if short_id is not None:
+                track = next(
+                    (tracks_by_alias[alias] for alias in _identifier_aliases(short_id) if alias in tracks_by_alias),
+                    None,
+                )
+        if track is None:
+            continue
+        identifier = _track_id(track)
+        if identifier == "unknown" or identifier in seen:
+            continue
+        seen.add(identifier)
+        ordered.append(track)
+    return ordered
 
 
 def _identifier_aliases_for(values: Iterable[str]) -> set[str]:
