@@ -14,8 +14,8 @@ The server already has a twice-daily Certbot timer and a deploy hook that valida
 
 ## Deploy
 
-Install `deploy.sh` as `/usr/local/sbin/deploy-play.xedoc.ru`, make it executable, and run it as root. It fetches `origin/main`, creates an immutable release named by commit SHA, builds the frontend, creates the release-local Python environment, atomically switches `current`, restarts only the application service, and rolls back automatically if `/api/health` does not become healthy.
+Install `deploy.sh` as `/usr/local/sbin/deploy-play.xedoc.ru`, make it executable, and run it as root. It fetches `origin/main`, creates an immutable release named by commit SHA, builds the frontend, reuses an immutable Python environment keyed by the dependency files and Python runtime, atomically switches `current`, restarts only the application service, and rolls back automatically if `/api/health` does not become healthy. Build-only `node_modules` are removed before the release is published.
 
 The backend must expose `GET /api/health` without authentication. Runtime data belongs in `/var/www/play.xedoc.ru/shared`; secrets belong only in `/etc/play.xedoc.ru/backend.env`.
 
-Old releases are deliberately not deleted automatically. Remove them only after verifying the active `current` target and retaining at least one known-good rollback release.
+After a successful health check, the deploy script retains the active release and the two most recent previous releases. Set `RELEASES_TO_KEEP` to a larger integer when more rollback releases are required; the minimum is two. Release pruning never runs before the new release passes its health check.
