@@ -1,9 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalTopPayload, Track } from '../types'
 import { GlobalTopPage } from './GlobalTopPage'
 
-const mocks = vi.hoisted(() => ({ playQueue: vi.fn() }))
+const mocks = vi.hoisted(() => ({ playQueue: vi.fn(), getGlobalTopSection: vi.fn() }))
+
+vi.mock('../lib/api', () => ({
+  getGlobalTopSection: mocks.getGlobalTopSection,
+}))
 
 vi.mock('../player/PlayerContext', () => ({
   usePlayer: () => ({ playQueue: mocks.playQueue }),
@@ -12,6 +16,8 @@ vi.mock('../player/PlayerContext', () => ({
 vi.mock('./TrackRow', () => ({
   TrackRow: ({ track }: { track: Track }) => <div>{track.title}</div>,
 }))
+
+afterEach(cleanup)
 
 const track = (id: string, title: string): Track => ({
   id,
@@ -58,5 +64,35 @@ describe('GlobalTopPage genre rankings', () => {
     expect(screen.getByText('Russian punk track')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Слушать жанр' }))
     expect(mocks.playQueue).toHaveBeenCalledWith([russianPunk])
+  })
+
+  it('opens a rubric from its heading and loads the remaining tracks', async () => {
+    const chart = Array.from({ length: 25 }, (_, index) => track(`chart-${index + 1}`, `Chart track ${index + 1}`))
+    mocks.getGlobalTopSection.mockReset().mockImplementation((_kind: string, _id: string | undefined, offset: number, limit: number) => Promise.resolve({
+      kind: 'chart',
+      id: 'chart',
+      title: 'Мировой чарт',
+      total: chart.length,
+      offset,
+      limit,
+      hasMore: offset + limit < chart.length,
+      tracks: chart.slice(offset, offset + limit),
+      releases: [],
+    }))
+    render(<GlobalTopPage data={{ ...payload, chart }} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Мировой чарт' }))
+
+    expect(await screen.findByText('Chart track 20')).toBeInTheDocument()
+    expect(screen.queryByText('Chart track 21')).not.toBeInTheDocument()
+    expect(mocks.getGlobalTopSection).toHaveBeenCalledWith('chart', undefined, 0, 20)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Показать ещё 5' }))
+
+    expect(await screen.findByText('Chart track 25')).toBeInTheDocument()
+    expect(mocks.getGlobalTopSection).toHaveBeenLastCalledWith('chart', undefined, 20, 20)
+    expect(screen.queryByRole('button', { name: /Показать ещё/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Все рубрики' }))
+    expect(screen.getByRole('heading', { name: 'Жанровые рейтинги' })).toBeInTheDocument()
   })
 })

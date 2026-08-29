@@ -10,6 +10,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -41,6 +42,7 @@ from .models import (
     DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
     GlobalTopPayload,
+    GlobalTopSectionPayload,
     FriendStatusDTO,
     FriendsPayload,
     ListeningEventRequest,
@@ -207,6 +209,28 @@ def create_app(
                 detail="Подключите Яндекс Музыку",
             )
         return credential
+
+    def public_global_tracks(tracks: list[TrackDTO]) -> list[TrackDTO]:
+        return [
+            track.model_copy(update={
+                "liked": None,
+                "play_count": None,
+                "total_listened_ms": None,
+                "last_played_at": None,
+                "stream_url": (
+                    f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                    f"?ticket={quote(signer.issue(f'public-search:{track.id}', 900), safe='')}"
+                ),
+            })
+            for track in tracks
+        ]
+
+    def decorate_global_tracks(request: Request, tracks: list[TrackDTO]) -> list[TrackDTO]:
+        if optional_app_user(request) is None:
+            return public_global_tracks(tracks)
+        _set_local_like_state(tracks, store)
+        _decorate_tracks_with_stats(tracks, store)
+        return tracks
 
     async def enforce_rate_limit(
         request: Request,
@@ -999,29 +1023,16 @@ def create_app(
             raise _http_gateway_error(exc) from exc
 
         if optional_app_user(request) is None:
-            def public_track(track: TrackDTO) -> TrackDTO:
-                return track.model_copy(update={
-                    "liked": None,
-                    "play_count": None,
-                    "total_listened_ms": None,
-                    "last_played_at": None,
-                    "stream_url": (
-                        f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
-                        f"?ticket={quote(signer.issue(f'public-search:{track.id}', 900), safe='')}"
-                    ),
-                })
-
-            payload.chart = [public_track(track) for track in payload.chart]
+            payload.chart = public_global_tracks(payload.chart)
             payload.releases = [
-                release.model_copy(update={"tracks": [public_track(track) for track in release.tracks]})
+                release.model_copy(update={"tracks": public_global_tracks(release.tracks)})
                 for release in payload.releases
             ]
             payload.genres = [
-                genre.model_copy(update={"tracks": [public_track(track) for track in genre.tracks]})
+                genre.model_copy(update={"tracks": public_global_tracks(genre.tracks)})
                 for genre in payload.genres
             ]
             return payload
-
         tracks = [
             *payload.chart,
             *(track for release in payload.releases for track in release.tracks),
@@ -1030,6 +1041,90 @@ def create_app(
         _set_local_like_state(tracks, store)
         _decorate_tracks_with_stats(tracks, store)
         return payload
+
+    @app.get("/api/global-top/section", response_model=GlobalTopSectionPayload, response_model_exclude_none=True)
+    async def global_top_section(
+        request: Request,
+        kind: Literal["chart", "releases", "genre"] = Query(),
+        section_id: str | None = Query(default=None, alias="id", max_length=60),
+        offset: int = Query(default=0, ge=0, le=10_000),
+        limit: int = Query(default=20, ge=1, le=50),
+    ) -> GlobalTopSectionPayload:
+        await enforce_rate_limit(request, "global-top-section", maximum=180, window_seconds=60)
+        try:
+            credential = store.load_catalog_credential()
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
+
+        try:
+            if kind == "genre":
+                genre_id = (section_id or "").strip().lower()
+                if not re.fullmatch(r"[a-z0-9-]{1,60}", genre_id):
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рейтинг не найден")
+                genre = await gateway.global_genre(credential, genre_id)
+                all_tracks = genre.tracks
+                page_tracks = decorate_global_tracks(request, all_tracks[offset:offset + limit])
+                total = len(all_tracks)
+                return GlobalTopSectionPayload(
+                    kind=kind,
+                    id=genre.id,
+                    title=genre.title,
+                    description=(f"По порядку в подборке «{genre.source_title}»" if genre.source_title else None),
+                    total=total,
+                    offset=offset,
+                    limit=limit,
+                    has_more=offset + len(page_tracks) < total,
+                    tracks=page_tracks,
+                )
+
+            payload = await gateway.global_top(credential)
+            if kind == "chart":
+                all_tracks = payload.chart
+                page_tracks = decorate_global_tracks(request, all_tracks[offset:offset + limit])
+                total = len(all_tracks)
+                return GlobalTopSectionPayload(
+                    kind=kind,
+                    id="chart",
+                    title=payload.chart_title,
+                    description=payload.chart_description,
+                    total=total,
+                    offset=offset,
+                    limit=limit,
+                    has_more=offset + len(page_tracks) < total,
+                    tracks=page_tracks,
+                )
+
+            all_releases = payload.releases
+            page_releases = all_releases[offset:offset + limit]
+            if optional_app_user(request) is None:
+                page_releases = [
+                    release.model_copy(update={"tracks": public_global_tracks(release.tracks)})
+                    for release in page_releases
+                ]
+            else:
+                release_tracks = [track for release in page_releases for track in release.tracks]
+                _set_local_like_state(release_tracks, store)
+                _decorate_tracks_with_stats(release_tracks, store)
+            total = len(all_releases)
+            return GlobalTopSectionPayload(
+                kind=kind,
+                id="releases",
+                title="Свежие релизы",
+                description="Альбомы и синглы, которые только появились в каталоге.",
+                total=total,
+                offset=offset,
+                limit=limit,
+                has_more=offset + len(page_releases) < total,
+                releases=page_releases,
+            )
+        except HTTPException:
+            raise
+        except GatewayNotFound as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рейтинг не найден") from exc
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
 
     @app.get("/api/public-search/tracks/{track_id}/stream", response_class=RedirectResponse)
     async def public_search_stream(

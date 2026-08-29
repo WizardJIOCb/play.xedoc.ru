@@ -76,6 +76,19 @@ class GlobalTopPayload(APIModel):
     genres: list[GlobalGenreDTO] = Field(default_factory=list)
 
 
+class GlobalTopSectionPayload(APIModel):
+    kind: Literal["chart", "releases", "genre"]
+    id: str
+    title: str
+    description: str | None = None
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
+    tracks: list[TrackDTO] = Field(default_factory=list)
+    releases: list[GlobalReleaseDTO] = Field(default_factory=list)
+
+
 class RecommendationCollectionDTO(APIModel):
     id: str
     title: str

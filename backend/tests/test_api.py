@@ -128,6 +128,34 @@ def test_global_top_is_public_and_uses_signed_catalog_streams(
     assert authenticated.json()["chart"][0]["streamUrl"] == "/api/tracks/101/stream"
 
 
+def test_global_top_sections_are_public_and_paginated(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    seed_shared_catalog(store)
+
+    chart = client.get("/api/global-top/section", params={"kind": "chart", "offset": 0, "limit": 1})
+    assert chart.status_code == 200
+    assert chart.json()["title"] == "Мировой чарт"
+    assert chart.json()["total"] == 2
+    assert chart.json()["hasMore"] is True
+    assert [track["id"] for track in chart.json()["tracks"]] == ["101"]
+    assert chart.json()["tracks"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+
+    next_chart = client.get("/api/global-top/section", params={"kind": "chart", "offset": 1, "limit": 1})
+    assert [track["id"] for track in next_chart.json()["tracks"]] == ["202"]
+    assert next_chart.json()["hasMore"] is False
+
+    genre = client.get("/api/global-top/section", params={"kind": "genre", "id": "electronic", "limit": 20})
+    assert genre.status_code == 200
+    assert genre.json()["title"] == "Electronic"
+    assert genre.json()["description"] == "По порядку в подборке «100 electronic hits»"
+    assert [track["id"] for track in genre.json()["tracks"]] == ["202"]
+
+    missing = client.get("/api/global-top/section", params={"kind": "genre", "id": "missing"})
+    assert missing.status_code == 404
+
+
 def test_profile_search_accepts_at_username(client: TestClient, fake_gateway: FakeGateway) -> None:
     connect(client)
     response = client.get("/api/search", params={"q": "@testuser"})

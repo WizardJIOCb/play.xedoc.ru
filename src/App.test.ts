@@ -136,7 +136,7 @@ describe('favorite collection filtering', () => {
     })
 
     render(createElement(PlayerProvider, null, createElement(App)))
-    fireEvent.click(await screen.findByRole('button', { name: 'Топ треков' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Топ моих треков' }))
 
     expect(await screen.findByRole('heading', { name: /слушают сейчас/ })).toBeInTheDocument()
     expect(getListeningStats).toHaveBeenCalled()
