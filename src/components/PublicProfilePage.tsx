@@ -1,8 +1,8 @@
-import { ArrowLeft, CalendarDays, Camera, Check, ChevronRight, Clock3, Disc3, Globe2, Headphones, Library, ListMusic, LoaderCircle, Pause, Pencil, Play, Radio, Save, UserMinus, UserPlus, UserRound, X } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Camera, Check, ChevronRight, Clock3, Disc3, Globe2, Headphones, History, Library, ListMusic, LoaderCircle, Pause, Pencil, Play, Radio, Save, UserMinus, UserPlus, UserRound, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { acceptFriend, getFriendStatus, getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist, getSocialProfilePosts, removeFriend, requestFriend, updateAccountProfile } from '../lib/api'
+import { acceptFriend, getFriendStatus, getPublicListeningHistory, getPublicNowPlaying, getPublicProfile, getPublicProfilePlaylist, getSocialProfilePosts, removeFriend, requestFriend, updateAccountProfile } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
-import type { AppUser, FriendStatus, Playlist, PublicNowPlaying, PublicProfile, SocialPost } from '../types'
+import type { AppUser, FriendStatus, Playlist, PublicListeningHistoryEntry, PublicNowPlaying, PublicProfile, SocialPost } from '../types'
 import { ArtistLinks } from './ArtistLinks'
 import { CoverArt } from './CoverArt'
 import { PlayerBar } from './PlayerBar'
@@ -20,6 +20,10 @@ function memberDate(timestamp: number) {
   return new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(timestamp * 1000))
 }
 
+function playedDate(timestamp: number) {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(timestamp * 1000))
+}
+
 function ProfileAvatar({ profile }: { profile: Pick<PublicProfile, 'avatarUrl' | 'displayName'> }) {
   return <div className="public-profile-avatar">{profile.avatarUrl ? <img src={profile.avatarUrl} alt={`Аватар ${profile.displayName}`} /> : profile.displayName.trim().charAt(0).toUpperCase() || 'X'}</div>
 }
@@ -35,6 +39,10 @@ interface PublicProfilePageProps {
 export function PublicProfilePage({ username, embedded = false, viewer, onBack, onProfileUpdated }: PublicProfilePageProps) {
   const [profile, setProfile] = useState<PublicProfile>()
   const [nowPlaying, setNowPlaying] = useState<PublicNowPlaying>()
+  const [historyItems, setHistoryItems] = useState<PublicListeningHistoryEntry[]>([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
   const [playlist, setPlaylist] = useState<Playlist>()
   const [loading, setLoading] = useState(true)
   const [playlistLoading, setPlaylistLoading] = useState(false)
@@ -53,6 +61,9 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
     setLoading(true)
     setProfile(undefined)
     setPlaylist(undefined)
+    setHistoryItems([])
+    setHistoryTotal(0)
+    setHistoryError('')
     setError('')
     getPublicProfile(username)
       .then((value) => {
@@ -63,6 +74,15 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
       })
       .catch(() => active && setError('Такого профиля нет или он больше недоступен.'))
       .finally(() => active && setLoading(false))
+    setHistoryLoading(true)
+    void getPublicListeningHistory(username)
+      .then((value) => {
+        if (!active) return
+        setHistoryItems(value.items)
+        setHistoryTotal(value.total)
+      })
+      .catch(() => active && setHistoryError('Не удалось загрузить историю прослушиваний.'))
+      .finally(() => active && setHistoryLoading(false))
     void getSocialProfilePosts(username).then((value) => active && setPosts(value)).catch(() => undefined)
     void getFriendStatus(username).then((value) => active && setFriendStatus(value)).catch(() => undefined)
     return () => { active = false; document.title = 'XEDOC Play' }
@@ -76,6 +96,24 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
     }, 15_000)
     return () => { active = false; window.clearInterval(interval) }
   }, [profile])
+
+  const loadMoreHistory = async () => {
+    if (historyLoading || historyItems.length >= historyTotal) return
+    setHistoryLoading(true)
+    setHistoryError('')
+    try {
+      const value = await getPublicListeningHistory(username, historyItems.length, 6)
+      setHistoryItems((items) => {
+        const known = new Set(items.map((item) => item.eventId))
+        return [...items, ...value.items.filter((item) => !known.has(item.eventId))]
+      })
+      setHistoryTotal(value.total)
+    } catch {
+      setHistoryError('Не удалось загрузить следующие треки.')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
 
   const openPlaylist = async (value: Playlist) => {
     if (!profile) return
@@ -160,13 +198,6 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
   )
 
   const canEdit = viewer?.username.toLowerCase() === profile.username.toLowerCase()
-  const profileTrackActive = nowPlaying?.track.id === player.current?.id
-  const profileTrackPlaying = profileTrackActive && player.isPlaying
-  const toggleProfileTrack = () => {
-    if (!nowPlaying) return
-    if (profileTrackActive) player.togglePlayback()
-    else player.playTrack(nowPlaying.track)
-  }
   const body = <>
     {playlist ? <>
       <button className="public-profile-back" type="button" onClick={() => setPlaylist(undefined)}><ArrowLeft size={17} /> Профиль @{profile.username}</button>
@@ -189,14 +220,30 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
         </div>
       </section>
 
-      {nowPlaying && <section className="public-profile-now-playing" aria-label="Слушает сейчас">
-        <div className="public-profile-now-playing__live"><span /><Radio size={16} /> СЛУШАЕТ СЕЙЧАС</div>
-        <CoverArt title={nowPlaying.track.title} url={nowPlaying.track.coverUrl} tone={nowPlaying.track.coverTone} className="public-profile-now-playing__cover" />
-        <div className="public-profile-now-playing__track" role="button" tabIndex={0} aria-label={`${profileTrackPlaying ? 'Пауза' : 'Включить'} ${nowPlaying.track.title}`} onClick={toggleProfileTrack} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProfileTrack() } }}>
-          <span><strong>{nowPlaying.track.title}</strong><ArtistLinks artists={nowPlaying.track.artists} /></span><span className="public-profile-now-playing__play">{profileTrackPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</span>
+      <section className="public-profile-activity" aria-label="Музыкальная активность">
+        {nowPlaying && <div className="public-profile-now-playing" role="group" aria-label="Слушает сейчас">
+          <CoverArt title={nowPlaying.track.title} url={nowPlaying.track.coverUrl} tone={nowPlaying.track.coverTone} className="public-profile-now-playing__cover" />
+          <div className="public-profile-now-playing__track">
+            <div className="public-profile-now-playing__live"><span /><Radio size={15} /> СЛУШАЕТ СЕЙЧАС</div>
+            <strong>{nowPlaying.track.title}</strong>
+            <ArtistLinks artists={nowPlaying.track.artists} />
+          </div>
+          {nowPlaying.playlist && <button className="public-profile-now-playing__playlist" type="button" onClick={() => void openPlaylist(nowPlaying.playlist!)}><ListMusic size={17} /><span><small>ИЗ ПЛЕЙЛИСТА</small><strong>{nowPlaying.playlist.title}</strong></span><ChevronRight size={16} /></button>}
+        </div>}
+
+        <div className="public-profile-history">
+          <header><div><span className="eyebrow"><History size={14} /> НЕДАВНО В НАУШНИКАХ</span><h2>История прослушиваний</h2></div>{historyTotal > 0 && <small>{historyTotal.toLocaleString('ru-RU')} всего</small>}</header>
+          {historyItems.length > 0 && <div className="public-profile-history__list">{historyItems.map((item) => <article key={item.eventId}>
+            <CoverArt title={item.track.title} url={item.track.coverUrl} tone={item.track.coverTone} className="public-profile-history__cover" />
+            <div><strong>{item.track.title}</strong><ArtistLinks artists={item.track.artists} /></div>
+            <time dateTime={new Date(item.playedAt * 1000).toISOString()}><Clock3 size={13} /> {playedDate(item.playedAt)}</time>
+          </article>)}</div>}
+          {!historyItems.length && historyLoading && <div className="public-profile-history__state"><LoaderCircle className="spin" size={18} /> Загружаем последние треки…</div>}
+          {!historyItems.length && !historyLoading && !historyError && <div className="public-profile-history__state"><History size={18} /> История пока пустая</div>}
+          {historyError && <div className="public-profile-history__error">{historyError}</div>}
+          {historyItems.length < historyTotal && <button className="secondary-button public-profile-history__more" type="button" disabled={historyLoading} onClick={() => void loadMoreHistory()}>{historyLoading ? <LoaderCircle className="spin" size={16} /> : <History size={16} />} Загрузить ещё</button>}
         </div>
-        {nowPlaying.playlist && <button className="public-profile-now-playing__playlist" type="button" onClick={() => void openPlaylist(nowPlaying.playlist!)}><ListMusic size={17} /><span><small>ИЗ ПЛЕЙЛИСТА</small><strong>{nowPlaying.playlist.title}</strong></span><ChevronRight size={16} /></button>}
-      </section>}
+      </section>
 
       <section className="public-profile-stats" aria-label="Статистика профиля">
         <article><Headphones size={20} /><span><strong>{profile.stats.totalPlays.toLocaleString('ru-RU')}</strong><small>прослушиваний</small></span></article>

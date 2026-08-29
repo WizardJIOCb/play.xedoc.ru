@@ -1415,6 +1415,49 @@ class CredentialStore:
             profile["nowPlaying"] = now_playing[0]
         return profile
 
+    def load_public_listening_history(self, username: str, offset: int = 0, limit: int = 3) -> dict | None:
+        safe_offset = max(0, offset)
+        safe_limit = max(1, min(limit, 50))
+        with self._lock, self._connect() as connection:
+            user = connection.execute(
+                "SELECT id FROM app_user WHERE username = ? COLLATE NOCASE",
+                (username,),
+            ).fetchone()
+            if user is None:
+                return None
+            user_id = str(user[0])
+            total_row = connection.execute(
+                "SELECT COUNT(*) FROM listening_event WHERE owner_id = ? AND source = 'player'",
+                (user_id,),
+            ).fetchone()
+            rows = connection.execute(
+                """
+                SELECT id, payload, created_at
+                FROM listening_event
+                WHERE owner_id = ? AND source = 'player'
+                ORDER BY created_at DESC, id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (user_id, safe_limit, safe_offset),
+            ).fetchall()
+        items: list[dict] = []
+        for row in rows:
+            try:
+                track = json.loads(row[1])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            for field in ("streamUrl", "liked", "playCount", "totalListenedMs", "lastPlayedAt"):
+                track.pop(field, None)
+            items.append({"eventId": int(row[0]), "track": track, "playedAt": int(row[2])})
+        total = int(total_row[0] or 0)
+        return {
+            "items": items,
+            "total": total,
+            "offset": safe_offset,
+            "limit": safe_limit,
+            "hasMore": safe_offset + len(rows) < total,
+        }
+
     def load_public_top_track(self, username: str, track_id: str) -> tuple[dict, str] | None:
         """Return a track only when it belongs to the five public profile highlights."""
         with self._lock, self._connect() as connection:
