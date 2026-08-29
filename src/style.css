@@ -497,7 +497,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .global-top-section { margin-top: 48px; }
 .global-top-section > header { min-height: 92px; margin-bottom: 17px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .global-top-section > header h2 { margin: 8px 0 5px; font-size: 31px; letter-spacing: -.04em; }
-.global-top-heading-button { max-width: 100%; padding: 0; display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+.global-top-heading-button { max-width: 100%; padding: 0; display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .global-top-heading-button svg { flex: 0 0 auto; color: #7ee3ff; transition: transform .18s ease; }
 .global-top-heading-button:hover,.global-top-heading-button:focus-visible { color: #8ee7ff; }
 .global-top-heading-button:hover svg,.global-top-heading-button:focus-visible svg { transform: translateX(4px); }

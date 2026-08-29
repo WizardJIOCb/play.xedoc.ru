@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalTopPayload, Track } from '../types'
 import { GlobalTopPage } from './GlobalTopPage'
 
@@ -17,6 +17,7 @@ vi.mock('./TrackRow', () => ({
   TrackRow: ({ track }: { track: Track }) => <div>{track.title}</div>,
 }))
 
+beforeEach(() => window.history.replaceState(null, '', '/global-top'))
 afterEach(cleanup)
 
 const track = (id: string, title: string): Track => ({
@@ -81,9 +82,10 @@ describe('GlobalTopPage genre rankings', () => {
     }))
     render(<GlobalTopPage data={{ ...payload, chart }} loading={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Мировой чарт' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Мировой чарт' }))
 
     expect(await screen.findByText('Chart track 20')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/global-top/chart')
     expect(screen.queryByText('Chart track 21')).not.toBeInTheDocument()
     expect(mocks.getGlobalTopSection).toHaveBeenCalledWith('chart', undefined, 0, 20)
 
@@ -93,6 +95,36 @@ describe('GlobalTopPage genre rankings', () => {
     expect(mocks.getGlobalTopSection).toHaveBeenLastCalledWith('chart', undefined, 20, 20)
     expect(screen.queryByRole('button', { name: /Показать ещё/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Все рубрики' }))
+    expect(window.location.pathname).toBe('/global-top')
     expect(screen.getByRole('heading', { name: 'Жанровые рейтинги' })).toBeInTheDocument()
+  })
+
+  it('opens a copied genre link directly', async () => {
+    window.history.replaceState(null, '', '/global-top/genre/ruspunk')
+    mocks.getGlobalTopSection.mockReset().mockResolvedValue({
+      kind: 'genre',
+      id: 'ruspunk',
+      title: 'Русский панк',
+      description: 'По порядку в подборке «Лучшие песни русского панк-рока»',
+      total: 1,
+      offset: 0,
+      limit: 20,
+      hasMore: false,
+      tracks: [russianPunk],
+      releases: [],
+    })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+
+    render(<GlobalTopPage data={payload} loading={false} />)
+
+    expect(await screen.findByText('Russian punk track')).toBeInTheDocument()
+    expect(mocks.getGlobalTopSection).toHaveBeenCalledWith('genre', 'ruspunk', 0, 20)
+    expect(screen.getByRole('heading', { name: 'Русский панк' })).toBeInTheDocument()
+
+    const copiedUrl = window.location.href
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+    expect(await screen.findByRole('button', { name: 'Ссылка скопирована' })).toBeInTheDocument()
+    expect(writeText).toHaveBeenCalledWith(copiedUrl)
   })
 })

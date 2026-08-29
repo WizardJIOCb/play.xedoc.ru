@@ -55,6 +55,7 @@ import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getGlobalTop, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
 import { trackGoal, trackSection } from './lib/analytics'
+import { isGlobalTopRoutePath } from './lib/globalTopRoutes'
 import { APP_NAVIGATE_EVENT, installAppLinkNavigation } from './lib/navigation'
 import { usePlayer } from './player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations, GlobalTopPayload, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
@@ -71,7 +72,7 @@ const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: 
 
 const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '') === '/recommendations'
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
-const isGlobalTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/global-top'
+const isGlobalTopPath = () => isGlobalTopRoutePath(window.location.pathname)
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
 const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
 const pathView = (): ViewId => {
