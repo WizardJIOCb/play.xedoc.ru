@@ -2,6 +2,7 @@ import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Play, S
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
+import { navigateApp } from '../lib/navigation'
 import { usePlayer } from '../player/PlayerContext'
 import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
@@ -75,7 +76,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
       onPlaylistPlay(results.playlists[0])
     } else if (results.profiles?.[0]) {
       trackGoal('search_result_selected', { resultType: 'profile' })
-      window.location.href = `/users/${encodeURIComponent(results.profiles[0].username)}`
+      navigateApp(`/users/${encodeURIComponent(results.profiles[0].username)}`)
     }
   }
 
