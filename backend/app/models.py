@@ -132,6 +132,7 @@ class AdminSummaryDTO(APIModel):
 class AdminUserDTO(APIModel):
     username: str
     display_name: str
+    avatar_url: str | None = None
     is_admin: bool = False
     created_at: int
     yandex_connected: bool = False

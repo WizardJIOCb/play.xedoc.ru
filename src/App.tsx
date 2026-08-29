@@ -38,6 +38,7 @@ import { FriendsPage } from './components/FriendsPage'
 import { GlobalTopPage } from './components/GlobalTopPage'
 import { GenresPage } from './components/GenresPage'
 import { MoodMap, type MoodSettings } from './components/MoodMap'
+import { MusicLoader } from './components/MusicLoader'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
 import { PasswordChangeModal } from './components/PasswordChangeModal'
@@ -762,7 +763,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     return <TrackCollectionView type="history" tracks={player.history} />
   }, [adminOpen, albumOpen, allLiked, authenticated, changeView, data, globalTop, globalTopError, globalTopLoading, globalTopOpen, likedError, likedLoading, listeningStats, openNewPlaylist, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
-  if (loading && data.accessLocked) return <div className="app-loader"><LoaderCircle className="spin" size={28} /><span>Загружаем музыку…</span></div>
+  if (loading && data.accessLocked) return <MusicLoader />
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
   if (data.accessLocked) {
     if (profileUsername) return <PublicProfilePage username={profileUsername} />
