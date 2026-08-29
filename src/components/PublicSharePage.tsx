@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getPublicShare } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
 import type { PublicShare, Track } from '../types'
+import { ArtistLinks } from './ArtistLinks'
 import { CoverArt } from './CoverArt'
 import { PlayerBar } from './PlayerBar'
 import { TrackRow } from './TrackRow'
@@ -47,9 +48,7 @@ export function PublicSharePage({ token }: { token: string }) {
     return share?.playlist?.tracks || []
   }, [share])
   const title = share?.track?.title || share?.playlist?.title || 'Музыка'
-  const subtitle = share?.track
-    ? `${share.track.artists.join(', ')}${share.track.album ? ` · ${share.track.album}` : ''}`
-    : share?.playlist?.subtitle || `${tracks.length} треков`
+  const subtitle = share?.playlist?.subtitle || `${tracks.length} треков`
   const coverUrl = share?.track?.coverUrl || share?.playlist?.coverUrl
   const coverTone = share?.track?.coverTone || share?.playlist?.coverTone
   const startAtSeconds = requestedStartAtSeconds === null || !share?.track
@@ -91,7 +90,9 @@ export function PublicSharePage({ token }: { token: string }) {
           <div className="public-share-copy">
             <span className="eyebrow">{share.kind === 'track' ? 'ТРЕК ДЛЯ ВАС' : 'ПЛЕЙЛИСТ ДЛЯ ВАС'}</span>
             <h1>{title}</h1>
-            <p>{subtitle}</p>
+            <p>{share.track
+              ? <><ArtistLinks artists={share.track.artists} className="public-share-artists" />{share.track.album && <> · {share.track.album}</>}</>
+              : subtitle}</p>
             <small>Поделился {share.sharedBy}{share.kind === 'track' && startAtSeconds !== null ? ` · старт с ${formatTime(startAtSeconds)}` : ''}</small>
             <div>
               <button className="primary-button" type="button" disabled={!tracks.length} onClick={() => player.playQueue(tracks, 0, undefined, startAtSeconds ?? 0)}><Play size={18} fill="currentColor" /> {share.kind === 'track' && startAtSeconds !== null ? `Слушать с ${formatTime(startAtSeconds)}` : share.kind === 'track' ? 'Слушать трек' : 'Слушать всё'}</button>

@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PublicSharePage } from './PublicSharePage'
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +28,8 @@ const sharedTrack = {
 }
 
 describe('PublicSharePage', () => {
+  afterEach(cleanup)
+
   beforeEach(() => {
     vi.clearAllMocks()
     window.history.replaceState(null, '', '/share/public-token')
@@ -56,5 +58,11 @@ describe('PublicSharePage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Shared signal' })).toBeInTheDocument()
     expect(mocks.playQueue).not.toHaveBeenCalled()
+  })
+
+  it('links the artist to guest search', async () => {
+    render(<PublicSharePage token="public-token" />)
+
+    expect(await screen.findByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist')
   })
 })
