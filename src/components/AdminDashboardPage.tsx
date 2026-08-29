@@ -73,7 +73,7 @@ export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
         <div className="admin-users__table">
           <div className="admin-users__head"><span>Профиль</span><span>Регистрация</span><span>Музыка</span><span>Плейлисты</span><span>Активность</span><span /></div>
           {dashboard.users.map((user) => <article key={user.username}>
-            <div className="admin-user-identity"><span>{user.displayName.charAt(0).toUpperCase() || 'X'}</span><p><strong>{user.displayName}</strong><small>@{user.username}{user.isAdmin && <em><ShieldCheck size={11} /> admin</em>}</small></p></div>
+            <div className="admin-user-identity"><span>{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.displayName.charAt(0).toUpperCase() || 'X'}</span><p><strong>{user.displayName}</strong><small>@{user.username}{user.isAdmin && <em><ShieldCheck size={11} /> admin</em>}</small></p></div>
             <div className="admin-user-created" aria-label={`Дата регистрации ${user.displayName}`}><strong>{registrationDate(user.createdAt)}</strong><small>{registrationTime(user.createdAt)}</small></div>
             <div className="admin-user-source"><i className={user.yandexConnected ? 'is-connected' : ''} /> <span>{user.yandexConnected ? 'Яндекс подключён' : 'Без подключения'}</span></div>
             <div><strong>{user.playlists}</strong><small>{user.publicPlaylists} публичных · {user.playlistTracks} треков</small></div>

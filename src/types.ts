@@ -64,6 +64,7 @@ export interface AdminSummary {
 export interface AdminUser {
   username: string
   displayName: string
+  avatarUrl?: string
   isAdmin: boolean
   createdAt: number
   yandexConnected: boolean

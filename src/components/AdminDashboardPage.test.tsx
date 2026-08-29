@@ -14,6 +14,7 @@ vi.mock('../lib/api', async (importOriginal) => {
       },
       users: [{
         username: 'wizardjiocb911', displayName: 'Rodion', isAdmin: true,
+        avatarUrl: 'https://cdn.example.test/rodion.webp',
         createdAt: 1_700_000_000, yandexConnected: true, playlists: 2,
         publicPlaylists: 1, playlistTracks: 20, totalPlays: 12,
         uniqueTracks: 7, totalListenedMs: 3_000_000, lastPlayedAt: 1_700_000_000,
@@ -32,6 +33,7 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('Регистрация')).toBeInTheDocument()
     expect(screen.getByLabelText('Дата регистрации Rodion')).toHaveTextContent('2023')
+    expect(screen.getByRole('presentation')).toHaveAttribute('src', 'https://cdn.example.test/rodion.webp')
   })
 
   it('does not request or render data without the admin role', () => {

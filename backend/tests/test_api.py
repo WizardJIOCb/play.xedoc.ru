@@ -209,8 +209,8 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     assert store.set_user_admin("@testuser", True) is True
     with sqlite3.connect(store.path) as connection:
         connection.execute(
-            "UPDATE app_user SET created_at = ? WHERE username = ?",
-            (1_700_000_000, "wizardjiocb911"),
+            "UPDATE app_user SET created_at = ?, avatar_url = ? WHERE username = ?",
+            (1_700_000_000, "https://cdn.example.test/rodion.webp", "wizardjiocb911"),
         )
         connection.execute(
             "UPDATE app_user SET created_at = ? WHERE username = ?",
@@ -233,6 +233,7 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     assert body["summary"]["publicPlaylists"] == 1
     assert body["summary"]["totalPlays"] == 1
     assert [user["username"] for user in body["users"]] == ["wizardjiocb911", "testuser"]
+    assert body["users"][0]["avatarUrl"] == "https://cdn.example.test/rodion.webp"
     assert body["users"][1]["isAdmin"] is True
     assert body["topTracks"][0]["id"] == "101"
 

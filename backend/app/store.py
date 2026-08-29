@@ -1275,7 +1275,7 @@ class CredentialStore:
             ).fetchone()
             user_rows = connection.execute(
                 """
-                SELECT u.username, u.display_name, u.is_admin, u.created_at,
+                SELECT u.username, u.display_name, u.avatar_url, u.is_admin, u.created_at,
                        EXISTS(SELECT 1 FROM user_yandex_credential c WHERE c.user_id = u.id),
                        (SELECT COUNT(*) FROM local_playlist p WHERE p.owner_id = u.id),
                        (SELECT COUNT(*) FROM local_playlist p WHERE p.owner_id = u.id AND p.is_public = 1),
@@ -1331,16 +1331,17 @@ class CredentialStore:
                 {
                     "username": str(row[0]),
                     "displayName": str(row[1]),
-                    "isAdmin": bool(row[2]),
-                    "createdAt": int(row[3]),
-                    "yandexConnected": bool(row[4]),
-                    "playlists": int(row[5] or 0),
-                    "publicPlaylists": int(row[6] or 0),
-                    "playlistTracks": int(row[7] or 0),
-                    "totalPlays": int(row[8] or 0),
-                    "uniqueTracks": int(row[9] or 0),
-                    "totalListenedMs": int(row[10] or 0),
-                    "lastPlayedAt": int(row[11]) if row[11] is not None else None,
+                    "avatarUrl": str(row[2]) if row[2] else None,
+                    "isAdmin": bool(row[3]),
+                    "createdAt": int(row[4]),
+                    "yandexConnected": bool(row[5]),
+                    "playlists": int(row[6] or 0),
+                    "publicPlaylists": int(row[7] or 0),
+                    "playlistTracks": int(row[8] or 0),
+                    "totalPlays": int(row[9] or 0),
+                    "uniqueTracks": int(row[10] or 0),
+                    "totalListenedMs": int(row[11] or 0),
+                    "lastPlayedAt": int(row[12]) if row[12] is not None else None,
                 }
                 for row in user_rows
             ],
