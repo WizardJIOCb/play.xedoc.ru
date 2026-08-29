@@ -14,6 +14,15 @@ describe('API error handling', () => {
     await expect(searchMusic('After')).rejects.toThrow('offline')
   })
 
+  it('requests the dedicated artist catalog when artist search is selected', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tracks: [], playlists: [], profiles: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await searchMusic('GUNSHIP', true)
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/search?q=GUNSHIP&artist=true', expect.objectContaining({ credentials: 'include' }))
+  })
+
   it('does not fabricate a session when the server is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     await expect(buildSession({ duration: 25, discovery: 50, cooldownDays: 30, source: 'all' })).rejects.toThrow('offline')

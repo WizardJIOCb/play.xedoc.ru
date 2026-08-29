@@ -12,7 +12,7 @@ describe('artist search links', () => {
     render(<ArtistLinks artists={['Леонид Агутин', 'Artist & Friend']} />)
 
     expect(screen.getByRole('link', { name: 'Леонид Агутин' })).toHaveAttribute('href', artistSearchHref('Леонид Агутин'))
-    expect(screen.getByRole('link', { name: 'Artist & Friend' })).toHaveAttribute('href', '/search?q=Artist%20%26%20Friend')
+    expect(screen.getByRole('link', { name: 'Artist & Friend' })).toHaveAttribute('href', '/search?q=Artist%20%26%20Friend&type=artist')
   })
 
   it('does not trigger a surrounding track action', () => {

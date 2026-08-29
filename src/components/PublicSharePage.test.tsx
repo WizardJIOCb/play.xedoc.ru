@@ -63,6 +63,6 @@ describe('PublicSharePage', () => {
   it('links the artist to guest search', async () => {
     render(<PublicSharePage token="public-token" />)
 
-    expect(await screen.findByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist')
+    expect(await screen.findByRole('link', { name: 'Artist' })).toHaveAttribute('href', '/search?q=Artist&type=artist')
   })
 })

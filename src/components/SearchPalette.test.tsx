@@ -39,7 +39,7 @@ describe('content search page', () => {
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Поисковый запрос' }), { target: { value: 'Новый' } })
 
-    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Новый'))
+    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Новый', false))
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(view.container.querySelector('.search-page__content')).toContainElement(screen.getByText('Найденный трек'))
     expect(screen.getByRole('button', { name: 'Добавить Найденный трек в плейлист или очередь' })).toBeInTheDocument()
@@ -52,7 +52,7 @@ describe('content search page', () => {
     expect(screen.getByText(/регистрация не нужна/)).toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Поисковый запрос' }), { target: { value: 'Signal' } })
 
-    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Signal'))
+    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('Signal', false))
     expect(await screen.findByText('Найденный трек')).toBeInTheDocument()
     expect(screen.queryByText('Плейлисты')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Добавить Найденный трек в плейлист/ })).not.toBeInTheDocument()
@@ -68,5 +68,22 @@ describe('content search page', () => {
     fireEvent.click(screen.getByRole('button', { name: /Найденный плейлист/ }))
 
     expect(onPlaylistPlay).toHaveBeenCalledWith(expect.objectContaining({ id: 'mix-1', title: 'Найденный плейлист' }))
+  })
+
+  it('loads and shows the full artist catalog from an artist link', async () => {
+    const artistTracks = Array.from({ length: 14 }, (_, index) => ({
+      id: `artist-${index}`,
+      title: `Трек ${index + 1}`,
+      artists: ['GUNSHIP'],
+      durationMs: 180_000,
+    }))
+    window.history.replaceState(null, '', '/search?q=GUNSHIP&type=artist')
+    api.searchMusic.mockResolvedValue({ tracks: artistTracks, playlists: [], profiles: [] })
+
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} publicMode /></PlayerProvider>)
+
+    await waitFor(() => expect(api.searchMusic).toHaveBeenCalledWith('GUNSHIP', true))
+    expect(screen.getByText('Треки исполнителя')).toBeInTheDocument()
+    expect(await screen.findByText('Трек 14')).toBeInTheDocument()
   })
 })
