@@ -53,6 +53,7 @@ import { TrackRow } from './components/TrackRow'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
 import { trackGoal, trackSection } from './lib/analytics'
+import { APP_NAVIGATE_EVENT, installAppLinkNavigation } from './lib/navigation'
 import { usePlayer } from './player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations, LikedTracksPayload, ListeningStats, Playlist, RecommendationCollection, Track, ViewId } from './types'
 
@@ -70,7 +71,6 @@ const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '')
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
 const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
-const APP_NAVIGATE_EVENT = 'xedoc:app-navigate'
 const pathView = (): ViewId => {
   const path = window.location.pathname.replace(/\/+$/, '')
   if (path === '/feed') return 'feed'
@@ -482,7 +482,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [data.appUser?.id, loading, player])
 
   useEffect(() => {
-    const onPopState = () => {
+    const onRouteChange = () => {
       setSelectedPlaylist(undefined)
       setRecommendationsOpen(isRecommendationsPath())
       setTopOpen(isTopPath())
@@ -491,8 +491,12 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
       setPlaylistEditorOpen(false)
       setView(pathView())
     }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
+    window.addEventListener('popstate', onRouteChange)
+    window.addEventListener(APP_NAVIGATE_EVENT, onRouteChange)
+    return () => {
+      window.removeEventListener('popstate', onRouteChange)
+      window.removeEventListener(APP_NAVIGATE_EVENT, onRouteChange)
+    }
   }, [])
 
   useEffect(() => {
@@ -775,25 +779,13 @@ export default function App() {
 
   useEffect(() => {
     const updatePathname = () => setPathname(window.location.pathname)
-    const navigateToProfile = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-      const target = event.target
-      if (!(target instanceof Element)) return
-      const link = target.closest<HTMLAnchorElement>('a[href]')
-      if (!link || link.target || link.hasAttribute('download')) return
-      const url = new URL(link.href, window.location.href)
-      if (url.origin !== window.location.origin || !/^\/users\/[A-Za-z0-9_.-]{3,32}\/?$/.test(url.pathname)) return
-      event.preventDefault()
-      window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
-      updatePathname()
-    }
+    const removeLinkNavigation = installAppLinkNavigation()
     window.addEventListener('popstate', updatePathname)
     window.addEventListener(APP_NAVIGATE_EVENT, updatePathname)
-    document.addEventListener('click', navigateToProfile)
     return () => {
+      removeLinkNavigation()
       window.removeEventListener('popstate', updatePathname)
       window.removeEventListener(APP_NAVIGATE_EVENT, updatePathname)
-      document.removeEventListener('click', navigateToProfile)
     }
   }, [])
 

@@ -24,4 +24,13 @@ describe('artist search links', () => {
     expect(onTrack).not.toHaveBeenCalled()
     expect(`${window.location.pathname}${window.location.search}`).toBe(artistSearchHref('Исполнитель'))
   })
+
+  it('uses in-app search navigation from a public share page', () => {
+    window.history.replaceState(null, '', '/share/public-share-token-123456?t=83')
+    render(<ArtistLinks artists={['Исполнитель']} />)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Исполнитель' }))
+
+    expect(`${window.location.pathname}${window.location.search}`).toBe(artistSearchHref('Исполнитель'))
+  })
 })

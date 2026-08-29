@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { getBootstrap, getListeningStats } from './lib/api'
+import { getBootstrap, getListeningStats, getPublicShare } from './lib/api'
 import { PlayerProvider } from './player/PlayerContext'
 import type { Track } from './types'
 import { filterCollectionTracks, stabilizeTrackOrder } from './App'
@@ -26,6 +26,10 @@ vi.mock('./lib/api', async (importOriginal) => {
     getListeningStats: vi.fn().mockResolvedValue({
       totalPlays: 3, uniqueTracks: 1, totalListenedMs: 60_000,
       top: [{ id: 'day', title: 'За день', periodDays: 1, totalPlays: 3, tracks: [{ id: 'popular', title: 'Popular', artists: ['Artist'], durationMs: 180_000, playCount: 3, streamUrl: '/api/public-search/tracks/popular/stream?ticket=signed-ticket' }] }],
+    }),
+    getPublicShare: vi.fn().mockResolvedValue({
+      token: 'public-share-token-123456', kind: 'track', sharedBy: 'Rodion', createdAt: 1_700_000_000,
+      track: { id: 'shared', title: 'Shared signal', artists: ['Artist'], durationMs: 300_000, streamUrl: '/api/shares/public-share-token-123456/tracks/shared/stream' },
     }),
   }
 })
@@ -138,5 +142,35 @@ describe('favorite collection filtering', () => {
 
     expect(AudioMock).toHaveBeenCalledTimes(1)
     expect(pause).not.toHaveBeenCalled()
+  })
+
+  it('keeps a timestamped shared track playing while leaving the share page through the logo', async () => {
+    window.history.replaceState(null, '', '/share/public-share-token-123456?t=83')
+    const audio = document.createElement('audio')
+    const pause = vi.fn()
+    const play = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(audio, 'pause', { value: pause })
+    Object.defineProperty(audio, 'play', { value: play })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    Object.defineProperty(audio, 'duration', { configurable: true, value: 300 })
+    const AudioMock = vi.fn(function AudioMock() { return audio })
+    vi.stubGlobal('Audio', AudioMock)
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+
+    expect(await screen.findByRole('heading', { name: 'Shared signal' })).toBeInTheDocument()
+    await waitFor(() => expect(play).toHaveBeenCalled())
+    expect(vi.mocked(getPublicShare)).toHaveBeenCalledWith('public-share-token-123456')
+    audio.dispatchEvent(new Event('loadedmetadata'))
+    expect(audio.currentTime).toBe(83)
+
+    fireEvent.click(screen.getByRole('link', { name: /XEDOC PLAY/i }))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(window.location.search).toBe('')
+    expect(await screen.findByRole('heading', { name: /Сессия под ваши правила/ })).toBeInTheDocument()
+    expect(AudioMock).toHaveBeenCalledTimes(1)
+    expect(pause).not.toHaveBeenCalled()
+    expect(audio.currentTime).toBe(83)
   })
 })

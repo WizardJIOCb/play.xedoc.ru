@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import type { MouseEvent } from 'react'
+import { navigateApp } from '../lib/navigation'
 
 export function artistSearchHref(artist: string) {
   return `/search?q=${encodeURIComponent(artist)}`
@@ -9,11 +10,8 @@ export function ArtistLinks({ artists, className = '' }: { artists: string[]; cl
   const openSearch = (event: MouseEvent<HTMLAnchorElement>, artist: string) => {
     event.stopPropagation()
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    if (/^\/(?:users|share)\//.test(window.location.pathname)) return
     event.preventDefault()
-    const href = artistSearchHref(artist)
-    if (`${window.location.pathname}${window.location.search}` !== href) window.history.pushState(null, '', href)
-    window.dispatchEvent(new PopStateEvent('popstate'))
+    navigateApp(artistSearchHref(artist))
   }
 
   return (
