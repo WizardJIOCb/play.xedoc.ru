@@ -347,6 +347,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const nextRef = useRef<() => void>(() => undefined)
   const repeatRef = useRef(false)
   const presenceActiveRef = useRef(false)
+  const mediaSessionActiveRef = useRef(false)
   const recordedSelectionRef = useRef<number>(-1)
   const playbackChannelRef = useRef<BroadcastChannel | null>(null)
   const playbackSyncChannelRef = useRef<BroadcastChannel | null>(null)
@@ -785,13 +786,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !current) return
-    navigator.mediaSession.metadata = new MediaMetadata({
+    const mediaSession = navigator.mediaSession
+    if (isRemotePlayback || (playbackOwnerRef.current && playbackOwnerRef.current !== playbackTabIdRef.current)) {
+      if (mediaSessionActiveRef.current) {
+        mediaSession.metadata = null
+        mediaSession.setActionHandler('play', null)
+        mediaSession.setActionHandler('pause', null)
+        mediaSession.setActionHandler('nexttrack', null)
+        mediaSession.setActionHandler('previoustrack', null)
+        mediaSessionActiveRef.current = false
+      }
+      return
+    }
+    mediaSession.metadata = new MediaMetadata({
       title: current.title,
       artist: current.artists.join(', '),
       album: current.album,
       artwork: current.coverUrl ? [{ src: current.coverUrl.replace('%%', '400x400') }] : [],
     })
-    navigator.mediaSession.setActionHandler('play', () => {
+    mediaSession.setActionHandler('play', () => {
       if (playbackOwnerRef.current !== playbackTabIdRef.current) {
         pendingSeekRef.current = progress
         setPlaybackOwner(playbackTabIdRef.current)
@@ -800,13 +813,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       isPlayingRef.current = true
       setIsPlaying(true)
     })
-    navigator.mediaSession.setActionHandler('pause', () => {
+    mediaSession.setActionHandler('pause', () => {
       if (pauseRemotePlayback()) return
       isPlayingRef.current = false
       setIsPlaying(false)
     })
-    navigator.mediaSession.setActionHandler('nexttrack', isRemotePlayback ? null : next)
-    navigator.mediaSession.setActionHandler('previoustrack', isRemotePlayback ? null : previous)
+    mediaSession.setActionHandler('nexttrack', next)
+    mediaSession.setActionHandler('previoustrack', previous)
+    mediaSessionActiveRef.current = true
   }, [current, isRemotePlayback, next, pauseRemotePlayback, previous, progress, setPlaybackOwner])
 
   const playTrack = useCallback((track: Track, context: Track[] = [track], startIndex?: number, source?: PlaybackSource) => {
