@@ -126,7 +126,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
             {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => {
               const playing = player.current?.id === track.id && player.isPlaying
               return (
-                <div key={track.id} className={`search-result ${publicMode ? 'search-result--public' : ''}`}>
+                <div key={track.id} className={`search-result ${playing ? 'search-result--active' : ''} ${publicMode ? 'search-result--public' : ''}`}>
                   <div className="search-result__main" role="button" tabIndex={0} aria-label={playing ? `Пауза ${track.title}` : `Включить ${track.title}`} onClick={() => toggleTrack(track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleTrack(track) } }}>
                     <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
                     <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>

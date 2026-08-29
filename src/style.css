@@ -807,7 +807,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .search-page__caption { min-height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px; color: var(--muted-2); font-size: var(--type-caption); text-transform: uppercase; letter-spacing: .12em; font-weight: 800; }
 .search-page__caption small { display: flex; align-items: center; gap: 5px; font-size: var(--type-micro); text-transform: none; letter-spacing: normal; font-weight: 500; }
 .search-results { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px 8px; }
-.search-result { min-height: 64px; padding: 4px 5px; display: grid; grid-template-columns: minmax(0,1fr) 34px; align-items: center; gap: 3px; border-radius: 11px; }
+.search-result { min-height: 64px; padding: 4px 5px; display: grid; grid-template-columns: minmax(0,1fr) 34px; align-items: center; gap: 3px; border-radius: 11px; transition: background .14s ease, box-shadow .14s ease; }
 .search-result:hover { background: rgba(255,255,255,.06); }
 .search-result__main { min-width: 0; padding: 3px; display: grid; grid-template-columns: 45px minmax(0,1fr) auto; align-items: center; gap: 11px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .search-result__cover { width: 45px; height: 45px; border-radius: 8px; }
@@ -816,6 +816,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .search-result__meta strong { font-size: var(--type-body); }
 .search-result__meta small { color: var(--muted); font-size: var(--type-caption); }
 .search-result__main > svg { color: var(--muted); }
+.search-result--active, .search-result--active:hover { background: rgba(217,255,99,.075); box-shadow: inset 0 0 0 1px rgba(217,255,99,.16); }
+.search-result--active .search-result__main > svg { color: var(--acid); }
 .search-result--public { grid-template-columns: minmax(0,1fr); }
 .search-result__picker .icon-button { width: 31px; height: 31px; }
 .search-empty { min-height: 160px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--muted-2); text-align: center; }
