@@ -48,6 +48,32 @@ class PlaylistDTO(APIModel):
     is_public: bool = False
 
 
+class GlobalReleaseDTO(APIModel):
+    id: str
+    title: str
+    artists: list[str] = Field(default_factory=list)
+    cover_url: str | None = None
+    release_date: str | None = None
+    genre: str | None = None
+    tracks: list[TrackDTO] = Field(default_factory=list)
+
+
+class GlobalGenreDTO(APIModel):
+    id: str
+    title: str
+    tracks: list[TrackDTO] = Field(default_factory=list)
+
+
+class GlobalTopPayload(APIModel):
+    generated_at: int
+    edition_date: str
+    chart_title: str
+    chart_description: str | None = None
+    chart: list[TrackDTO] = Field(default_factory=list)
+    releases: list[GlobalReleaseDTO] = Field(default_factory=list)
+    genres: list[GlobalGenreDTO] = Field(default_factory=list)
+
+
 class RecommendationCollectionDTO(APIModel):
     id: str
     title: str
@@ -408,6 +434,7 @@ class VKImportJobDTO(APIModel):
     status: Literal["queued", "running", "complete", "failed"]
     source_url: str
     total: int
+    reused: int = 0
     processed: int
     matched: int
     unmatched: int

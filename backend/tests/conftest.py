@@ -13,6 +13,9 @@ from app.main import create_app
 from app.models import (
     BootstrapPayload,
     DiscoveryRecommendationsPayload,
+    GlobalGenreDTO,
+    GlobalReleaseDTO,
+    GlobalTopPayload,
     LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
@@ -55,6 +58,24 @@ TEST_DISCOVERY_TRACK = TrackDTO(
     cover_tone="lime",
     liked=False,
     stream_url="/api/tracks/202/stream",
+)
+
+TEST_GLOBAL_TOP = GlobalTopPayload(
+    generated_at=1_700_000_000,
+    edition_date="2026-08-29",
+    chart_title="Мировой чарт",
+    chart_description="Главные треки мира сегодня",
+    chart=[TEST_TRACK, TEST_DISCOVERY_TRACK],
+    releases=[GlobalReleaseDTO(
+        id="release-1",
+        title="Fresh Fixture",
+        artists=["Fixture Artist"],
+        cover_url="https://avatars.yandex.net/release/400x400",
+        release_date="2026-08-29",
+        genre="Electronic",
+        tracks=[TEST_DISCOVERY_TRACK],
+    )],
+    genres=[GlobalGenreDTO(id="electronic", title="Electronic", tracks=[TEST_DISCOVERY_TRACK])],
 )
 
 TEST_CREDENTIAL = Credential(
@@ -114,6 +135,10 @@ class FakeGateway:
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         return LikedTracksPayload(tracks=[TEST_TRACK], total=1)
+
+    async def global_top(self, credential: Credential) -> GlobalTopPayload:
+        assert credential.access_token == TEST_CREDENTIAL.access_token
+        return TEST_GLOBAL_TOP.model_copy(deep=True)
 
     async def discovery_recommendations(
         self,

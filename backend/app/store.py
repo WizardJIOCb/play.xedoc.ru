@@ -266,6 +266,7 @@ class CredentialStore:
                     track_payload TEXT NOT NULL,
                     status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'complete', 'failed')),
                     total INTEGER NOT NULL,
+                    reused INTEGER NOT NULL DEFAULT 0,
                     processed INTEGER NOT NULL DEFAULT 0,
                     matched INTEGER NOT NULL DEFAULT 0,
                     unmatched INTEGER NOT NULL DEFAULT 0,
@@ -279,6 +280,7 @@ class CredentialStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_vk_import_job_user ON vk_import_job(user_id, created_at DESC)"
             )
+            self._ensure_column(connection, "vk_import_job", "reused", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS social_post (
@@ -536,7 +538,14 @@ class CredentialStore:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM app_session WHERE token_hash = ?", (token_hash,))
 
-    def create_vk_import_job(self, user_id: str, source_url: str, tracks: list[dict]) -> dict:
+    def create_vk_import_job(
+        self,
+        user_id: str,
+        source_url: str,
+        tracks: list[dict],
+        *,
+        reused: int = 0,
+    ) -> dict:
         job_id = f"vkjob-{secrets.token_urlsafe(14)}"
         now = int(time.time())
         payload = json.dumps(tracks, ensure_ascii=False, separators=(",", ":"))
@@ -545,10 +554,10 @@ class CredentialStore:
                 """
                 INSERT INTO vk_import_job(
                     id, user_id, source_url, track_payload, status, total,
-                    processed, matched, unmatched, created_at, updated_at
-                ) VALUES(?, ?, ?, ?, 'queued', ?, 0, 0, 0, ?, ?)
+                    processed, matched, unmatched, created_at, updated_at, reused
+                ) VALUES(?, ?, ?, ?, 'queued', ?, 0, 0, 0, ?, ?, ?)
                 """,
-                (job_id, user_id, source_url, payload, len(tracks), now, now),
+                (job_id, user_id, source_url, payload, len(tracks), now, now, max(0, reused)),
             )
         return self.load_vk_import_job(job_id, user_id=user_id) or {}
 
@@ -558,7 +567,7 @@ class CredentialStore:
             row = connection.execute(
                 """
                 SELECT id, user_id, source_url, track_payload, status, total, processed,
-                       matched, unmatched, playlist_id, error, created_at, updated_at
+                       matched, unmatched, playlist_id, error, created_at, updated_at, reused
                 FROM vk_import_job WHERE id = ? AND user_id = ?
                 """,
                 (job_id, owner_id),
@@ -570,7 +579,7 @@ class CredentialStore:
             row = connection.execute(
                 """
                 SELECT id, user_id, source_url, track_payload, status, total, processed,
-                       matched, unmatched, playlist_id, error, created_at, updated_at
+                       matched, unmatched, playlist_id, error, created_at, updated_at, reused
                 FROM vk_import_job WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
                 """,
                 (self.current_user_id(),),
@@ -582,7 +591,7 @@ class CredentialStore:
             rows = connection.execute(
                 """
                 SELECT id, user_id, source_url, track_payload, status, total, processed,
-                       matched, unmatched, playlist_id, error, created_at, updated_at
+                       matched, unmatched, playlist_id, error, created_at, updated_at, reused
                 FROM vk_import_job WHERE status IN ('queued', 'running') ORDER BY created_at
                 """
             ).fetchall()
@@ -593,7 +602,7 @@ class CredentialStore:
             row = connection.execute(
                 """
                 SELECT id, user_id, source_url, track_payload, status, total, processed,
-                       matched, unmatched, playlist_id, error, created_at, updated_at
+                       matched, unmatched, playlist_id, error, created_at, updated_at, reused
                 FROM vk_import_job
                 WHERE user_id = ? AND source_url = ? AND status = 'complete'
                 ORDER BY total DESC, created_at DESC LIMIT 1
@@ -653,6 +662,7 @@ class CredentialStore:
             "error": row[10],
             "created_at": int(row[11]),
             "updated_at": int(row[12]),
+            "reused": int(row[13]),
         }
 
     def save(self, credential: Credential) -> None:

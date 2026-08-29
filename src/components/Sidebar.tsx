@@ -1,4 +1,4 @@
-import { BarChart3, Compass, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
+import { BarChart3, Compass, Globe2, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
@@ -16,9 +16,11 @@ export function Sidebar({
   collapsed,
   recommendationsActive,
   topActive,
+  globalTopActive,
   onView,
   onRecommendations,
   onTop,
+  onGlobalTop,
   onPlaylist,
   onCreatePlaylist,
   onToggle,
@@ -29,9 +31,11 @@ export function Sidebar({
   collapsed: boolean
   recommendationsActive: boolean
   topActive: boolean
+  globalTopActive: boolean
   onView: (view: ViewId) => void
   onRecommendations: () => void
   onTop: () => void
+  onGlobalTop: () => void
   onPlaylist: (playlist: Playlist) => void
   onCreatePlaylist: () => void
   onToggle: () => void
@@ -46,7 +50,7 @@ export function Sidebar({
 
       <nav className="sidebar__nav" aria-label="Основная навигация">
         {navigation.map(({ id, label, icon: Icon }) => (
-          <button key={id} className={!recommendationsActive && !topActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} aria-label={label}>
+          <button key={id} className={!recommendationsActive && !topActive && !globalTopActive && view === id ? 'is-active' : ''} type="button" onClick={() => onView(id)} aria-label={label}>
             <Icon size={20} />
             <span>{label}</span>
           </button>
@@ -58,6 +62,10 @@ export function Sidebar({
         <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} aria-label="Топ треков">
           <BarChart3 size={20} />
           <span>Топ треков</span>
+        </button>
+        <button className={globalTopActive ? 'is-active' : ''} type="button" onClick={onGlobalTop} aria-label="Топ глобальный">
+          <Globe2 size={20} />
+          <span>Топ глобальный</span>
         </button>
       </nav>
 

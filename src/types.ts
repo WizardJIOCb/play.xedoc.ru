@@ -202,6 +202,32 @@ export interface SocialPost {
   rankingReason?: string
 }
 
+export interface GlobalRelease {
+  id: string
+  title: string
+  artists: string[]
+  coverUrl?: string
+  releaseDate?: string
+  genre?: string
+  tracks: Track[]
+}
+
+export interface GlobalGenre {
+  id: string
+  title: string
+  tracks: Track[]
+}
+
+export interface GlobalTopPayload {
+  generatedAt: number
+  editionDate: string
+  chartTitle: string
+  chartDescription?: string
+  chart: Track[]
+  releases: GlobalRelease[]
+  genres: GlobalGenre[]
+}
+
 export interface SocialComment {
   id: string
   postId: string
@@ -272,6 +298,7 @@ export interface VKImportJob {
   status: 'queued' | 'running' | 'complete' | 'failed'
   sourceUrl: string
   total: number
+  reused: number
   processed: number
   matched: number
   unmatched: number

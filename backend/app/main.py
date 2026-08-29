@@ -40,6 +40,7 @@ from .models import (
     DeviceAuthStartDTO,
     DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
+    GlobalTopPayload,
     FriendStatusDTO,
     FriendsPayload,
     ListeningEventRequest,
@@ -767,11 +768,17 @@ def create_app(
                 (_normalize_music_text(track.artist), _normalize_music_text(track.title))
                 for track in previous_tracks
             ]
-            current_keys = [
+            previous_key_set = set(previous_keys)
+            current_keys = {
                 (_normalize_music_text(track.artist), _normalize_music_text(track.title))
-                for track in tracks[:len(previous_keys)]
-            ]
-            if previous_keys and previous_keys == current_keys:
+                for track in tracks
+            }
+            if previous_keys and previous_key_set.issubset(current_keys):
+                new_tracks = [
+                    track for track in tracks
+                    if (_normalize_music_text(track.artist), _normalize_music_text(track.title)) not in previous_key_set
+                ]
+                tracks = [*previous_tracks, *new_tracks]
                 carried_processed = len(previous_keys)
                 carried_matched = int(previous["matched"])
                 carried_unmatched = int(previous["unmatched"])
@@ -779,6 +786,7 @@ def create_app(
             app_user.id,
             source_url,
             [track.model_dump(mode="json", by_alias=True, exclude_none=True) for track in tracks],
+            reused=carried_processed,
         )
         if carried_processed:
             store.update_vk_import_job(
@@ -975,6 +983,53 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+
+    @app.get("/api/global-top", response_model=GlobalTopPayload, response_model_exclude_none=True)
+    async def global_top(request: Request) -> GlobalTopPayload:
+        await enforce_rate_limit(request, "global-top", maximum=120, window_seconds=60)
+        try:
+            credential = store.load_catalog_credential()
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
+        try:
+            payload = await gateway.global_top(credential)
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
+
+        if optional_app_user(request) is None:
+            def public_track(track: TrackDTO) -> TrackDTO:
+                return track.model_copy(update={
+                    "liked": None,
+                    "play_count": None,
+                    "total_listened_ms": None,
+                    "last_played_at": None,
+                    "stream_url": (
+                        f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                        f"?ticket={quote(signer.issue(f'public-search:{track.id}', 900), safe='')}"
+                    ),
+                })
+
+            payload.chart = [public_track(track) for track in payload.chart]
+            payload.releases = [
+                release.model_copy(update={"tracks": [public_track(track) for track in release.tracks]})
+                for release in payload.releases
+            ]
+            payload.genres = [
+                genre.model_copy(update={"tracks": [public_track(track) for track in genre.tracks]})
+                for genre in payload.genres
+            ]
+            return payload
+
+        tracks = [
+            *payload.chart,
+            *(track for release in payload.releases for track in release.tracks),
+            *(track for genre in payload.genres for track in genre.tracks),
+        ]
+        _set_local_like_state(tracks, store)
+        _decorate_tracks_with_stats(tracks, store)
+        return payload
 
     @app.get("/api/public-search/tracks/{track_id}/stream", response_class=RedirectResponse)
     async def public_search_stream(

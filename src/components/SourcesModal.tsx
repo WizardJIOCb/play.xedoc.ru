@@ -31,6 +31,10 @@ function canonicalVKUrl(value: string) {
   }
 }
 
+function formatSyncTime(value: number) {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value * 1000))
+}
+
 function buildCollector(destination: string) {
   const collector = async () => {
     const destinationValue = '__DESTINATION__'
@@ -102,6 +106,8 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   const trackedCompleteJob = useRef('')
   const tracks = useMemo(() => parseTracks(trackText), [trackText])
   const vkUrl = useMemo(() => canonicalVKUrl(sourceUrl), [sourceUrl])
+  const activeVkUrl = vkUrl || canonicalVKUrl(job?.sourceUrl || '')
+  const collectorCode = useMemo(() => buildCollector(`${window.location.origin}/?vkImport=collect`), [])
 
   const refreshJob = useCallback(async () => {
     try { setJob(await getLatestVKImportJob()) } catch { /* Progress is optional. */ }
@@ -119,10 +125,16 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   }, [collector])
 
   useEffect(() => {
+    if (!open || !job?.sourceUrl) return
+    setSourceUrl((value) => value || job.sourceUrl)
+    setCollector((value) => value || collectorCode)
+  }, [collectorCode, job?.sourceUrl, open])
+
+  useEffect(() => {
     if (job?.status !== 'complete') return
-    onChanged()
     if (trackedCompleteJob.current === job.id) return
     trackedCompleteJob.current = job.id
+    onChanged()
     trackGoal('vk_import_completed', { method: 'collector', matched: job.matched, unmatched: job.unmatched })
   }, [job?.status, onChanged])
 
@@ -145,7 +157,7 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
 
   const prepareCollector = () => {
     setError(''); setMessage('')
-    setCollector(buildCollector(`${window.location.origin}/?vkImport=collect`))
+    setCollector(collectorCode)
   }
 
   const copyCollector = async () => {
@@ -155,6 +167,7 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
   }
 
   const progress = job?.total ? Math.round(job.processed / job.total * 100) : 0
+  const checkedNew = job ? Math.max(0, job.total - job.reused) : 0
 
   return (
     <div className="overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -168,15 +181,22 @@ export function SourcesModal({ open, yandexConnected, onClose, onConnectYandex, 
         <div className="source-card source-card--vk">
           <div className="source-card__icon source-card__icon--vk">VK</div>
           <div className="source-card__vk-content">
-            <h3>Весь список из VK по ссылке</h3>
-            <p>VK показывает коллекцию только вашей авторизованной вкладке. Персональная кнопка XEDOC прокрутит список до конца и передаст названия — без пароля и cookies VK.</p>
-            <input value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setCollector('') }} placeholder="https://vk.ru/audios145429079" aria-label="Ссылка на страницу аудиозаписей VK" />
-            {!collector ? <button className="primary-button source-card__prepare" type="button" disabled={!vkUrl || loading} onClick={prepareCollector}>{loading ? <LoaderCircle className="spin" size={17} /> : <Bookmark size={17} />} Подготовить автоимпорт</button> : <div className="vk-collector-setup">
-              <ol><li>Перетащите кнопку ниже на панель закладок браузера.</li><li>Откройте вашу «Мою музыку» по ссылке.</li><li>На странице VK нажмите сохранённую закладку — остальное произойдёт автоматически.</li></ol>
-              <div><a ref={bookmarkRef} className="vk-bookmarklet" draggable="true"><Bookmark size={17} /> Забрать все треки в XEDOC</a><button className="icon-button" type="button" onClick={() => void copyCollector()} data-tooltip="Скопировать код кнопки" aria-label="Скопировать код кнопки">{copied ? <Check size={17} /> : <Copy size={17} />}</button></div>
-              <div className="vk-collector-actions"><a className="secondary-button" href={`${vkUrl}?section=all`} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Открыть мою музыку VK</a><button type="button" onClick={prepareCollector}><RotateCw size={14} /> Обновить кнопку</button></div>
+            <h3>{job ? 'Музыка из VK' : 'Подключить музыку из VK'}</h3>
+            <p>{job ? 'Новые сохранённые треки можно докачать в тот же плейлист. Дубли не создаются.' : 'VK показывает коллекцию только вашей авторизованной вкладке. Персональная кнопка XEDOC прокрутит список до конца и передаст названия — без пароля и cookies VK.'}</p>
+            {job ? <div className="vk-source-summary">
+              <div><span className="source-status"><CheckCircle2 size={15} /> Источник подключён</span><small>{job.total} треков · синхронизация {formatSyncTime(job.updatedAt)}</small></div>
+              <a className="primary-button" href={`${activeVkUrl}?section=all`} target="_blank" rel="noreferrer" onClick={prepareCollector}><RotateCw size={17} /> Обновить музыку</a>
+              <p><ExternalLink size={14} /> В открывшемся VK нажмите сохранённую закладку «Синхронизировать с XEDOC».</p>
+            </div> : <>
+              <input value={sourceUrl} onChange={(event) => { setSourceUrl(event.target.value); setCollector('') }} placeholder="https://vk.ru/audios145429079" aria-label="Ссылка на страницу аудиозаписей VK" />
+              {!collector && <button className="primary-button source-card__prepare" type="button" disabled={!vkUrl || loading} onClick={prepareCollector}>{loading ? <LoaderCircle className="spin" size={17} /> : <Bookmark size={17} />} Настроить синхронизацию</button>}
+            </>}
+            {collector && <div className="vk-collector-setup">
+              <ol><li>Один раз перетащите кнопку ниже на панель закладок браузера.</li><li>{job ? 'Нажмите «Обновить музыку» и перейдите во вкладку VK.' : 'Откройте вашу «Мою музыку» по ссылке.'}</li><li>На странице VK нажмите сохранённую закладку — XEDOC найдёт только изменения и вернёт вас обратно.</li></ol>
+              <div><a ref={bookmarkRef} className="vk-bookmarklet" draggable="true"><Bookmark size={17} /> Синхронизировать с XEDOC</a><button className="icon-button" type="button" onClick={() => void copyCollector()} data-tooltip="Скопировать код кнопки" aria-label="Скопировать код кнопки">{copied ? <Check size={17} /> : <Copy size={17} />}</button></div>
+              <div className="vk-collector-actions">{!job && <a className="secondary-button" href={`${activeVkUrl}?section=all`} target="_blank" rel="noreferrer"><ExternalLink size={17} /> Открыть мою музыку VK</a>}<button type="button" onClick={prepareCollector}><RotateCw size={14} /> Обновить закладку</button></div>
             </div>}
-            {job && <div className={`vk-import-progress vk-import-progress--${job.status}`}><div><strong>{job.status === 'complete' ? 'Импорт завершён' : job.status === 'failed' ? 'Импорт остановлен' : 'Собираем плейлист'}</strong><span>{job.processed} из {job.total} · найдено {job.matched}</span></div><div className="vk-import-progress__bar"><i style={{ width: `${progress}%` }} /></div>{job.error && <small>{job.error}</small>}</div>}
+            {job && <div className={`vk-import-progress vk-import-progress--${job.status}`}><div><strong>{job.status === 'complete' ? 'Синхронизация завершена' : job.status === 'failed' ? 'Синхронизация остановлена' : 'Обновляем плейлист'}</strong><span>{job.status === 'complete' && job.reused === job.total ? 'Новых треков не найдено' : job.reused ? `Проверено новых позиций: ${checkedNew} · найдено ${job.matched}` : `${job.processed} из ${job.total} · найдено ${job.matched}`}</span></div><div className="vk-import-progress__bar"><i style={{ width: `${progress}%` }} /></div>{job.error && <small>{job.error}</small>}</div>}
             <details className="vk-manual-import"><summary>Ручной импорт списка <ChevronDown size={15} /></summary><p>Можно вставить строки в формате «Исполнитель — Название».</p><textarea value={trackText} onChange={(event) => setTrackText(event.target.value)} placeholder={'Limp Bizkit — Lonely World\nКино — Группа крови'} aria-label="Список треков из VK" /><div className="source-card__import"><small>Распознано строк: {tracks.length}</small><button className="secondary-button" type="button" disabled={!tracks.length || !vkUrl || loading} onClick={() => void importVK()}>{loading ? <LoaderCircle className="spin" size={17} /> : <Import size={17} />} Импортировать</button></div></details>
             <small className="source-card__note">В XEDOC передаются только названия, исполнители и длительность. Сам звук проигрывается из подключённого музыкального каталога.</small>
           </div>
