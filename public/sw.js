@@ -1,4 +1,4 @@
-const CACHE = 'xedoc-play-v4'
+const CACHE = 'xedoc-play-v5'
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg']
 
 self.addEventListener('install', (event) => {
@@ -27,7 +27,10 @@ self.addEventListener('fetch', (event) => {
   if (!cacheable) return
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
-      if (response.ok) event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, response.clone())))
+      if (response.ok) {
+        const copy = response.clone()
+        event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, copy)))
+      }
       return response
     })),
   )
