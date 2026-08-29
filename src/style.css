@@ -526,8 +526,12 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .global-genre-scroll::before { left: 0; background: linear-gradient(90deg,rgba(12,14,17,.98),transparent); }
 .global-genre-scroll::after { right: 0; background: linear-gradient(90deg,transparent,rgba(12,14,17,.98)); }
 .global-genre-scroll.can-scroll-left::before, .global-genre-scroll.can-scroll-right::after { opacity: 1; }
-.global-genre-scroll__hint { width: 29px; height: 29px; display: grid; place-items: center; position: absolute; z-index: 3; right: 8px; top: 7px; border: 1px solid rgba(194,255,59,.22); border-radius: 50%; background: rgba(20,24,21,.92); color: var(--acid); box-shadow: 0 5px 18px rgba(0,0,0,.32); opacity: 0; pointer-events: none; transform: translateX(5px); transition: opacity .18s ease,transform .18s ease; }
-.global-genre-scroll.can-scroll-right .global-genre-scroll__hint { opacity: 1; transform: translateX(0); }
+.global-genre-scroll__hint { width: 29px; height: 29px; padding: 0; display: grid; place-items: center; position: absolute; z-index: 3; right: 8px; top: 7px; border: 1px solid rgba(194,255,59,.22); border-radius: 50%; outline: 0; background: rgba(20,24,21,.92); color: var(--acid); box-shadow: 0 5px 18px rgba(0,0,0,.32); opacity: 0; pointer-events: none; cursor: pointer; transform: translateX(5px); transition: opacity .18s ease,transform .18s ease,border-color .18s ease,background .18s ease; }
+.global-genre-scroll.can-scroll-right .global-genre-scroll__hint { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.global-genre-scroll__hint:hover { border-color: rgba(194,255,59,.52); background: rgba(41,51,28,.96); }
+.global-genre-scroll__hint:focus-visible { box-shadow: 0 0 0 3px rgba(194,255,59,.16),0 5px 18px rgba(0,0,0,.32); }
+.global-genre-scroll__hint:active { transform: translateX(1px) scale(.94); }
+.global-genre-scroll__hint:disabled { cursor: default; }
 .global-genre-tabs { padding: 0 54px 11px 0; display: flex; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; scroll-padding-inline: 8px 58px; scrollbar-color: rgba(194,255,59,.58) rgba(255,255,255,.055); scrollbar-gutter: stable; scrollbar-width: thin; }
 .global-genre-tabs::-webkit-scrollbar { height: 8px; }
 .global-genre-tabs::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255,255,255,.055); }
