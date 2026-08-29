@@ -12,7 +12,7 @@ def _track(identifier: str, artist: str) -> SimpleNamespace:
         id=identifier,
         title=f"Track {identifier}",
         artists=[SimpleNamespace(id=artist, name=artist)],
-        albums=[SimpleNamespace(title="Discovery")],
+        albums=[SimpleNamespace(title="Discovery", release_date="2026-08-29")],
         duration_ms=180_000,
         cover_uri=None,
         explicit=False,

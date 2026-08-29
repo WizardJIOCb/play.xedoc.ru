@@ -54,6 +54,7 @@ TEST_DISCOVERY_TRACK = TrackDTO(
     title="Unknown Signal",
     artists=["Adjacent Artist"],
     album="Never Heard",
+    release_date="2026-08-29",
     duration_ms=189_000,
     cover_tone="lime",
     liked=False,

@@ -5,6 +5,7 @@ export interface Track {
   title: string
   artists: string[]
   album?: string
+  releaseDate?: string
   durationMs: number
   coverUrl?: string
   coverTone?: CoverTone
@@ -220,6 +221,8 @@ export interface GlobalGenre {
   tracks: Track[]
 }
 
+export type GenrePeriod = 'all' | 'recent' | '2020s' | '2010s' | 'classic'
+
 export interface GlobalTopPayload {
   generatedAt: number
   editionDate: string
@@ -323,7 +326,7 @@ export interface VKImportJob {
   updatedAt: number
 }
 
-export type ViewId = 'home' | 'feed' | 'friends' | 'discover' | 'library' | 'liked' | 'history'
+export type ViewId = 'home' | 'feed' | 'friends' | 'discover' | 'library' | 'genres' | 'liked' | 'history'
 
 export interface SessionPreferences {
   duration: 25 | 50 | 90

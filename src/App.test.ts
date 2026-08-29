@@ -167,6 +167,22 @@ describe('favorite collection filtering', () => {
     expect(window.location.pathname).toBe('/global-top')
   })
 
+  it('opens the public genre browser from the main menu', async () => {
+    vi.mocked(getBootstrap).mockResolvedValueOnce({
+      connected: false, demo: false, catalogAvailable: true, accessLocked: false, authenticated: false,
+      quickTracks: [], playlists: [], recommendations: [], rediscover: [], localPlaylists: [], likedTracks: [], likedCount: 0,
+      xedocRecommendations: [], xedocCollections: [],
+    })
+
+    render(createElement(PlayerProvider, null, createElement(App)))
+    fireEvent.click(await screen.findByRole('button', { name: 'Жанры' }))
+
+    expect(await screen.findByRole('heading', { name: /Найдите свой жанр/ })).toBeInTheDocument()
+    expect(getGlobalTop).toHaveBeenCalled()
+    expect(window.location.pathname).toBe('/genres')
+    expect(screen.queryByRole('dialog', { name: 'Вход или регистрация' })).not.toBeInTheDocument()
+  })
+
   it('opens a global top rubric from its direct link', async () => {
     window.history.replaceState(null, '', '/global-top/chart')
     vi.mocked(getBootstrap).mockResolvedValueOnce({

@@ -35,6 +35,7 @@ import { CoverArt } from './components/CoverArt'
 import { GlobalTooltip } from './components/GlobalTooltip'
 import { FriendsPage } from './components/FriendsPage'
 import { GlobalTopPage } from './components/GlobalTopPage'
+import { GenresPage } from './components/GenresPage'
 import { MoodMap, type MoodSettings } from './components/MoodMap'
 import { PlayerBar } from './components/PlayerBar'
 import { PasswordSetupModal } from './components/PasswordSetupModal'
@@ -66,6 +67,7 @@ const viewTitles: Record<ViewId, { eyebrow: string; title: string; description: 
   friends: { eyebrow: 'ЛЮДИ', title: 'Друзья', description: 'Знакомые и новые музыкальные связи.' },
   discover: { eyebrow: 'ОБЗОР', title: 'Найти новое', description: 'Знакомые ориентиры, неожиданные повороты.' },
   library: { eyebrow: 'КОЛЛЕКЦИЯ', title: 'Ваша библиотека', description: 'Всё важное — без лишних витрин.' },
+  genres: { eyebrow: 'КАРТА ЗВУЧАНИЯ', title: 'Жанры', description: 'Музыка по направлениям и эпохам.' },
   liked: { eyebrow: 'МНЕ НРАВИТСЯ', title: 'Любимые треки', description: 'Музыка, к которой хочется возвращаться.' },
   history: { eyebrow: 'ИСТОРИЯ', title: 'Недавно слушали', description: 'Вернуться ровно туда, где остановились.' },
 }
@@ -80,6 +82,7 @@ const pathView = (): ViewId => {
   if (path === '/feed') return 'feed'
   if (path === '/friends') return 'friends'
   if (path === '/liked') return 'liked'
+  if (path === '/genres') return 'genres'
   return 'home'
 }
 
@@ -522,7 +525,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [authenticated, data.catalogAvailable, listeningStats, topOpen])
 
   useEffect(() => {
-    if (!globalTopOpen || globalTop || !data.catalogAvailable) return
+    if ((!globalTopOpen && view !== 'genres') || globalTop || !data.catalogAvailable) return
     let cancelled = false
     setGlobalTopLoading(true)
     setGlobalTopError('')
@@ -531,7 +534,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
       .catch(() => { if (!cancelled) setGlobalTopError('Не удалось загрузить мировой чарт. Попробуйте чуть позже.') })
       .finally(() => { if (!cancelled) setGlobalTopLoading(false) })
     return () => { cancelled = true }
-  }, [data.catalogAvailable, globalTop, globalTopOpen])
+  }, [data.catalogAvailable, globalTop, globalTopOpen, view])
 
   useEffect(() => {
     if (listeningStatsScope.current === authenticated) return
@@ -615,7 +618,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [notice])
 
   const changeView = useCallback((nextView: ViewId) => {
-    if (nextView !== 'home' && !requireAuth()) return
+    if (nextView !== 'home' && nextView !== 'genres' && !requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
     setRecommendationsOpen(false)
@@ -623,7 +626,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setGlobalTopOpen(false)
     setAdminOpen(false)
     setSearchOpen(false)
-    const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : '/'
+    const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : nextView === 'genres' ? '/genres' : '/'
     navigatePath(nextPath)
     setView(nextView)
   }, [navigatePath, requireAuth])
@@ -724,7 +727,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   useEffect(() => {
     if (loading || authenticated || profileUsername || searchOpen) return
     if (topOpen || globalTopOpen) return
-    if (view === 'home' && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen) return
+    if ((view === 'home' || view === 'genres') && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen) return
     setView('home')
     setRecommendationsOpen(false)
     setTopOpen(false)
@@ -742,6 +745,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (globalTopOpen) return <GlobalTopPage data={globalTop} loading={globalTopLoading} error={globalTopError} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} authenticated={authenticated} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
+    if (view === 'genres') return <GenresPage data={globalTop} loading={globalTopLoading} error={globalTopError} />
     if (view === 'home') return <HomeView data={data} authenticated={authenticated} onSession={() => openSession()} onRequireAuth={() => setAuthOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
     if (view === 'feed') return <SocialFeedPage user={data.appUser} tracks={data.quickTracks.concat(data.likedTracks)} playlists={data.localPlaylists.concat(data.playlists)} />
     if (view === 'friends') return <FriendsPage username={data.appUser?.username} />
@@ -775,7 +779,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
         </header>
 
         <div className="page-content">
-          {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !searchOpen && <header className="page-heading">
+          {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !searchOpen && view !== 'genres' && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{!authenticated && view === 'home' ? 'Популярная музыка XEDOC — можно слушать без регистрации.' : title.description}</p></div>
           </header>}
           {content}

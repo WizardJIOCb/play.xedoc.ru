@@ -1051,6 +1051,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
     ]
     albums = list(getattr(track, "albums", None) or [])
     album = getattr(albums[0], "title", None) if albums else None
+    release_date = getattr(albums[0], "release_date", None) if albums else None
     explicit_value = getattr(track, "explicit", None)
     if explicit_value is None:
         explicit_value = getattr(track, "content_warning", None) == "explicit"
@@ -1060,6 +1061,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
         title=str(getattr(track, "title", None) or "Без названия"),
         artists=artists or ["Неизвестный исполнитель"],
         album=str(album) if album else None,
+        release_date=str(release_date).strip() or None if release_date else None,
         duration_ms=max(0, int(getattr(track, "duration_ms", None) or 0)),
         cover_url=_image_url(getattr(track, "cover_uri", None) or getattr(track, "og_image", None)),
         cover_tone=_tone_for(str(track_id)),
