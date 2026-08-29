@@ -158,6 +158,20 @@ export interface PublicProfileStats {
   totalListenedMs: number
 }
 
+export interface PublicListeningHistoryEntry {
+  eventId: number
+  track: Track
+  playedAt: number
+}
+
+export interface PublicListeningHistory {
+  items: PublicListeningHistoryEntry[]
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
+}
+
 export interface PublicProfile {
   username: string
   displayName: string

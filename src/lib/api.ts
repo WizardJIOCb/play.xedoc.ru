@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicListeningHistory, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -130,6 +130,10 @@ export async function searchProfiles(query: string): Promise<ProfileSummary[]> {
 
 export async function getPublicProfile(username: string): Promise<PublicProfile> {
   return request<PublicProfile>(`/profiles/${encodeURIComponent(username)}`)
+}
+
+export async function getPublicListeningHistory(username: string, offset = 0, limit = 3): Promise<PublicListeningHistory> {
+  return request<PublicListeningHistory>(`/profiles/${encodeURIComponent(username)}/history?offset=${offset}&limit=${limit}`)
 }
 
 export async function getSocialFeed(mode: 'for-you' | 'friends' = 'for-you'): Promise<SocialFeed> {

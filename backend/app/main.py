@@ -59,6 +59,7 @@ from .models import (
     PlaylistTrackRequest,
     PlaylistDTO,
     ProfileSearchItemDTO,
+    PublicListeningHistoryDTO,
     PublicProfileDTO,
     PublicNowPlayingDTO,
     PublicShareDTO,
@@ -1420,6 +1421,23 @@ def create_app(
         _decorate_public_top_tracks(profile, safe_username)
         _decorate_public_now_playing(profile, safe_username)
         return PublicProfileDTO.model_validate(profile)
+
+    @app.get(
+        "/api/profiles/{username}/history",
+        response_model=PublicListeningHistoryDTO,
+        response_model_exclude_none=True,
+    )
+    async def public_profile_history(
+        username: str,
+        request: Request,
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=3, ge=1, le=50),
+    ) -> PublicListeningHistoryDTO:
+        await enforce_rate_limit(request, "public-profile-history", maximum=120, window_seconds=60)
+        history = store.load_public_listening_history(_safe_username(username), offset, limit)
+        if history is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
+        return PublicListeningHistoryDTO.model_validate(history)
 
     @app.get(
         "/api/profiles/{username}/top-tracks/{track_id}/stream",

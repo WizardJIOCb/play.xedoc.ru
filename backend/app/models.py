@@ -169,6 +169,20 @@ class PublicNowPlayingDTO(APIModel):
     playlist: PlaylistDTO | None = None
 
 
+class PublicListeningHistoryItemDTO(APIModel):
+    event_id: int
+    track: TrackDTO
+    played_at: int
+
+
+class PublicListeningHistoryDTO(APIModel):
+    items: list[PublicListeningHistoryItemDTO] = Field(default_factory=list)
+    total: int = 0
+    offset: int = 0
+    limit: int = 3
+    has_more: bool = False
+
+
 class PublicProfileDTO(APIModel):
     username: str
     display_name: str

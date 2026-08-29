@@ -424,6 +424,45 @@ def test_public_profile_exposes_only_explicitly_public_playlists(client: TestCli
     assert hidden.status_code == 404
 
 
+def test_public_profile_history_is_paginated_and_sanitized(client: TestClient) -> None:
+    connect(client)
+    for index in range(5):
+        response = client.post("/api/listening-events", json={
+            "track": {
+                "id": f"history-{index}",
+                "title": f"History track {index}",
+                "artists": ["Fixture Artist"],
+                "durationMs": 180_000,
+                "liked": True,
+                "streamUrl": f"/api/tracks/history-{index}/stream",
+            },
+            "listenedMs": 20_000,
+        })
+        assert response.status_code == 200
+
+    client.cookies.clear()
+    first_page = client.get("/api/profiles/testuser/history", params={"limit": 3})
+    assert first_page.status_code == 200
+    body = first_page.json()
+    assert body["total"] == 5
+    assert body["offset"] == 0
+    assert body["limit"] == 3
+    assert body["hasMore"] is True
+    assert [item["track"]["title"] for item in body["items"]] == [
+        "History track 4", "History track 3", "History track 2",
+    ]
+    assert all("streamUrl" not in item["track"] for item in body["items"])
+    assert all("liked" not in item["track"] for item in body["items"])
+
+    second_page = client.get("/api/profiles/testuser/history", params={"offset": 3, "limit": 3})
+    assert second_page.status_code == 200
+    assert [item["track"]["title"] for item in second_page.json()["items"]] == [
+        "History track 1", "History track 0",
+    ]
+    assert second_page.json()["hasMore"] is False
+    assert client.get("/api/profiles/missing/history").status_code == 404
+
+
 def test_now_playing_is_live_playable_and_never_reveals_a_private_playlist(
     client: TestClient,
     store: CredentialStore,

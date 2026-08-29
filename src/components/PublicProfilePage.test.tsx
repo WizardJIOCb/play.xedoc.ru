@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlayerProvider } from '../player/PlayerContext'
 import { PublicProfilePage } from './PublicProfilePage'
@@ -25,6 +25,20 @@ vi.mock('../lib/api', async (importOriginal) => {
       id: 'local-open', title: 'Open mix', trackCount: 1, isPublic: true,
       tracks: [{ id: 'live', title: 'Live track', artists: ['Live artist'], durationMs: 180_000, streamUrl: '/api/live' }],
     }),
+    getPublicListeningHistory: vi.fn().mockImplementation((_username: string, offset = 0) => Promise.resolve(offset === 0 ? {
+      items: [
+        { eventId: 30, playedAt: 1_700_000_030, track: { id: 'recent-3', title: 'Recent track 3', artists: ['Recent artist'], durationMs: 180_000 } },
+        { eventId: 20, playedAt: 1_700_000_020, track: { id: 'recent-2', title: 'Recent track 2', artists: ['Recent artist'], durationMs: 180_000 } },
+        { eventId: 10, playedAt: 1_700_000_010, track: { id: 'recent-1', title: 'Recent track 1', artists: ['Recent artist'], durationMs: 180_000 } },
+      ],
+      total: 5, offset: 0, limit: 3, hasMore: true,
+    } : {
+      items: [
+        { eventId: 5, playedAt: 1_700_000_005, track: { id: 'recent-4', title: 'Recent track 4', artists: ['Recent artist'], durationMs: 180_000 } },
+        { eventId: 1, playedAt: 1_700_000_001, track: { id: 'recent-5', title: 'Recent track 5', artists: ['Recent artist'], durationMs: 180_000 } },
+      ],
+      total: 5, offset: 3, limit: 6, hasMore: false,
+    })),
     updateAccountProfile: vi.fn().mockResolvedValue({
       id: 'user-listener', username: 'listener', displayName: 'Renamed Listener', needsPassword: false, isAdmin: false,
     }),
@@ -45,8 +59,14 @@ describe('PublicProfilePage', () => {
     expect(screen.getByText('@listener')).toBeInTheDocument()
     expect(screen.getByText('42')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Open mix/ })).toHaveLength(2)
-    expect(screen.getByRole('region', { name: 'Слушает сейчас' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Live track/ })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Музыкальная активность' })).toBeInTheDocument()
+    const nowPlaying = screen.getByRole('group', { name: 'Слушает сейчас' })
+    expect(nowPlaying.firstElementChild).toHaveClass('public-profile-now-playing__cover')
+    expect(within(nowPlaying).getByText('Live track')).toBeInTheDocument()
+    expect(within(nowPlaying).queryByRole('button', { name: /Live track/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'История прослушиваний' })).toBeInTheDocument()
+    expect(screen.getByText('Recent track 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Загрузить ещё' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Включить Top track' })).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: /Open mix/ })[0])
@@ -64,18 +84,13 @@ describe('PublicProfilePage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('pauses the current now-playing track from its profile card', async () => {
-    const audio = document.createElement('audio')
-    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
-    Object.defineProperty(audio, 'pause', { value: vi.fn() })
-    Object.defineProperty(audio, 'load', { value: vi.fn() })
-    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+  it('loads more listening history without exposing a control for the remote track', async () => {
     render(<PlayerProvider><PublicProfilePage username="listener" /></PlayerProvider>)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Включить Live track' }))
-    const pauseButton = screen.getByRole('button', { name: 'Пауза Live track' })
-    expect(pauseButton.querySelector('.lucide-pause')).toBeInTheDocument()
-    fireEvent.click(pauseButton)
-    expect(screen.getByRole('button', { name: 'Включить Live track' }).querySelector('.lucide-play')).toBeInTheDocument()
+    expect(await screen.findByText('Recent track 1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Live track/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }))
+    expect(await screen.findByText('Recent track 5')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Загрузить ещё' })).not.toBeInTheDocument()
   })
 })
