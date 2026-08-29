@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.gateway import DeviceAuthorization
+from app.gateway import DeviceAuthorization, GatewayNotFound
 from app.main import create_app
 from app.models import (
     BootstrapPayload,
@@ -145,6 +145,13 @@ class FakeGateway:
     async def global_top(self, credential: Credential) -> GlobalTopPayload:
         assert credential.access_token == TEST_CREDENTIAL.access_token
         return TEST_GLOBAL_TOP.model_copy(deep=True)
+
+    async def global_genre(self, credential: Credential, genre_id: str) -> GlobalGenreDTO:
+        assert credential.access_token == TEST_CREDENTIAL.access_token
+        genre = next((item for item in TEST_GLOBAL_TOP.genres if item.id == genre_id), None)
+        if genre is None:
+            raise GatewayNotFound("Genre not found")
+        return genre.model_copy(deep=True)
 
     async def discovery_recommendations(
         self,

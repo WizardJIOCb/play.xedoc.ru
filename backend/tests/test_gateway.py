@@ -190,3 +190,39 @@ def test_genre_rankings_keep_separate_international_and_russian_catalogs(setting
     assert next(genre for genre in rankings if genre.id == "metal").source_title == "Playlist metal-1"
     assert next(genre for genre in rankings if genre.id == "rusmetal").tracks[0].title == "Русский метал"
     assert next(genre for genre in rankings if genre.id == "ruspunk").tracks[0].id == "track-punk-1"
+
+
+def test_global_genre_returns_the_full_source_playlist(settings) -> None:
+    gateway = YandexMusicGateway(settings)
+
+    class FullGenreClient:
+        async def tags(self, tag_id):
+            assert tag_id == "rock"
+            return SimpleNamespace(ids=[SimpleNamespace(kind="rock-full", uid="curator")])
+
+        async def users_playlists(self, *, kind, user_id):
+            assert (kind, user_id) == ("rock-full", "curator")
+            return SimpleNamespace(
+                title="Полный рок-рейтинг",
+                tracks=[SimpleNamespace(track=_track(f"rock-{index}", "Rock Artist")) for index in range(35)],
+            )
+
+    async def authorized_client(_credential):
+        return FullGenreClient()
+
+    gateway._authorized_client = authorized_client
+    credential = Credential(
+        access_token="token",
+        refresh_token=None,
+        expires_at=None,
+        device_id="device",
+        user_uid="42",
+        user_name="Test",
+    )
+
+    result = asyncio.run(gateway.global_genre(credential, "rock"))
+
+    assert result.title == "Рок"
+    assert result.source_title == "Полный рок-рейтинг"
+    assert len(result.tracks) == 35
+    assert result.tracks[-1].id == "rock-34"

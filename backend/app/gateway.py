@@ -141,6 +141,8 @@ class MusicGateway(Protocol):
 
     async def global_top(self, credential: Credential) -> GlobalTopPayload: ...
 
+    async def global_genre(self, credential: Credential, genre_id: str) -> GlobalGenreDTO: ...
+
     async def discovery_recommendations(
         self,
         credential: Credential,
@@ -166,6 +168,7 @@ class YandexMusicGateway:
         self.settings = settings
         self._liked_cache: dict[str, tuple[float, set[str | None]]] = {}
         self._global_top_cache: tuple[float, GlobalTopPayload] | None = None
+        self._global_genre_cache: dict[str, tuple[float, GlobalGenreDTO]] = {}
 
     def _client(self, token: str | None = None) -> Any:
         if ClientAsync is None or Request is None:
@@ -466,6 +469,57 @@ class YandexMusicGateway:
         )
         self._global_top_cache = (time.monotonic() + 900, payload.model_copy(deep=True))
         return payload
+
+    async def global_genre(self, credential: Credential, genre_id: str) -> GlobalGenreDTO:
+        spec = next((item for item in GENRE_RANKING_SPECS if item.id == genre_id), None)
+        if spec is None:
+            raise GatewayNotFound("The requested genre ranking does not exist")
+        cached = self._global_genre_cache.get(spec.id)
+        if cached is not None and cached[0] > time.monotonic():
+            return cached[1].model_copy(deep=True)
+
+        client = await self._authorized_client(credential)
+        try:
+            playlist_kind = spec.playlist_kind
+            playlist_uid = spec.playlist_uid
+            if playlist_kind is None or playlist_uid is None:
+                if spec.tag_id is None:
+                    raise GatewayNotFound("The requested genre ranking does not exist")
+                tag_result = await client.tags(spec.tag_id)
+                playlist_ids = list(getattr(tag_result, "ids", None) or [])
+                if spec.playlist_index >= len(playlist_ids):
+                    raise GatewayNotFound("The requested genre ranking does not exist")
+                playlist_id = playlist_ids[spec.playlist_index]
+                playlist_kind = getattr(playlist_id, "kind", None)
+                playlist_uid = getattr(playlist_id, "uid", None)
+            playlist = await client.users_playlists(kind=playlist_kind, user_id=playlist_uid)
+            if playlist is None:
+                raise GatewayNotFound("The requested genre ranking does not exist")
+            shorts = list(getattr(playlist, "tracks", None) or [])[:500]
+            hydrated = await self._hydrate_shorts(client, shorts)
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except GatewayError:
+            raise
+        except NotFoundError as exc:
+            raise GatewayNotFound("The requested genre ranking does not exist") from exc
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("The genre ranking is temporarily unavailable") from exc
+
+        tracks = _restore_short_order(shorts, hydrated)
+        if spec.require_cyrillic:
+            tracks = [track for track in tracks if _track_has_cyrillic(track)]
+        if not tracks:
+            raise GatewayNotFound("The requested genre ranking is empty")
+        result = GlobalGenreDTO(
+            id=spec.id,
+            title=spec.title,
+            scope=spec.scope,
+            source_title=str(getattr(playlist, "title", None) or "").strip() or None,
+            tracks=[map_track(track) for track in tracks],
+        )
+        self._global_genre_cache[spec.id] = (time.monotonic() + 900, result.model_copy(deep=True))
+        return result
 
     async def _genre_rankings(self, client: Any) -> list[GlobalGenreDTO]:
         tag_ids = list(dict.fromkeys(spec.tag_id for spec in GENRE_RANKING_SPECS if spec.tag_id is not None))

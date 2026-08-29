@@ -230,6 +230,19 @@ export interface GlobalTopPayload {
   genres: GlobalGenre[]
 }
 
+export interface GlobalTopSection {
+  kind: 'chart' | 'releases' | 'genre'
+  id: string
+  title: string
+  description?: string
+  total: number
+  offset: number
+  limit: number
+  hasMore: boolean
+  tracks: Track[]
+  releases: GlobalRelease[]
+}
+
 export interface SocialComment {
   id: string
   postId: string

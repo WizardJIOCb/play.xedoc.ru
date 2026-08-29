@@ -59,9 +59,9 @@ export function Sidebar({
           <Sparkles size={20} />
           <span>Рекомендации</span>
         </button>
-        <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} aria-label="Топ треков">
+        <button className={topActive ? 'is-active' : ''} type="button" onClick={onTop} aria-label="Топ моих треков">
           <BarChart3 size={20} />
-          <span>Топ треков</span>
+          <span>Топ моих треков</span>
         </button>
         <button className={globalTopActive ? 'is-active' : ''} type="button" onClick={onGlobalTop} aria-label="Топ глобальный">
           <Globe2 size={20} />
