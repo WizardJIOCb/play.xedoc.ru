@@ -46,6 +46,7 @@ describe('PublicSharePage', () => {
     render(<PublicSharePage token="public-token" />)
 
     expect(await screen.findByRole('heading', { name: 'Shared signal' })).toBeInTheDocument()
+    expect(screen.getByText('ТРЕК ДЛЯ ВАС')).toBeInTheDocument()
     await waitFor(() => expect(mocks.playQueue).toHaveBeenCalledWith([sharedTrack], 0, undefined, 83))
     expect(screen.getByText('Поделился Rodion · старт с 1:23')).toBeInTheDocument()
   })
