@@ -75,11 +75,16 @@ describe('GlobalTopPage genre rankings', () => {
       clientWidth: { configurable: true, value: 300 },
       scrollWidth: { configurable: true, value: 800 },
       scrollLeft: { configurable: true, writable: true, value: 0 },
+      scrollBy: { configurable: true, value: vi.fn() },
     })
 
     fireEvent.scroll(tabs)
     expect(scroll).toHaveClass('can-scroll-right')
     expect(scroll).not.toHaveClass('can-scroll-left')
+    const nextButton = screen.getByRole('button', { name: 'Прокрутить жанры вправо' })
+    expect(nextButton).toBeEnabled()
+    fireEvent.click(nextButton)
+    expect(tabs.scrollBy).toHaveBeenCalledWith({ left: 260, behavior: 'smooth' })
 
     tabs.scrollLeft = 220
     fireEvent.scroll(tabs)
@@ -89,6 +94,7 @@ describe('GlobalTopPage genre rankings', () => {
     fireEvent.scroll(tabs)
     expect(scroll).toHaveClass('can-scroll-left')
     expect(scroll).not.toHaveClass('can-scroll-right')
+    expect(nextButton).toBeDisabled()
   })
 
   it('opens a rubric from its heading and loads the remaining tracks', async () => {
