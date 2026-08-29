@@ -71,6 +71,7 @@ from .models import (
     SocialCommentDTO,
     SocialPostCreateRequest,
     SocialPostDTO,
+    SocialPostViewDTO,
     ShareLinkDTO,
     SessionPayload,
     SessionPreferences,
@@ -1347,6 +1348,14 @@ def create_app(
         if post is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
         return SocialPostDTO.model_validate(post)
+
+    @app.post("/api/social/posts/{post_id}/view", response_model=SocialPostViewDTO)
+    async def record_social_post_view(post_id: str, request: Request) -> SocialPostViewDTO:
+        await enforce_rate_limit(request, "social-post-view", maximum=300, window_seconds=60)
+        view_count = store.record_social_post_view(_safe_social_id(post_id))
+        if view_count is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
+        return SocialPostViewDTO(view_count=view_count)
 
     @app.get(
         "/api/social/posts/{post_id}/comments",

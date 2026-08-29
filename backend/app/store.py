@@ -290,11 +290,13 @@ class CredentialStore:
                     visibility TEXT NOT NULL CHECK (visibility IN ('public', 'friends')),
                     attachments TEXT NOT NULL DEFAULT '[]',
                     poll_question TEXT,
+                    view_count INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 )
                 """
             )
+            self._ensure_column(connection, "social_post", "view_count", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_social_post_created ON social_post(created_at DESC)"
             )
@@ -1761,6 +1763,20 @@ class CredentialStore:
                 )
             return self._social_post_row(connection, post_id, viewer_id)
 
+    def record_social_post_view(self, post_id: str) -> int | None:
+        viewer_id = self.current_user_id()
+        with self._lock, self._connect() as connection:
+            if not self._can_view_social_post(connection, post_id, viewer_id):
+                return None
+            cursor = connection.execute(
+                "UPDATE social_post SET view_count = view_count + 1 WHERE id = ?",
+                (post_id,),
+            )
+            if cursor.rowcount != 1:
+                return None
+            row = connection.execute("SELECT view_count FROM social_post WHERE id = ?", (post_id,)).fetchone()
+            return int(row[0]) if row is not None else None
+
     def create_social_comment(self, post_id: str, body: str, parent_id: str | None = None) -> dict:
         viewer_id = self.current_user_id()
         now = int(time.time())
@@ -2009,7 +2025,8 @@ class CredentialStore:
                    p.attachments, p.poll_question, p.created_at,
                    (SELECT COUNT(*) FROM social_post_like l WHERE l.post_id = p.id),
                    (SELECT COUNT(*) FROM social_comment c WHERE c.post_id = p.id AND c.deleted_at IS NULL),
-                   EXISTS(SELECT 1 FROM social_post_like l WHERE l.post_id = p.id AND l.user_id = ?)
+                   EXISTS(SELECT 1 FROM social_post_like l WHERE l.post_id = p.id AND l.user_id = ?),
+                   p.view_count
             FROM social_post p JOIN app_user u ON u.id = p.owner_id
             WHERE p.id = ?
             """,
@@ -2031,6 +2048,7 @@ class CredentialStore:
             "likeCount": int(row[9]),
             "commentCount": int(row[10]),
             "liked": bool(row[11]),
+            "viewCount": int(row[12]),
             "isOwner": str(row[1]) == viewer_id,
         }
         if row[7]:

@@ -157,6 +157,10 @@ export async function toggleSocialPostLike(postId: string, liked: boolean): Prom
   return request<SocialPost>(`/social/posts/${encodeURIComponent(postId)}/like`, { method: liked ? 'PUT' : 'DELETE' })
 }
 
+export async function recordSocialPostView(postId: string): Promise<{ viewCount: number }> {
+  return request<{ viewCount: number }>(`/social/posts/${encodeURIComponent(postId)}/view`, { method: 'POST' })
+}
+
 export async function getSocialComments(postId: string): Promise<SocialComment[]> {
   return request<SocialComment[]>(`/social/posts/${encodeURIComponent(postId)}/comments`)
 }

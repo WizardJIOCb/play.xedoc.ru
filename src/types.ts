@@ -214,6 +214,7 @@ export interface SocialPost {
   createdAt: number
   likeCount: number
   commentCount: number
+  viewCount: number
   liked: boolean
   isOwner: boolean
   rankingReason?: string

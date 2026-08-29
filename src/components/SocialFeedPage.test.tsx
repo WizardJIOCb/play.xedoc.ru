@@ -13,19 +13,22 @@ const fixture: SocialPost = {
   createdAt: 1_700_000_000,
   likeCount: 0,
   commentCount: 0,
+  viewCount: 0,
   liked: false,
   isOwner: true,
   rankingReason: 'Свежая запись',
 }
 
-const apiMocks = vi.hoisted(() => ({ getSocialFeed: vi.fn(), createSocialPost: vi.fn() }))
+const apiMocks = vi.hoisted(() => ({ getSocialFeed: vi.fn(), createSocialPost: vi.fn(), recordSocialPostView: vi.fn() }))
 apiMocks.getSocialFeed.mockResolvedValue({ posts: [fixture], algorithm: 'xedoc-social-v1' })
 apiMocks.createSocialPost.mockResolvedValue({ ...fixture, id: 'social-post-2', body: 'Вторая запись' })
+apiMocks.recordSocialPostView.mockResolvedValue({ viewCount: 1 })
 
 vi.mock('../lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/api')>()),
   getSocialFeed: apiMocks.getSocialFeed,
   createSocialPost: apiMocks.createSocialPost,
+  recordSocialPostView: apiMocks.recordSocialPostView,
 }))
 
 describe('SocialFeedPage', () => {

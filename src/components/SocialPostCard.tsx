@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronUp, ExternalLink, Globe2, Heart, LoaderCircle, LockKeyhole, MessageCircle, Music2, Pause, Play, Reply, Send, Trash2, UsersRound } from 'lucide-react'
-import { useState } from 'react'
-import { createSocialComment, deleteSocialComment, deleteSocialPost, getSocialComments, toggleSocialPostLike, voteSocialPoll } from '../lib/api'
+import { ChevronDown, ChevronUp, ExternalLink, Eye, Globe2, Heart, LoaderCircle, LockKeyhole, MessageCircle, Music2, Pause, Play, Reply, Send, Trash2, UsersRound } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createSocialComment, deleteSocialComment, deleteSocialPost, getSocialComments, recordSocialPostView, toggleSocialPostLike, voteSocialPoll } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
 import type { SocialAttachment, SocialComment, SocialPost } from '../types'
 import { CoverArt } from './CoverArt'
@@ -66,12 +66,47 @@ function CommentNode({ comment, postId, readonly, onChanged }: { comment: Social
 }
 
 export function SocialPostCard({ post: initialPost, onDeleted, readonly = false }: { post: SocialPost; onDeleted?: (id: string) => void; readonly?: boolean }) {
+  const cardRef = useRef<HTMLElement>(null)
   const [post, setPost] = useState(initialPost)
   const [busy, setBusy] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [comments, setComments] = useState<SocialComment[]>()
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsError, setCommentsError] = useState('')
+  useEffect(() => {
+    const storageKey = `xedoc-social-post-viewed-v1:${initialPost.id}`
+    const hasRecorded = () => {
+      try { return window.sessionStorage.getItem(storageKey) === '1' } catch { return false }
+    }
+    if (hasRecorded()) return
+
+    let cancelled = false
+    let started = false
+    const recordView = () => {
+      if (started || hasRecorded()) return
+      started = true
+      try { window.sessionStorage.setItem(storageKey, '1') } catch { /* private storage may be unavailable */ }
+      void recordSocialPostView(initialPost.id)
+        .then(({ viewCount }) => { if (!cancelled) setPost((current) => ({ ...current, viewCount })) })
+        .catch(() => {
+          try { window.sessionStorage.removeItem(storageKey) } catch { /* retry on a later visit */ }
+        })
+    }
+
+    const element = cardRef.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      recordView()
+      return () => { cancelled = true }
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.35)) {
+        recordView()
+        observer.disconnect()
+      }
+    }, { threshold: 0.35 })
+    observer.observe(element)
+    return () => { cancelled = true; observer.disconnect() }
+  }, [initialPost.id])
   const update = async (action: () => Promise<SocialPost>) => {
     setBusy(true)
     try { setPost(await action()) } finally { setBusy(false) }
@@ -86,7 +121,7 @@ export function SocialPostCard({ post: initialPost, onDeleted, readonly = false 
     setCommentsOpen((value) => !value)
     if (!comments) void refreshComments()
   }
-  return <article className="social-card">
+  return <article className="social-card" ref={cardRef}>
     <header className="social-card__header">
       <a className="social-avatar" href={`/users/${encodeURIComponent(post.author.username)}`}>{post.author.displayName.trim().charAt(0).toUpperCase() || 'X'}</a>
       <span><a href={`/users/${encodeURIComponent(post.author.username)}`}><strong>{post.author.displayName}</strong></a><small>@{post.author.username} · {timeLabel(post.createdAt)}</small></span>
@@ -100,7 +135,7 @@ export function SocialPostCard({ post: initialPost, onDeleted, readonly = false 
       const percentage = post.poll!.totalVotes ? Math.round(option.votes / post.poll!.totalVotes * 100) : 0
       return <button key={option.id} className={option.selected ? 'is-selected' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => voteSocialPoll(post.id, option.id))}><span style={{ width: `${percentage}%` }} /><em>{option.text}</em><small>{percentage}%</small></button>
     })}<small>{post.poll.totalVotes.toLocaleString('ru-RU')} голосов</small></section>}
-    <footer className="social-card__actions"><button className={post.liked ? 'is-active' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => toggleSocialPostLike(post.id, !post.liked))}><Heart size={18} fill={post.liked ? 'currentColor' : 'none'} /> {post.likeCount || ''}</button><button className={commentsOpen ? 'is-active' : ''} type="button" aria-label={`Комментарии: ${post.commentCount}`} onClick={toggleComments}><MessageCircle size={18} /> {post.commentCount || ''}</button></footer>
+    <footer className="social-card__actions"><button className={post.liked ? 'is-active' : ''} type="button" disabled={busy || readonly} onClick={() => void update(() => toggleSocialPostLike(post.id, !post.liked))}><Heart size={18} fill={post.liked ? 'currentColor' : 'none'} /> {post.likeCount || ''}</button><button className={commentsOpen ? 'is-active' : ''} type="button" aria-label={`Комментарии: ${post.commentCount}`} onClick={toggleComments}><MessageCircle size={18} /> {post.commentCount || ''}</button><span className="social-card__views" aria-label={`Просмотры: ${post.viewCount}`} title="Просмотры"><Eye size={18} /> {post.viewCount}</span></footer>
     {commentsOpen && <section className="social-comments">{!readonly && <CommentComposer postId={post.id} placeholder="Оставить комментарий" onSent={() => void refreshComments()} />}{commentsLoading && !comments ? <div className="social-comments__state"><LoaderCircle className="spin" size={18} /> Загружаем комментарии…</div> : comments?.length ? <div className="social-comments__tree">{comments.map((comment) => <CommentNode key={comment.id} comment={comment} postId={post.id} readonly={readonly} onChanged={() => void refreshComments()} />)}</div> : <div className="social-comments__state">Комментариев пока нет.</div>}{commentsError && <div className="form-error">{commentsError}</div>}</section>}
   </article>
 }
