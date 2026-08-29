@@ -25,9 +25,11 @@ describe('recent playlists sidebar', () => {
         collapsed={false}
         recommendationsActive={false}
         topActive={false}
+        globalTopActive={false}
         onView={onView}
         onRecommendations={() => undefined}
         onTop={() => undefined}
+        onGlobalTop={() => undefined}
         onPlaylist={onPlaylist}
         onCreatePlaylist={onCreatePlaylist}
         onToggle={() => undefined}

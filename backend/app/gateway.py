@@ -13,6 +13,9 @@ from .config import Settings
 from .models import (
     BootstrapPayload,
     DiscoveryRecommendationsPayload,
+    GlobalGenreDTO,
+    GlobalReleaseDTO,
+    GlobalTopPayload,
     LikedTracksPayload,
     PlaylistDTO,
     SearchPayload,
@@ -92,6 +95,8 @@ class MusicGateway(Protocol):
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload: ...
 
+    async def global_top(self, credential: Credential) -> GlobalTopPayload: ...
+
     async def discovery_recommendations(
         self,
         credential: Credential,
@@ -116,6 +121,7 @@ class YandexMusicGateway:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._liked_cache: dict[str, tuple[float, set[str | None]]] = {}
+        self._global_top_cache: tuple[float, GlobalTopPayload] | None = None
 
     def _client(self, token: str | None = None) -> Any:
         if ClientAsync is None or Request is None:
@@ -322,6 +328,96 @@ class YandexMusicGateway:
             tracks=[map_track(track, liked_ids=liked_ids).model_copy(update={"liked": True}) for track in hydrated],
             total=len(shorts),
         )
+
+    async def global_top(self, credential: Credential) -> GlobalTopPayload:
+        cached = self._global_top_cache
+        if cached is not None and cached[0] > time.monotonic():
+            return cached[1].model_copy(deep=True)
+
+        client = await self._authorized_client(credential)
+        try:
+            chart_result, releases_result, genres_result = await asyncio.gather(
+                client.chart("world"),
+                client.new_releases(),
+                client.genres(),
+                return_exceptions=True,
+            )
+            _raise_if_authorization_failed(chart_result, releases_result, genres_result)
+            if isinstance(chart_result, Exception) or chart_result is None:
+                raise GatewayUnavailable("The global chart is temporarily unavailable")
+
+            chart_playlist = getattr(chart_result, "chart", None)
+            chart_shorts = list(getattr(chart_playlist, "tracks", None) or [])[:50]
+            chart_tracks_raw = await self._hydrate_shorts(client, chart_shorts)
+            if not chart_tracks_raw:
+                raise GatewayUnavailable("The global chart is temporarily unavailable")
+
+            release_ids = [] if isinstance(releases_result, Exception) else list(
+                getattr(releases_result, "new_releases", None) or []
+            )[:12]
+            album_results = await asyncio.gather(
+                *(client.albums_with_tracks(album_id) for album_id in release_ids),
+                return_exceptions=True,
+            )
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except GatewayError:
+            raise
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("The global chart is temporarily unavailable") from exc
+
+        genre_titles = _genre_title_map([] if isinstance(genres_result, Exception) else list(genres_result or []))
+        chart = [map_track(track) for track in chart_tracks_raw]
+        releases: list[GlobalReleaseDTO] = []
+        for album in album_results:
+            if isinstance(album, Exception) or album is None or getattr(album, "id", None) is None:
+                continue
+            volumes = list(getattr(album, "volumes", None) or [])
+            album_tracks = _dedupe_tracks([track for volume in volumes for track in list(volume or [])])[:5]
+            artists = [
+                str(getattr(artist, "name"))
+                for artist in list(getattr(album, "artists", None) or [])
+                if getattr(artist, "name", None)
+            ]
+            genre_id = str(getattr(album, "genre", None) or "").strip()
+            release_date = str(getattr(album, "release_date", None) or "").strip() or None
+            releases.append(GlobalReleaseDTO(
+                id=str(album.id),
+                title=str(getattr(album, "title", None) or "Новый релиз"),
+                artists=artists or ["Разные исполнители"],
+                cover_url=_image_url(getattr(album, "cover_uri", None) or getattr(album, "og_image", None)),
+                release_date=release_date,
+                genre=genre_titles.get(genre_id, genre_id.replace("-", " ").title()) or None,
+                tracks=[map_track(track) for track in album_tracks],
+            ))
+
+        buckets: dict[str, list[Any]] = {}
+        for track in chart_tracks_raw:
+            albums = list(getattr(track, "albums", None) or [])
+            genre_id = str(getattr(albums[0], "genre", None) or "").strip() if albums else ""
+            if genre_id:
+                buckets.setdefault(genre_id, []).append(track)
+        ranked_genres = sorted(buckets.items(), key=lambda item: len(item[1]), reverse=True)[:6]
+        genres = [
+            GlobalGenreDTO(
+                id=genre_id,
+                title=genre_titles.get(genre_id, genre_id.replace("-", " ").title()),
+                tracks=[map_track(track) for track in tracks[:10]],
+            )
+            for genre_id, tracks in ranked_genres
+        ]
+        edition_date = time.strftime("%Y-%m-%d", time.gmtime())
+        payload = GlobalTopPayload(
+            generated_at=int(time.time()),
+            edition_date=edition_date,
+            chart_title=str(getattr(chart_result, "title", None) or "Мировой чарт"),
+            chart_description=(str(getattr(chart_result, "chart_description", "")).strip() or None),
+            chart=chart,
+            releases=releases,
+            genres=genres,
+        )
+        self._global_top_cache = (time.monotonic() + 900, payload.model_copy(deep=True))
+        return payload
 
     async def discovery_recommendations(
         self,
@@ -780,6 +876,21 @@ def _image_url(value: Any, size: str = "400x400") -> str | None:
     if url.startswith("https://"):
         return url
     return f"https://{url.lstrip('/')}"
+
+
+def _genre_title_map(genres: list[Any]) -> dict[str, str]:
+    titles: dict[str, str] = {}
+
+    def visit(items: list[Any]) -> None:
+        for genre in items:
+            identifier = str(getattr(genre, "id", None) or "").strip()
+            title = str(getattr(genre, "title", None) or getattr(genre, "full_title", None) or "").strip()
+            if identifier and title:
+                titles[identifier] = title
+            visit(list(getattr(genre, "sub_genres", None) or []))
+
+    visit(genres)
+    return titles
 
 
 def _track_id(track: Any) -> str:

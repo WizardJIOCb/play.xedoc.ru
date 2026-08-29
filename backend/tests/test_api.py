@@ -102,6 +102,30 @@ def test_guest_can_open_and_stream_public_top_tracks(client: TestClient, fake_ga
     assert stream.headers["location"] == "https://music.yandex.net/get-mp3/test/track.mp3"
 
 
+def test_global_top_is_public_and_uses_signed_catalog_streams(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    seed_shared_catalog(store)
+
+    response = client.get("/api/global-top")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chartTitle"] == "Мировой чарт"
+    assert body["editionDate"] == "2026-08-29"
+    assert [track["id"] for track in body["chart"]] == ["101", "202"]
+    assert body["releases"][0]["title"] == "Fresh Fixture"
+    assert body["genres"][0]["title"] == "Electronic"
+    assert "liked" not in body["chart"][0]
+    assert body["chart"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+
+    unlock(client)
+    authenticated = client.get("/api/global-top")
+    assert authenticated.status_code == 200
+    assert authenticated.json()["chart"][0]["streamUrl"] == "/api/tracks/101/stream"
+
+
 def test_profile_search_accepts_at_username(client: TestClient, fake_gateway: FakeGateway) -> None:
     connect(client)
     response = client.get("/api/search", params={"q": "@testuser"})
@@ -848,6 +872,7 @@ def test_vk_browser_import_collects_full_list_in_background(client: TestClient) 
     received = client.post("/api/import/vk/jobs", json=payload)
     assert received.status_code == 200
     assert received.json()["total"] == 2
+    assert received.json()["reused"] == 0
 
     job = None
     for _ in range(20):
@@ -866,13 +891,14 @@ def test_vk_browser_import_collects_full_list_in_background(client: TestClient) 
         "/api/import/vk/jobs",
         json={
             **payload,
-            "tracks": payload["tracks"] + [{"title": "Third", "artist": "Another Artist"}],
+            "tracks": [{"title": "Third", "artist": "Another Artist"}] + payload["tracks"],
         },
     )
     assert extended.status_code == 200
     assert extended.json()["total"] == 3
     assert extended.json()["processed"] == 2
     assert extended.json()["matched"] == 1
+    assert extended.json()["reused"] == 2
 
 
 def test_interrupted_vk_import_is_resumable_after_restart(settings, store: CredentialStore) -> None:

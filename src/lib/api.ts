@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GlobalTopPayload, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -209,6 +209,10 @@ export async function getAllLikedTracks(): Promise<LikedTracksPayload> {
 
 export async function getListeningStats(): Promise<ListeningStats> {
   return request<ListeningStats>('/listening-stats')
+}
+
+export async function getGlobalTop(): Promise<GlobalTopPayload> {
+  return request<GlobalTopPayload>('/global-top')
 }
 
 export async function getDiscoveryRecommendations(): Promise<DiscoveryRecommendations> {
