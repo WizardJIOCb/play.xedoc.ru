@@ -730,7 +730,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current
     if (!current || !audio) return
-    if (isRemotePlayback) {
+    if (isRemotePlayback || (playbackOwnerRef.current && playbackOwnerRef.current !== playbackTabIdRef.current)) {
       clearDemoTimer()
       audio.pause()
       return
@@ -750,13 +750,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current
     if (!audio || !current) return
     clearDemoTimer()
-    if (isRemotePlayback) {
+    if (isRemotePlayback || (playbackOwnerRef.current && playbackOwnerRef.current !== playbackTabIdRef.current)) {
       audio.pause()
       return
     }
     if (current.id.startsWith('demo-')) {
       audio.pause()
-      if (isPlaying) {
+      if (isPlaying && playbackOwnerRef.current === playbackTabIdRef.current) {
         claimPlaybackFocus()
         timerRef.current = window.setInterval(() => {
           setProgress((value) => {
@@ -773,7 +773,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     if (isPlaying) void audio.play()
       .then(() => {
-        if (isPlayingRef.current && !audio.paused) claimPlaybackFocus()
+        if (isPlayingRef.current && playbackOwnerRef.current === playbackTabIdRef.current && !audio.paused) claimPlaybackFocus()
       })
       .catch(() => {
         isPlayingRef.current = false
