@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlayerProvider } from '../player/PlayerContext'
 import { PublicProfilePage } from './PublicProfilePage'
 
@@ -32,6 +32,12 @@ vi.mock('../lib/api', async (importOriginal) => {
 })
 
 describe('PublicProfilePage', () => {
+  afterEach(() => {
+    cleanup()
+    window.localStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
   it('shows public identity, aggregate stats and public playlists', async () => {
     render(<PlayerProvider><PublicProfilePage username="listener" /></PlayerProvider>)
 
@@ -56,5 +62,20 @@ describe('PublicProfilePage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Renamed Listener' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('pauses the current now-playing track from its profile card', async () => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    render(<PlayerProvider><PublicProfilePage username="listener" /></PlayerProvider>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Включить Live track' }))
+    const pauseButton = screen.getByRole('button', { name: 'Пауза Live track' })
+    expect(pauseButton.querySelector('.lucide-pause')).toBeInTheDocument()
+    fireEvent.click(pauseButton)
+    expect(screen.getByRole('button', { name: 'Включить Live track' }).querySelector('.lucide-play')).toBeInTheDocument()
   })
 })

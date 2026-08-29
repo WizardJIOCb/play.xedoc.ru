@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, ExternalLink, Globe2, Heart, LoaderCircle, LockKeyhole, MessageCircle, Music2, Play, Reply, Send, Trash2, UsersRound } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, Globe2, Heart, LoaderCircle, LockKeyhole, MessageCircle, Music2, Pause, Play, Reply, Send, Trash2, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { createSocialComment, deleteSocialComment, deleteSocialPost, getSocialComments, toggleSocialPostLike, voteSocialPoll } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
@@ -23,7 +23,11 @@ function Attachment({ attachment }: { attachment: SocialAttachment }) {
       : <a className="social-card__link" href={attachment.url} target="_blank" rel="noreferrer"><Play size={20} /><span><strong>{attachment.title || 'Открыть видео'}</strong><small>{attachment.url}</small></span><ExternalLink size={16} /></a>
   }
   if (attachment.kind === 'link') return <a className="social-card__link" href={attachment.url} target="_blank" rel="noreferrer">{attachment.imageUrl && <img src={attachment.imageUrl} alt="" />}<span><strong>{attachment.title || 'Открыть ссылку'}</strong><small>{attachment.description || attachment.url}</small></span><ExternalLink size={16} /></a>
-  if (attachment.kind === 'track') return <button className="social-card__music" type="button" onClick={() => player.playTrack(attachment.track)}><CoverArt title={attachment.track.title} url={attachment.track.coverUrl} tone={attachment.track.coverTone} className="social-card__music-cover" /><span><small>ТРЕК</small><strong>{attachment.track.title}</strong><em>{attachment.track.artists.join(', ')}</em></span><Play size={19} fill="currentColor" /></button>
+  if (attachment.kind === 'track') {
+    const active = player.current?.id === attachment.track.id
+    const playing = active && player.isPlaying
+    return <button className="social-card__music" type="button" aria-label={`${playing ? 'Пауза' : 'Включить'} ${attachment.track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(attachment.track)}><CoverArt title={attachment.track.title} url={attachment.track.coverUrl} tone={attachment.track.coverTone} className="social-card__music-cover" /><span><small>ТРЕК</small><strong>{attachment.track.title}</strong><em>{attachment.track.artists.join(', ')}</em></span>{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
+  }
   return <button className="social-card__music" type="button" disabled={!attachment.playlist.tracks?.length} onClick={() => attachment.playlist.tracks?.length && player.playQueue(attachment.playlist.tracks)}><CoverArt title={attachment.playlist.title} url={attachment.playlist.coverUrl} tone={attachment.playlist.coverTone} className="social-card__music-cover" /><span><small>ПЛЕЙЛИСТ</small><strong>{attachment.playlist.title}</strong><em>{attachment.playlist.trackCount} треков</em></span><Music2 size={19} /></button>
 }
 

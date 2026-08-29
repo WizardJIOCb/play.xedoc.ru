@@ -13,6 +13,7 @@ import {
   LogIn,
   LogOut,
   Menu,
+  Pause,
   Play,
   Pencil,
   Radio,
@@ -79,15 +80,16 @@ const pathView = (): ViewId => {
   return 'home'
 }
 
-function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
+export function QuickTrack({ track, context }: { track: Track; context: Track[] }) {
   const player = usePlayer()
   const active = player.current?.id === track.id
+  const playing = active && player.isPlaying
   const toggle = () => active ? player.togglePlayback() : player.playTrack(track, context)
   return (
-    <div className={`quick-track ${active ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${active ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle() } }}>
+    <div className={`quick-track ${playing ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle() } }}>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="quick-track__cover" />
       <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
-      <span className="quick-track__play"><Play size={16} fill="currentColor" /></span>
+      <span className="quick-track__play">{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</span>
     </div>
   )
 }

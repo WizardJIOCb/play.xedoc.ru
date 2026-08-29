@@ -17,6 +17,17 @@ const post: SocialPost = {
   isOwner: true,
 }
 
+const trackPost: SocialPost = {
+  ...post,
+  id: 'post-track',
+  body: '',
+  attachments: [{
+    kind: 'track',
+    track: { id: 'shared-track', title: 'Shared track', artists: ['Artist'], durationMs: 180_000, streamUrl: '/api/public-search/tracks/shared-track/stream' },
+  }],
+  commentCount: 0,
+}
+
 const commentTree: SocialComment[] = [{
   id: 'root-comment',
   postId: post.id,
@@ -60,7 +71,11 @@ vi.mock('../lib/api', async (importOriginal) => ({
 }))
 
 describe('SocialPostCard comments', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    window.localStorage.clear()
+    vi.unstubAllGlobals()
+  })
 
   beforeEach(() => {
     apiMocks.getSocialComments.mockReset().mockResolvedValue(commentTree)
@@ -103,5 +118,20 @@ describe('SocialPostCard comments', () => {
     fireEvent.click(within(replyComposer!).getByRole('button', { name: 'Отправить' }))
 
     await waitFor(() => expect(apiMocks.createSocialComment).toHaveBeenCalledWith(post.id, 'Ответ из интерфейса', 'root-comment'))
+  })
+
+  it('pauses a playing track attachment and restores its play icon', () => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    render(<PlayerProvider><SocialPostCard post={trackPost} readonly /></PlayerProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Shared track' }))
+    const pauseButton = screen.getByRole('button', { name: 'Пауза Shared track' })
+    expect(pauseButton.querySelector('.lucide-pause')).toBeInTheDocument()
+    fireEvent.click(pauseButton)
+    expect(screen.getByRole('button', { name: 'Включить Shared track' }).querySelector('.lucide-play')).toBeInTheDocument()
   })
 })
