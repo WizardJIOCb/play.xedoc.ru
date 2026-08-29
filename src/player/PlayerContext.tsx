@@ -27,7 +27,7 @@ interface PlayerContextValue {
   shuffle: boolean
   repeat: boolean
   playTrack: (track: Track, context?: Track[], startIndex?: number, source?: PlaybackSource) => void
-  playQueue: (tracks: Track[], startIndex?: number, source?: PlaybackSource) => void
+  playQueue: (tracks: Track[], startIndex?: number, source?: PlaybackSource, startAtSeconds?: number) => void
   togglePlayback: () => void
   next: () => void
   previous: () => void
@@ -260,13 +260,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     timerRef.current = null
   }, [])
 
-  const selectTrackAt = useCallback((items: Track[], index: number) => {
+  const selectTrackAt = useCallback((items: Track[], index: number, startAtSeconds = 0) => {
     const track = items[index]
     if (!track) return
-    pendingSeekRef.current = null
+    const requestedStartAt = Number.isFinite(startAtSeconds) ? startAtSeconds : 0
+    const startAt = Math.max(0, Math.min(requestedStartAt, Math.max(0, Math.floor(track.durationMs / 1000) - 1)))
+    pendingSeekRef.current = startAt > 0 ? startAt : null
     setCurrentIndex(index)
     setCurrent(track)
-    setProgress(0)
+    setProgress(startAt)
     setDuration(track.durationMs / 1000)
     setIsPlaying(true)
     setSelectionVersion((value) => value + 1)
@@ -409,7 +411,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current
     if (!current || !audio) return
     setDuration(current.durationMs / 1000)
-    setProgress(selectionVersion === 0 && pendingSeekRef.current !== null ? pendingSeekRef.current : 0)
+    setProgress(pendingSeekRef.current ?? 0)
     clearDemoTimer()
     if (current.id.startsWith('demo-')) {
       audio.pause()
@@ -472,7 +474,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     selectTrackAt(tracks, index)
   }, [selectTrackAt])
 
-  const playQueue = useCallback((tracks: Track[], startIndex = 0, source?: PlaybackSource) => {
+  const playQueue = useCallback((tracks: Track[], startIndex = 0, source?: PlaybackSource, startAtSeconds = 0) => {
     if (!tracks.length) return
     const normalized = normalizeQueue(tracks)
     const index = Math.max(0, Math.min(Math.trunc(startIndex), normalized.length - 1))
@@ -480,7 +482,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaybackSource(source)
     trackGoal('music_play', { source: source ? 'playlist' : 'collection', queueSize: normalized.length })
     if (source) trackGoal('playlist_play', { source: 'xedoc', queueSize: normalized.length })
-    selectTrackAt(normalized, index)
+    selectTrackAt(normalized, index, startAtSeconds)
   }, [selectTrackAt])
 
   const togglePlayback = useCallback(() => {

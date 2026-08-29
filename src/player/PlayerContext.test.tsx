@@ -209,6 +209,16 @@ describe('PlayerProvider state', () => {
     expect(FakeAudio.instances.at(-1)?.currentTime).toBe(67)
   })
 
+  it('starts a shared track from the requested second', () => {
+    renderPlayer()
+
+    act(() => player.playQueue([track('shared', 'Shared')], 0, undefined, 83))
+    expect(player.progress).toBe(83)
+    act(() => FakeAudio.instances.at(-1)?.emit('loadedmetadata'))
+    expect(FakeAudio.instances.at(-1)?.currentTime).toBe(83)
+    expect(FakeAudio.instances.at(-1)?.play).toHaveBeenCalled()
+  })
+
   it('ignores invalid persisted playback data', () => {
     window.localStorage.setItem('xedoc-player-state-v1', JSON.stringify({ queue: [{ id: 5 }], currentIndex: 9, progress: 'bad' }))
     renderPlayer()

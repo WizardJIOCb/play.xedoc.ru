@@ -62,7 +62,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
 
       <div className="player-bar__tools">
         {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
-        {!readonly && track && <ShareButton track={track} />}
+        {!readonly && track && <ShareButton track={track} startAtSeconds={player.progress} />}
         {!readonly && track && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}
         {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}
       </div>

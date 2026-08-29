@@ -21,12 +21,16 @@ describe('ShareButton', () => {
     writeText.mockResolvedValue(undefined)
   })
 
-  it('copies a public track link directly without opening the native share dialog', async () => {
-    render(<ShareButton track={{ id: 'track-1', title: 'Signal', artists: ['Artist'], durationMs: 180_000 }} />)
+  it('copies an autoplay track link with the selected start second', async () => {
+    render(<ShareButton track={{ id: 'track-1', title: 'Signal', artists: ['Artist'], durationMs: 180_000 }} startAtSeconds={67.8} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Поделиться: Signal' }))
+    expect(screen.getByRole('dialog', { name: 'С какой секунды включить?' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Начать с секунды' })).toHaveValue(67)
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Начать с секунды' }), { target: { value: '83' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:3000/share/public-token'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:3000/share/public-token?t=83'))
     expect(nativeShare).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('Ссылка скопирована')
   })
