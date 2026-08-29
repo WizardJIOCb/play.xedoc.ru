@@ -1004,6 +1004,14 @@ class CredentialStore:
             for row in rows
         }
 
+    def track_play_count(self, track_id: str) -> int:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT play_count FROM user_track_listening_stat WHERE user_id = ? AND track_id = ?",
+                (self.current_user_id(), track_id),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
     def save_track_like(self, track_id: str, payload: dict) -> None:
         value = dict(payload)
         value.pop("streamUrl", None)

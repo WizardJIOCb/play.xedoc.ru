@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   updateNowPlaying: vi.fn(),
   clearNowPlaying: vi.fn(),
   recordListeningEvent: vi.fn(),
+  getTrackPlayCount: vi.fn(),
 }))
 
 vi.mock('../lib/api', () => api)
@@ -41,6 +42,7 @@ describe('content search page', () => {
     api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
     api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
     api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
+    api.getTrackPlayCount.mockReset().mockResolvedValue(0)
     vi.stubGlobal('Audio', FakeAudio)
   })
 

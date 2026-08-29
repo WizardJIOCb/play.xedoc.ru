@@ -297,6 +297,7 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_
     assert added.status_code == 200
     assert added.json()["trackCount"] == 1
     assert added.json()["tracks"][0]["id"] == "101"
+    assert client.get("/api/tracks/101/play-count").json() == {"playCount": 0}
 
     image = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 40).decode()
     covered = client.put(f"/api/local-playlists/{playlist_id}/cover", json={"dataUrl": image})
@@ -308,6 +309,7 @@ def test_local_playlist_crud_cover_tracks_and_learning(client: TestClient, fake_
         "listenedMs": 20_000,
     })
     assert listened.json() == {"ok": True}
+    assert client.get("/api/tracks/101/play-count").json() == {"playCount": 1}
     bootstrap = client.get("/api/bootstrap").json()
     assert bootstrap["localPlaylists"][0]["id"] == playlist_id
     assert bootstrap["xedocRecommendations"][0]["id"] == "101"
