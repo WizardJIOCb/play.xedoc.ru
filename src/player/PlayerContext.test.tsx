@@ -274,6 +274,27 @@ describe('PlayerProvider state', () => {
       expect(secondPlayer.playbackSource).toEqual({ playlistId: 'road-trip', playlistTitle: 'Road trip' })
     })
     expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
+    expect(FakeAudio.instances[1].load).not.toHaveBeenCalled()
+  })
+
+  it('keeps the audio owner playing while a mirrored tab reloads', async () => {
+    render(<PlayerProvider><PairProbe slot="first" /></PlayerProvider>)
+    act(() => firstPlayer.playQueue([track('first-tab', 'First tab')]))
+    await waitFor(() => expect(FakeAudio.instances[0].play).toHaveBeenCalled())
+
+    const mirroredView = render(<PlayerProvider><PairProbe slot="second" /></PlayerProvider>)
+    await waitFor(() => expect(secondPlayer.isRemotePlayback).toBe(true))
+    mirroredView.unmount()
+    render(<PlayerProvider><PairProbe slot="second" /></PlayerProvider>)
+
+    await waitFor(() => {
+      expect(firstPlayer.isPlaying).toBe(true)
+      expect(secondPlayer.isPlaying).toBe(true)
+      expect(secondPlayer.isRemotePlayback).toBe(true)
+    })
+    expect(FakeAudio.instances[0].pause).not.toHaveBeenCalled()
+    expect(FakeAudio.instances[2].play).not.toHaveBeenCalled()
+    expect(FakeAudio.instances[2].load).not.toHaveBeenCalled()
   })
 
   it('lets a mirrored tab pause the tab that owns the audio', async () => {

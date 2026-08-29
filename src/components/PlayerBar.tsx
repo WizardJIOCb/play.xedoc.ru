@@ -19,7 +19,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
   const track = player.current
   const liked = track ? player.isTrackLiked(track) : false
   const sourceStatus = track
-    ? [player.isRemotePlayback ? 'Играет в другой вкладке' : player.isPlaying ? 'Играет' : 'Пауза', player.playbackSource?.playlistTitle].filter(Boolean).join(' · ')
+    ? [player.isRemotePlayback ? `${player.isPlaying ? 'Играет' : 'Пауза'} в другой вкладке` : player.isPlaying ? 'Играет' : 'Пауза', player.playbackSource?.playlistTitle].filter(Boolean).join(' · ')
     : undefined
 
   const onLike = async () => {
