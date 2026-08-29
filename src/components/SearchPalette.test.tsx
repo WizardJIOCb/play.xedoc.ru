@@ -69,11 +69,11 @@ describe('content search page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Включить Быстрый трек' }))
 
-    expect(screen.getByRole('button', { name: 'Пауза Быстрый трек' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Включить Другой трек' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пауза Быстрый трек' }).closest('.search-result')).toHaveClass('search-result--active')
+    expect(screen.getByRole('button', { name: 'Включить Другой трек' }).closest('.search-result')).not.toHaveClass('search-result--active')
 
     fireEvent.click(screen.getByRole('button', { name: 'Пауза Быстрый трек' }))
-    expect(screen.getByRole('button', { name: 'Включить Быстрый трек' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить Быстрый трек' }).closest('.search-result')).not.toHaveClass('search-result--active')
   })
 
   it('offers track search without registration in public mode', async () => {
