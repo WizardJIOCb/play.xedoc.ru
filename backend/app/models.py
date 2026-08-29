@@ -61,6 +61,8 @@ class GlobalReleaseDTO(APIModel):
 class GlobalGenreDTO(APIModel):
     id: str
     title: str
+    scope: Literal["international", "russian"] = "international"
+    source_title: str | None = None
     tracks: list[TrackDTO] = Field(default_factory=list)
 
 

@@ -75,7 +75,13 @@ TEST_GLOBAL_TOP = GlobalTopPayload(
         genre="Electronic",
         tracks=[TEST_DISCOVERY_TRACK],
     )],
-    genres=[GlobalGenreDTO(id="electronic", title="Electronic", tracks=[TEST_DISCOVERY_TRACK])],
+    genres=[GlobalGenreDTO(
+        id="electronic",
+        title="Electronic",
+        scope="international",
+        source_title="100 electronic hits",
+        tracks=[TEST_DISCOVERY_TRACK],
+    )],
 )
 
 TEST_CREDENTIAL = Credential(
