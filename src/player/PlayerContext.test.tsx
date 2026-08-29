@@ -371,6 +371,33 @@ describe('PlayerProvider state', () => {
     expect(screen.getByText(/Играет/)).toHaveTextContent('Играет (666-й раз)')
   })
 
+  it('keeps the play ordinal when an older owner tab omits it from sync state', async () => {
+    api.getTrackPlayCount.mockResolvedValue(665)
+    renderPlayer()
+    const oftenPlayed = track('often-played', 'Often played')
+    act(() => player.playQueue([oftenPlayed]))
+    await waitFor(() => expect(player.playOrdinal).toBe(666))
+
+    const olderTab = new FakeBroadcastChannel('xedoc-playback-sync-v1')
+    act(() => olderTab.postMessage({
+      type: 'state',
+      sourceId: 'older-owner-tab',
+      updatedAt: Date.now() + 1_000,
+      isPlaying: true,
+      state: {
+        queue: [oftenPlayed],
+        currentIndex: 0,
+        progress: 12,
+        volume: .74,
+        shuffle: false,
+        repeat: false,
+      },
+    }))
+
+    await waitFor(() => expect(player.isRemotePlayback).toBe(true))
+    expect(player.playOrdinal).toBe(666)
+  })
+
   it('moves playback ownership when another tab starts a different track', async () => {
     render(<>
       <PlayerProvider><PairProbe slot="first" /></PlayerProvider>

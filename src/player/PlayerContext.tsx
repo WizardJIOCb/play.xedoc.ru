@@ -540,6 +540,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       lastPlaybackSyncRef.current = { sourceId: message.sourceId, updatedAt: message.updatedAt }
       const remoteCurrent = message.state.queue[message.state.currentIndex]
       if (!remoteCurrent) return
+      const localSnapshot = playbackSnapshotRef.current
+      const localCurrent = localSnapshot?.queue[localSnapshot.currentIndex]
+      const sameRemoteTrack = localCurrent?.id === remoteCurrent.id
       clearDemoTimer()
       audioRef.current?.pause()
       pendingSeekRef.current = message.state.progress
@@ -550,7 +553,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setProgress(message.state.progress)
       setDuration(remoteCurrent.durationMs / 1000)
       setVolumeState(message.state.volume)
-      setPlayOrdinal(message.state.playOrdinal)
+      setPlayOrdinal((ordinal) => message.state.playOrdinal
+        ?? (sameRemoteTrack ? ordinal : undefined)
+        ?? Math.max(1, Math.floor(remoteCurrent.playCount || 0) + 1))
       setShuffle(message.state.shuffle)
       setRepeat(message.state.repeat)
       setPlaybackSource((source) => (
