@@ -521,7 +521,18 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .global-genre-scopes button small { color: var(--muted-2); font-size: var(--type-micro); font-weight: 650; }
 .global-genre-scopes button.is-active { background: var(--acid); color: #11140a; box-shadow: 0 8px 22px rgba(194,255,59,.12); }
 .global-genre-scopes button.is-active small { color: rgba(17,20,10,.66); }
-.global-genre-tabs { margin-bottom: 13px; display: flex; gap: 7px; overflow-x: auto; scrollbar-width: thin; }
+.global-genre-scroll { margin: 2px 0 15px; position: relative; isolation: isolate; }
+.global-genre-scroll::before, .global-genre-scroll::after { content: ''; width: 66px; position: absolute; z-index: 2; top: 0; bottom: 12px; pointer-events: none; opacity: 0; transition: opacity .18s ease; }
+.global-genre-scroll::before { left: 0; background: linear-gradient(90deg,rgba(12,14,17,.98),transparent); }
+.global-genre-scroll::after { right: 0; background: linear-gradient(90deg,transparent,rgba(12,14,17,.98)); }
+.global-genre-scroll.can-scroll-left::before, .global-genre-scroll.can-scroll-right::after { opacity: 1; }
+.global-genre-scroll__hint { width: 29px; height: 29px; display: grid; place-items: center; position: absolute; z-index: 3; right: 8px; top: 7px; border: 1px solid rgba(194,255,59,.22); border-radius: 50%; background: rgba(20,24,21,.92); color: var(--acid); box-shadow: 0 5px 18px rgba(0,0,0,.32); opacity: 0; pointer-events: none; transform: translateX(5px); transition: opacity .18s ease,transform .18s ease; }
+.global-genre-scroll.can-scroll-right .global-genre-scroll__hint { opacity: 1; transform: translateX(0); }
+.global-genre-tabs { padding: 0 54px 11px 0; display: flex; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; scroll-padding-inline: 8px 58px; scrollbar-color: rgba(194,255,59,.58) rgba(255,255,255,.055); scrollbar-gutter: stable; scrollbar-width: thin; }
+.global-genre-tabs::-webkit-scrollbar { height: 8px; }
+.global-genre-tabs::-webkit-scrollbar-track { border-radius: 999px; background: rgba(255,255,255,.055); }
+.global-genre-tabs::-webkit-scrollbar-thumb { min-width: 48px; border: 2px solid rgba(15,17,20,.94); border-radius: 999px; background: linear-gradient(90deg,rgba(135,174,49,.88),var(--acid)); }
+.global-genre-tabs::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg,#a9df3c,#ddff79); }
 .global-genre-tabs button { min-height: 43px; padding: 0 13px; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); color: var(--muted); font: inherit; font-size: var(--type-label); cursor: pointer; }
 .global-genre-tabs button small { min-width: 21px; height: 21px; display: grid; place-items: center; border-radius: 6px; background: rgba(255,255,255,.055); font-size: var(--type-micro); }
 .global-genre-tabs button.is-active { border-color: rgba(87,211,255,.28); background: rgba(87,211,255,.08); color: #7ee3ff; }
