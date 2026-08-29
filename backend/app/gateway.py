@@ -217,6 +217,14 @@ class MusicGateway(Protocol):
 
     async def artist_tracks(self, credential: Credential, artist_name: str) -> SearchPayload: ...
 
+    async def album(
+        self,
+        credential: Credential,
+        album_id: str | None,
+        title: str,
+        artist_name: str | None,
+    ) -> GlobalReleaseDTO: ...
+
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload: ...
 
     async def global_top(self, credential: Credential) -> GlobalTopPayload: ...
@@ -438,6 +446,74 @@ class YandexMusicGateway:
         tracks = list(getattr(artist_page, "tracks", None) or [])
         liked_ids = await self._liked_ids(client, credential.user_uid)
         return SearchPayload(tracks=[map_track(track, liked_ids=liked_ids) for track in tracks])
+
+    async def album(
+        self,
+        credential: Credential,
+        album_id: str | None,
+        title: str,
+        artist_name: str | None,
+    ) -> GlobalReleaseDTO:
+        client = await self._authorized_client(credential)
+        try:
+            resolved_id = album_id
+            if resolved_id is None:
+                query = " ".join(part for part in (artist_name, title) if part)
+                result = await client.search(query, type_="album", page=0)
+                candidates = list(getattr(getattr(result, "albums", None), "results", None) or [])
+                normalized_title = title.strip().casefold()
+                exact = [
+                    item for item in candidates
+                    if str(getattr(item, "title", "")).strip().casefold() == normalized_title
+                    and getattr(item, "id", None) is not None
+                ]
+                if artist_name and exact:
+                    normalized_artist = artist_name.strip().casefold()
+                    matching_artist = next((
+                        item for item in exact
+                        if any(
+                            str(getattr(artist, "name", "")).strip().casefold() == normalized_artist
+                            for artist in list(getattr(item, "artists", None) or [])
+                        )
+                    ), None)
+                    album_match = matching_artist or exact[0]
+                else:
+                    album_match = exact[0] if exact else None
+                if album_match is None:
+                    raise GatewayNotFound("Album was not found")
+                resolved_id = str(album_match.id)
+
+            album = await client.albums_with_tracks(_number_or_text(resolved_id))
+            if album is None or getattr(album, "id", None) is None:
+                raise GatewayNotFound("Album was not found")
+            volumes = list(getattr(album, "volumes", None) or [])
+            tracks = _dedupe_tracks([track for volume in volumes for track in list(volume or [])])
+            liked_ids = await self._liked_ids(client, credential.user_uid)
+        except UnauthorizedError as exc:
+            raise GatewayUnauthorized("Yandex Music session expired") from exc
+        except NotFoundError as exc:
+            raise GatewayNotFound("Album was not found") from exc
+        except GatewayError:
+            raise
+        except YandexMusicError as exc:
+            raise GatewayUnavailable("Yandex Music album is temporarily unavailable") from exc
+
+        artists = [
+            str(getattr(artist, "name"))
+            for artist in list(getattr(album, "artists", None) or [])
+            if getattr(artist, "name", None)
+        ]
+        release_date = str(getattr(album, "release_date", None) or "").strip() or None
+        genre = str(getattr(album, "genre", None) or "").strip() or None
+        return GlobalReleaseDTO(
+            id=str(album.id),
+            title=str(getattr(album, "title", None) or title),
+            artists=artists or ([artist_name] if artist_name else ["Разные исполнители"]),
+            cover_url=_image_url(getattr(album, "cover_uri", None) or getattr(album, "og_image", None)),
+            release_date=release_date,
+            genre=genre,
+            tracks=[map_track(track, liked_ids=liked_ids) for track in tracks],
+        )
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         client = await self._authorized_client(credential)
@@ -1051,6 +1127,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
     ]
     albums = list(getattr(track, "albums", None) or [])
     album = getattr(albums[0], "title", None) if albums else None
+    album_id = getattr(albums[0], "id", None) if albums else None
     release_date = getattr(albums[0], "release_date", None) if albums else None
     explicit_value = getattr(track, "explicit", None)
     if explicit_value is None:
@@ -1061,6 +1138,7 @@ def map_track(track: Any, *, liked_ids: set[str | None] | None = None) -> TrackD
         title=str(getattr(track, "title", None) or "Без названия"),
         artists=artists or ["Неизвестный исполнитель"],
         album=str(album) if album else None,
+        album_id=str(album_id) if album_id is not None else None,
         release_date=str(release_date).strip() or None if release_date else None,
         duration_ms=max(0, int(getattr(track, "duration_ms", None) or 0)),
         cover_url=_image_url(getattr(track, "cover_uri", None) or getattr(track, "og_image", None)),

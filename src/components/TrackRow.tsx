@@ -4,6 +4,7 @@ import { usePlayer, type PlaybackSource } from '../player/PlayerContext'
 import type { Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
+import { AlbumLink } from './AlbumLink'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
 import { useAuthPrompt } from '../auth/AuthPromptContext'
@@ -57,7 +58,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
         <span className="track-row__title-line"><strong>{track.title}</strong>{Boolean(track.playCount) && <span className="track-row__plays" data-tooltip={`${track.playCount} прослушиваний · учтено после 20 секунд воспроизведения`}><Headphones size={11} /> {track.playCount}</span>}</span>
         <ArtistLinks artists={track.artists} />
       </div>
-      {!compact && <span className="track-row__album">{track.album}</span>}
+      {!compact && <AlbumLink track={track} />}
       {!readonly && <button className={`icon-button track-row__like ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={liking} onClick={() => void onLike()}>
         <Heart size={17} fill={liked ? 'currentColor' : 'none'} />
       </button>}

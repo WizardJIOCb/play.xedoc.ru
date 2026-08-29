@@ -657,6 +657,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .track-row__cover { width: 48px; height: 48px; border-radius: 8px; }
 .track-row__meta { min-width: 0; display: grid; gap: 4px; }
 .track-row__meta strong, .track-row__meta span, .track-row__album { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-row__album-link { display: block; text-decoration: none; transition: color .16s ease; }
+.track-row__album-link:hover, .track-row__album-link:focus-visible { color: var(--acid); text-decoration: underline; text-underline-offset: 3px; }
 .track-row__meta strong { font-size: var(--type-body); }
 .track-row__meta span, .track-row__album, .track-row__duration { color: var(--muted); font-size: var(--type-caption); }
 .track-row__title-line { min-width: 0; display: flex; align-items: center; gap: 7px; }
@@ -788,6 +790,11 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .playlist-detail__summary p { margin: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 10px; color: var(--muted); font-size: var(--type-micro); }
 .playlist-detail__summary strong { color: #cfd2d7; }
 .playlist-detail__summary i { width: 3px; height: 3px; border-radius: 50%; background: var(--muted-2); }
+.album-page__hero .eyebrow { display: flex; align-items: center; gap: 7px; }
+.album-page__artists { display: block; margin-top: 8px; font-size: var(--type-body); }
+.album-page__artists a { color: #dfe2e7; }
+.album-page__hero .playlist-detail__meta > p { margin-top: 8px; }
+.album-page__state { min-height: 320px; }
 .playlist-detail__loading { min-height: 190px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); font-size: var(--type-label); }
 .playlist-description { max-width: 780px; line-height: 1.55; white-space: pre-wrap; }
 .playlist-description a { color: var(--acid); text-decoration: underline; text-decoration-color: rgba(217,255,99,.35); text-underline-offset: 3px; }
@@ -875,7 +882,6 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .player-bar__track strong { font-size: var(--type-body); }
 .player-bar__track span { color: var(--muted); font-size: var(--type-caption); }
 .player-bar__track .player-bar__source-status { color: var(--acid); font-size: var(--type-micro); }
-.player-bar__track .player-bar__play-ordinal { display: inline-flex; margin-left: 3px; padding: 1px 6px; border: 1px solid rgba(217,255,99,.22); border-radius: 999px; background: rgba(217,255,99,.08); color: #e1ff86; font-size: .625rem; font-weight: 800; line-height: 1.3; vertical-align: 1px; }
 .player-bar__center { display: grid; gap: 7px; }
 .player-bar__controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .player-bar__controls .icon-button { width: 31px; height: 31px; }

@@ -27,6 +27,9 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
   const playbackStatus = track
     ? player.isRemotePlayback ? `${player.isPlaying ? 'Играет' : 'Пауза'} в другой вкладке` : player.isPlaying ? 'Играет' : 'Пауза'
     : undefined
+  const playbackLabel = playbackStatus
+    ? `${playbackStatus}${player.playOrdinal ? ` ${formatPlayOrdinal(player.playOrdinal)}` : ''}`
+    : undefined
 
   useEffect(() => {
     if (player.volume > 0) lastAudibleVolumeRef.current = player.volume
@@ -61,9 +64,8 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         <div>
           <strong>{track?.title || 'Выберите музыку'}</strong>
           {track ? <ArtistLinks artists={track.artists} /> : <span>Плейлисты и рекомендации ждут вас</span>}
-          {playbackStatus && <span className="player-bar__source-status" aria-live="polite">
-            {playbackStatus}
-            {player.playOrdinal && <> <span className="player-bar__play-ordinal">({formatPlayOrdinal(player.playOrdinal)})</span></>}
+          {playbackLabel && <span className="player-bar__source-status" aria-live="polite">
+            {playbackLabel}
             {player.playbackSource?.playlistTitle && <> · {player.playbackSource.playlistTitle}</>}
           </span>}
         </div>

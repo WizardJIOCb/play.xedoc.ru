@@ -32,6 +32,7 @@ TEST_TRACK = TrackDTO(
     title="Test Signal",
     artists=["Fixture Artist"],
     album="Fixture Album",
+    album_id="fixture-album-1",
     duration_ms=201_000,
     cover_url="https://avatars.yandex.net/example/400x400",
     cover_tone="blue",
@@ -59,6 +60,16 @@ TEST_DISCOVERY_TRACK = TrackDTO(
     cover_tone="lime",
     liked=False,
     stream_url="/api/tracks/202/stream",
+)
+
+TEST_ALBUM = GlobalReleaseDTO(
+    id="fixture-album-1",
+    title="Fixture Album",
+    artists=["Fixture Artist"],
+    cover_url="https://avatars.yandex.net/album/400x400",
+    release_date="2026-08-29",
+    genre="Electronic",
+    tracks=[TEST_TRACK],
 )
 
 TEST_GLOBAL_TOP = GlobalTopPayload(
@@ -102,6 +113,7 @@ class FakeGateway:
         self.playlist_ids: list[str] = []
         self.search_queries: list[str] = []
         self.artist_queries: list[str] = []
+        self.album_queries: list[tuple[str | None, str, str | None]] = []
         self.discovery_contexts: list[tuple[list[str], set[str]]] = []
         self.discovery_account_signals: list[bool] = []
 
@@ -139,6 +151,16 @@ class FakeGateway:
     async def artist_tracks(self, credential: Credential, artist_name: str) -> SearchPayload:
         self.artist_queries.append(artist_name)
         return SearchPayload(tracks=[TEST_TRACK])
+
+    async def album(
+        self,
+        credential: Credential,
+        album_id: str | None,
+        title: str,
+        artist_name: str | None,
+    ) -> GlobalReleaseDTO:
+        self.album_queries.append((album_id, title, artist_name))
+        return TEST_ALBUM.model_copy(deep=True)
 
     async def liked_tracks(self, credential: Credential) -> LikedTracksPayload:
         return LikedTracksPayload(tracks=[TEST_TRACK], total=1)

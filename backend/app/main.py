@@ -42,6 +42,7 @@ from .models import (
     DeviceAuthStartDTO,
     DiscoveryRecommendationsPayload,
     ExternalTrackDTO,
+    GlobalReleaseDTO,
     GlobalTopPayload,
     GlobalTopSectionPayload,
     FriendStatusDTO,
@@ -1077,6 +1078,58 @@ def create_app(
         _set_local_like_state(tracks, store)
         _decorate_tracks_with_stats(tracks, store)
         return payload
+
+    @app.get("/api/albums", response_model=GlobalReleaseDTO, response_model_exclude_none=True)
+    async def album_detail(
+        request: Request,
+        title: str = Query(min_length=1, max_length=300),
+        album_id: str | None = Query(default=None, alias="id", max_length=128),
+        artist: str | None = Query(default=None, max_length=300),
+    ) -> GlobalReleaseDTO:
+        await enforce_rate_limit(request, "album-detail", maximum=120, window_seconds=60)
+        public_catalog = optional_app_user(request) is None
+        personal_credential = None if public_catalog else optional_credential(request)
+        shared_catalog = personal_credential is None
+        try:
+            credential = store.load_catalog_credential() if shared_catalog else personal_credential
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        if credential is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
+        try:
+            album = await gateway.album(
+                credential,
+                _safe_identifier(album_id) if album_id else None,
+                title.strip(),
+                artist.strip() if artist else None,
+            )
+            if public_catalog:
+                album.tracks = [
+                    track.model_copy(update={
+                        "liked": None,
+                        "play_count": None,
+                        "total_listened_ms": None,
+                        "last_played_at": None,
+                        "stream_url": (
+                            f"/api/public-search/tracks/{quote(track.id, safe='')}/stream"
+                            f"?ticket={quote(signer.issue(f'public-search:{track.id}', 600), safe='')}"
+                        ),
+                    })
+                    for track in album.tracks
+                ]
+            else:
+                if shared_catalog:
+                    _set_local_like_state(album.tracks, store)
+                else:
+                    _mark_local_likes(album.tracks, store)
+                _decorate_tracks_with_stats(album.tracks, store)
+            return album
+        except GatewayUnauthorized as exc:
+            if personal_credential is not None:
+                store.delete()
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен") from exc
+        except GatewayError as exc:
+            raise _http_gateway_error(exc) from exc
 
     @app.get("/api/global-top/section", response_model=GlobalTopSectionPayload, response_model_exclude_none=True)
     async def global_top_section(

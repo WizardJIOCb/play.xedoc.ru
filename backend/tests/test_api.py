@@ -128,6 +128,29 @@ def test_global_top_is_public_and_uses_signed_catalog_streams(
     assert authenticated.json()["chart"][0]["streamUrl"] == "/api/tracks/101/stream"
 
 
+def test_album_page_is_public_and_uses_an_exact_album_identifier(
+    client: TestClient,
+    store: CredentialStore,
+    fake_gateway: FakeGateway,
+) -> None:
+    seed_shared_catalog(store)
+
+    response = client.get("/api/albums", params={
+        "id": "fixture-album-1",
+        "title": "Fixture Album",
+        "artist": "Fixture Artist",
+    })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == "fixture-album-1"
+    assert body["title"] == "Fixture Album"
+    assert body["tracks"][0]["albumId"] == "fixture-album-1"
+    assert body["tracks"][0]["streamUrl"].startswith("/api/public-search/tracks/101/stream?ticket=")
+    assert "liked" not in body["tracks"][0]
+    assert fake_gateway.album_queries == [("fixture-album-1", "Fixture Album", "Fixture Artist")]
+
+
 def test_global_top_sections_are_public_and_paginated(
     client: TestClient,
     store: CredentialStore,

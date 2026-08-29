@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildSession, createPlaylistShare, createTrackShare, decodeVKImportFragment, getBootstrap, getPublicShare, registerAccount, searchMusic } from './api'
+import { buildSession, createPlaylistShare, createTrackShare, decodeVKImportFragment, getAlbum, getBootstrap, getPublicShare, registerAccount, searchMusic } from './api'
 
 describe('API error handling', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -21,6 +21,15 @@ describe('API error handling', () => {
     await searchMusic('GUNSHIP', true)
 
     expect(fetchMock).toHaveBeenCalledWith('/api/search?q=GUNSHIP&artist=true', expect.objectContaining({ credentials: 'include' }))
+  })
+
+  it('requests an album by its stable id with title and artist fallback data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'album-3', title: '3 To The Floor', artists: ['PILOTE'], tracks: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getAlbum({ id: 'album-3', title: '3 To The Floor', artist: 'PILOTE' })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/albums?title=3+To+The+Floor&id=album-3&artist=PILOTE', expect.objectContaining({ credentials: 'include' }))
   })
 
   it('does not fabricate a session when the server is unavailable', async () => {

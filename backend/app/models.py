@@ -22,6 +22,7 @@ class TrackDTO(APIModel):
     title: str
     artists: list[str]
     album: str | None = None
+    album_id: str | None = None
     release_date: str | None = None
     duration_ms: int = 0
     cover_url: str | None = None

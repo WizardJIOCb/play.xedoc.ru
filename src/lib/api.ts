@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -114,6 +114,13 @@ export async function getLatestVKImportJob(): Promise<VKImportJob | null> {
 export async function searchMusic(query: string, artistOnly = false): Promise<SearchPayload> {
   if (!query.trim()) return { tracks: [], playlists: [], profiles: [] }
   return request<SearchPayload>(`/search?q=${encodeURIComponent(query)}${artistOnly ? '&artist=true' : ''}`)
+}
+
+export async function getAlbum(input: { id?: string; title: string; artist?: string }): Promise<GlobalRelease> {
+  const params = new URLSearchParams({ title: input.title })
+  if (input.id) params.set('id', input.id)
+  if (input.artist) params.set('artist', input.artist)
+  return request<GlobalRelease>(`/albums?${params}`)
 }
 
 export async function searchProfiles(query: string): Promise<ProfileSummary[]> {
