@@ -161,23 +161,32 @@ def test_genre_rankings_keep_separate_international_and_russian_catalogs(setting
 
     class GenreClient:
         async def tags(self, tag_id):
-            max_index = max(spec.playlist_index for spec in GENRE_RANKING_SPECS if spec.tag_id == tag_id)
+            max_index = max(
+                spec.playlist_index
+                for spec in GENRE_RANKING_SPECS
+                if spec.tag_id == tag_id
+            )
             return SimpleNamespace(ids=[
                 SimpleNamespace(kind=f"{tag_id}-{index}", uid="curator")
                 for index in range(max_index + 1)
             ])
 
         async def users_playlists(self, *, kind, user_id):
-            assert user_id == "curator"
+            track = _track(f"track-{kind}", f"artist-{kind}")
+            if (user_id, kind) == ("103372440", 1628):
+                track.title = "Русский метал"
+            else:
+                assert user_id == "curator"
             return SimpleNamespace(
                 title=f"Playlist {kind}",
-                tracks=[SimpleNamespace(track=_track(f"track-{kind}", f"artist-{kind}"))],
+                tracks=[SimpleNamespace(track=track)],
             )
 
     rankings = asyncio.run(gateway._genre_rankings(GenreClient()))
 
     assert [genre.id for genre in rankings] == [spec.id for spec in GENRE_RANKING_SPECS]
     assert len([genre for genre in rankings if genre.scope == "international"]) == 12
-    assert len([genre for genre in rankings if genre.scope == "russian"]) == 7
+    assert len([genre for genre in rankings if genre.scope == "russian"]) == 8
     assert next(genre for genre in rankings if genre.id == "metal").source_title == "Playlist metal-1"
+    assert next(genre for genre in rankings if genre.id == "rusmetal").tracks[0].title == "Русский метал"
     assert next(genre for genre in rankings if genre.id == "ruspunk").tracks[0].id == "track-punk-1"

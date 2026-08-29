@@ -77,8 +77,11 @@ class GenreRankingSpec:
     id: str
     title: str
     scope: str
-    tag_id: str
-    playlist_index: int
+    tag_id: str | None
+    playlist_index: int = 0
+    playlist_uid: str | None = None
+    playlist_kind: int | str | None = None
+    require_cyrillic: bool = False
 
 
 GENRE_RANKING_SPECS = (
@@ -95,6 +98,15 @@ GENRE_RANKING_SPECS = (
     GenreRankingSpec("blues", "Блюз", "international", "blues", 1),
     GenreRankingSpec("classical", "Классика", "international", "classical", 1),
     GenreRankingSpec("rusrock", "Русский рок", "russian", "rusrock", 0),
+    GenreRankingSpec(
+        "rusmetal",
+        "Русский метал",
+        "russian",
+        None,
+        playlist_uid="103372440",
+        playlist_kind=1628,
+        require_cyrillic=True,
+    ),
     GenreRankingSpec("ruspunk", "Русский панк", "russian", "punk", 1),
     GenreRankingSpec("rusrap", "Русский рэп", "russian", "rusrap", 0),
     GenreRankingSpec("ruspop", "Русская поп-музыка", "russian", "ruspop", 0),
@@ -456,46 +468,57 @@ class YandexMusicGateway:
         return payload
 
     async def _genre_rankings(self, client: Any) -> list[GlobalGenreDTO]:
-        tag_ids = list(dict.fromkeys(spec.tag_id for spec in GENRE_RANKING_SPECS))
+        tag_ids = list(dict.fromkeys(spec.tag_id for spec in GENRE_RANKING_SPECS if spec.tag_id is not None))
         tag_results = await asyncio.gather(
             *(client.tags(tag_id) for tag_id in tag_ids),
             return_exceptions=True,
         )
         tags_by_id = dict(zip(tag_ids, tag_results, strict=True))
 
-        selections: list[tuple[GenreRankingSpec, Any]] = []
+        selections: list[tuple[GenreRankingSpec, Any, Any]] = []
         for spec in GENRE_RANKING_SPECS:
+            if spec.playlist_uid is not None and spec.playlist_kind is not None:
+                selections.append((spec, spec.playlist_kind, spec.playlist_uid))
+                continue
+            if spec.tag_id is None:
+                continue
             tag_result = tags_by_id[spec.tag_id]
             if isinstance(tag_result, Exception) or tag_result is None:
                 continue
             playlist_ids = list(getattr(tag_result, "ids", None) or [])
             if spec.playlist_index >= len(playlist_ids):
                 continue
-            selections.append((spec, playlist_ids[spec.playlist_index]))
+            playlist_id = playlist_ids[spec.playlist_index]
+            selections.append((
+                spec,
+                getattr(playlist_id, "kind", None),
+                getattr(playlist_id, "uid", None),
+            ))
 
         playlist_results = await asyncio.gather(
             *(
                 client.users_playlists(
-                    kind=getattr(playlist_id, "kind", None),
-                    user_id=getattr(playlist_id, "uid", None),
+                    kind=playlist_kind,
+                    user_id=playlist_uid,
                 )
-                for _, playlist_id in selections
+                for _, playlist_kind, playlist_uid in selections
             ),
             return_exceptions=True,
         )
         shorts_by_selection: list[list[Any]] = []
-        for playlist in playlist_results:
+        for (spec, _, _), playlist in zip(selections, playlist_results, strict=True):
             if isinstance(playlist, Exception) or playlist is None:
                 shorts_by_selection.append([])
             else:
-                shorts_by_selection.append(list(getattr(playlist, "tracks", None) or [])[:10])
+                limit = 40 if spec.require_cyrillic else 10
+                shorts_by_selection.append(list(getattr(playlist, "tracks", None) or [])[:limit])
         hydrated_results = await asyncio.gather(
             *(self._hydrate_shorts(client, shorts) for shorts in shorts_by_selection),
             return_exceptions=True,
         )
 
         rankings: list[GlobalGenreDTO] = []
-        for (spec, _), playlist, shorts, hydrated in zip(
+        for (spec, _, _), playlist, shorts, hydrated in zip(
             selections,
             playlist_results,
             shorts_by_selection,
@@ -505,6 +528,8 @@ class YandexMusicGateway:
             if isinstance(playlist, Exception) or isinstance(hydrated, Exception):
                 continue
             tracks = _restore_short_order(shorts, list(hydrated or []))
+            if spec.require_cyrillic:
+                tracks = [track for track in tracks if _track_has_cyrillic(track)]
             if not tracks:
                 continue
             source_title = str(getattr(playlist, "title", None) or "").strip() or None
@@ -1057,6 +1082,17 @@ def _restore_short_order(shorts: list[Any], hydrated: list[Any]) -> list[Any]:
         seen.add(identifier)
         ordered.append(track)
     return ordered
+
+
+def _track_has_cyrillic(track: Any) -> bool:
+    values = [
+        str(getattr(track, "title", None) or ""),
+        *(
+            str(getattr(artist, "name", None) or "")
+            for artist in list(getattr(track, "artists", None) or [])
+        ),
+    ]
+    return any("\u0400" <= character <= "\u04ff" for value in values for character in value)
 
 
 def _identifier_aliases_for(values: Iterable[str]) -> set[str]:
