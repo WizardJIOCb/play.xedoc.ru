@@ -89,7 +89,7 @@ export function PublicSharePage({ token }: { token: string }) {
         <section className="public-share-hero">
           <CoverArt title={title} url={coverUrl} tone={coverTone} className="public-share-cover" />
           <div className="public-share-copy">
-            <span className="eyebrow">{share.kind === 'track' ? 'ВАМ ПОДЕЛИЛИСЬ ТРЕКОМ' : 'ВАМ ПОДЕЛИЛИСЬ ПЛЕЙЛИСТОМ'}</span>
+            <span className="eyebrow">{share.kind === 'track' ? 'ТРЕК ДЛЯ ВАС' : 'ПЛЕЙЛИСТ ДЛЯ ВАС'}</span>
             <h1>{title}</h1>
             <p>{subtitle}</p>
             <small>Поделился {share.sharedBy}{share.kind === 'track' && startAtSeconds !== null ? ` · старт с ${formatTime(startAtSeconds)}` : ''}</small>
