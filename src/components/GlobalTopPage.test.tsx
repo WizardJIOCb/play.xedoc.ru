@@ -67,6 +67,30 @@ describe('GlobalTopPage genre rankings', () => {
     expect(mocks.playQueue).toHaveBeenCalledWith([russianPunk])
   })
 
+  it('shows edge hints only while more genres can be scrolled into view', () => {
+    render(<GlobalTopPage data={payload} loading={false} />)
+    const tabs = screen.getByRole('tablist', { name: /^Жанры:/ })
+    const scroll = tabs.parentElement
+    Object.defineProperties(tabs, {
+      clientWidth: { configurable: true, value: 300 },
+      scrollWidth: { configurable: true, value: 800 },
+      scrollLeft: { configurable: true, writable: true, value: 0 },
+    })
+
+    fireEvent.scroll(tabs)
+    expect(scroll).toHaveClass('can-scroll-right')
+    expect(scroll).not.toHaveClass('can-scroll-left')
+
+    tabs.scrollLeft = 220
+    fireEvent.scroll(tabs)
+    expect(scroll).toHaveClass('can-scroll-left', 'can-scroll-right')
+
+    tabs.scrollLeft = 490
+    fireEvent.scroll(tabs)
+    expect(scroll).toHaveClass('can-scroll-left')
+    expect(scroll).not.toHaveClass('can-scroll-right')
+  })
+
   it('opens a rubric from its heading and loads the remaining tracks', async () => {
     const chart = Array.from({ length: 25 }, (_, index) => track(`chart-${index + 1}`, `Chart track ${index + 1}`))
     mocks.getGlobalTopSection.mockReset().mockImplementation((_kind: string, _id: string | undefined, offset: number, limit: number) => Promise.resolve({

@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, Check, ChevronRight, Disc3, Globe2, Link2, LoaderCircle, Play, Radio, Sparkles } from 'lucide-react'
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { getGlobalTopSection } from '../lib/api'
 import { globalTopRoutePath, parseGlobalTopRoute, type GlobalTopRoute } from '../lib/globalTopRoutes'
 import { APP_NAVIGATE_EVENT, navigateApp } from '../lib/navigation'
@@ -53,6 +53,8 @@ export function GlobalTopPage({ data, loading, error }: { data?: GlobalTopPayloa
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [linkCopied, setLinkCopied] = useState(false)
+  const genreTabsRef = useRef<HTMLDivElement>(null)
+  const [genreScroll, setGenreScroll] = useState({ left: false, right: false })
   const genresByScope = useMemo(() => ({
     international: data?.genres.filter((genre) => genre.scope === 'international') || [],
     russian: data?.genres.filter((genre) => genre.scope === 'russian') || [],
@@ -71,6 +73,26 @@ export function GlobalTopPage({ data, loading, error }: { data?: GlobalTopPayloa
     () => scopedGenres.find((genre) => genre.id === genreId) || scopedGenres[0],
     [genreId, scopedGenres],
   )
+  const updateGenreScroll = useCallback(() => {
+    const element = genreTabsRef.current
+    if (!element) return
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft
+    const next = { left: element.scrollLeft > 8, right: remaining > 12 }
+    setGenreScroll((current) => current.left === next.left && current.right === next.right ? current : next)
+  }, [])
+
+  useEffect(() => {
+    const element = genreTabsRef.current
+    if (!element) return undefined
+    updateGenreScroll()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(updateGenreScroll)
+    observer?.observe(element)
+    window.addEventListener('resize', updateGenreScroll)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateGenreScroll)
+    }
+  }, [scopedGenres, updateGenreScroll])
   const detail = useMemo<DetailRequest | undefined>(() => {
     if (!detailRoute) return undefined
     if (detailRoute.kind === 'chart') return { kind: 'chart', title: data?.chartTitle || 'Мировой чарт', description: data?.chartDescription }
@@ -214,8 +236,11 @@ export function GlobalTopPage({ data, loading, error }: { data?: GlobalTopPayloa
             <button key={scope} className={scope === genreScope ? 'is-active' : ''} type="button" role="tab" aria-selected={scope === genreScope} onClick={() => selectGenreScope(scope)}>{genreScopeLabels[scope]}<small>{genresByScope[scope].length} жанров</small></button>
           ))}
         </div>
-        <div className="global-genre-tabs" role="tablist" aria-label={`Жанры: ${genreScopeLabels[genreScope].toLowerCase()} музыка`}>
-          {scopedGenres.map((genre) => <button key={genre.id} className={genre.id === selectedGenre.id ? 'is-active' : ''} type="button" role="tab" aria-selected={genre.id === selectedGenre.id} aria-controls="global-genre-panel" onClick={() => setGenreId(genre.id)}>{genre.title}<small>{genre.tracks.length}</small></button>)}
+        <div className={`global-genre-scroll${genreScroll.left ? ' can-scroll-left' : ''}${genreScroll.right ? ' can-scroll-right' : ''}`}>
+          <div ref={genreTabsRef} className="global-genre-tabs" role="tablist" aria-label={`Жанры: ${genreScopeLabels[genreScope].toLowerCase()} музыка`} onScroll={updateGenreScroll}>
+            {scopedGenres.map((genre) => <button key={genre.id} className={genre.id === selectedGenre.id ? 'is-active' : ''} type="button" role="tab" aria-selected={genre.id === selectedGenre.id} aria-controls="global-genre-panel" onClick={() => setGenreId(genre.id)}>{genre.title}<small>{genre.tracks.length}</small></button>)}
+          </div>
+          <span className="global-genre-scroll__hint" aria-hidden="true"><ChevronRight size={17} /></span>
         </div>
         <div className="global-genre-panel" id="global-genre-panel" role="tabpanel">
           <div><span className="eyebrow">{genreScope === 'international' ? 'ЗАРУБЕЖНЫЙ ТОП' : 'РУССКИЙ ТОП'}</span><h3><a className="global-top-heading-button" href={globalTopRoutePath({ kind: 'genre', id: selectedGenre.id })} onClick={(event) => openDetail(event, { kind: 'genre', id: selectedGenre.id, title: selectedGenre.title, description: selectedGenre.sourceTitle ? `По порядку в подборке «${selectedGenre.sourceTitle}»` : undefined })}>{selectedGenre.title}<ChevronRight size={20} /></a></h3>{selectedGenre.sourceTitle && <p>По порядку в подборке «{selectedGenre.sourceTitle}»</p>}<button className="secondary-button" type="button" disabled={!selectedGenre.tracks.length} onClick={() => player.playQueue(selectedGenre.tracks)}><Play size={16} fill="currentColor" /> Слушать жанр</button></div>
