@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Play, Search, UserRound, X } from 'lucide-react'
+import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Pause, Play, Search, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { searchMusic } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
@@ -76,10 +76,14 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
   }, [artistOnly, query])
 
   const tracks = query.trim() ? results.tracks : suggestions
+  const toggleTrack = (track: Track) => {
+    trackGoal('search_result_selected', { resultType: 'track' })
+    if (player.current?.id === track.id) player.togglePlayback()
+    else player.playTrack(track, tracks)
+  }
   const playFirst = () => {
     if (tracks[0]) {
-      trackGoal('search_result_selected', { resultType: 'track' })
-      player.playTrack(tracks[0], tracks)
+      toggleTrack(tracks[0])
     } else if (results.playlists[0]) {
       trackGoal('search_result_selected', { resultType: 'playlist' })
       onPlaylistPlay(results.playlists[0])
@@ -119,16 +123,19 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
             {!query.trim() && <small><Clock3 size={13} /> {publicMode ? 'без регистрации' : 'быстрый выбор'}</small>}
           </div>
           <div className="search-results">
-            {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => (
-              <div key={track.id} className={`search-result ${publicMode ? 'search-result--public' : ''}`}>
-                <div className="search-result__main" role="button" tabIndex={0} aria-label={`Включить ${track.title}`} onClick={() => { trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); trackGoal('search_result_selected', { resultType: 'track' }); player.playTrack(track, tracks) } }}>
-                  <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
-                  <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
-                  <Play size={17} fill="currentColor" />
+            {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => {
+              const playing = player.current?.id === track.id && player.isPlaying
+              return (
+                <div key={track.id} className={`search-result ${publicMode ? 'search-result--public' : ''}`}>
+                  <div className="search-result__main" role="button" tabIndex={0} aria-label={playing ? `Пауза ${track.title}` : `Включить ${track.title}`} onClick={() => toggleTrack(track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleTrack(track) } }}>
+                    <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
+                    <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
+                    {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+                  </div>
+                  {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
                 </div>
-                {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
-              </div>
-            ))}
+              )
+            })}
             {error && <div className="search-empty search-empty--error"><ArrowDownToLine size={24} /><p>{error}</p></div>}
             {publicMode && !query.trim() && <div className="search-empty"><Search size={24} /><p>Введите название трека или имя исполнителя.</p></div>}
             {query.trim() && !loading && !error && tracks.length === 0 && results.playlists.length === 0 && (results.profiles || []).length === 0 && <div className="search-empty"><ArrowDownToLine size={24} /><p>Ничего не нашли. Проверьте имя, логин или название музыки.</p></div>}
