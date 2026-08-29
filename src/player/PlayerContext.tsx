@@ -46,9 +46,17 @@ const PlayerContext = createContext<PlayerContextValue | null>(null)
 
 const HISTORY_STORAGE_KEY = 'xedoc-play-history-v1'
 const PLAYER_STORAGE_KEY = 'xedoc-player-state-v1'
+const PLAYBACK_FOCUS_CHANNEL = 'xedoc-playback-focus-v1'
+const PLAYBACK_FOCUS_STORAGE_KEY = 'xedoc-playback-focus-v1'
 const HISTORY_LIMIT = 50
 const QUEUE_STORAGE_LIMIT = 300
 const coverTones = new Set(['lime', 'violet', 'coral', 'blue', 'amber', 'mono'])
+
+interface PlaybackFocusClaim {
+  type: 'playing'
+  sourceId: string
+  claimedAt: number
+}
 
 interface PersistedPlaybackState {
   queue: Track[]
@@ -231,6 +239,23 @@ function streamUrl(track: Track) {
   return track.streamUrl || `/api/tracks/${encodeURIComponent(track.id)}/stream`
 }
 
+function playbackFocusClaim(value: unknown): PlaybackFocusClaim | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const claim = value as Partial<PlaybackFocusClaim>
+  if (claim.type !== 'playing' || typeof claim.sourceId !== 'string' || typeof claim.claimedAt !== 'number' || !Number.isFinite(claim.claimedAt)) return undefined
+  return { type: 'playing', sourceId: claim.sourceId, claimedAt: claim.claimedAt }
+}
+
+function isNewerPlaybackFocus(candidate: PlaybackFocusClaim, current: PlaybackFocusClaim) {
+  return candidate.claimedAt > current.claimedAt
+    || (candidate.claimedAt === current.claimedAt && candidate.sourceId > current.sourceId)
+}
+
+function playbackFocusNow() {
+  const value = typeof performance !== 'undefined' ? performance.timeOrigin + performance.now() : Date.now()
+  return Number.isFinite(value) ? value : Date.now()
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [restoredPlayback] = useState(readPlaybackState)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -239,6 +264,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const repeatRef = useRef(false)
   const presenceActiveRef = useRef(false)
   const recordedSelectionRef = useRef<number>(-1)
+  const playbackChannelRef = useRef<BroadcastChannel | null>(null)
+  const playbackTabIdRef = useRef(`${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`)
+  const lastPlaybackFocusRef = useRef<PlaybackFocusClaim>({ type: 'playing', sourceId: '', claimedAt: 0 })
   const pendingSeekRef = useRef<number | null>(restoredPlayback?.progress ?? null)
   const playbackSnapshotRef = useRef<PersistedPlaybackState | undefined>(undefined)
   const [current, setCurrent] = useState<Track | undefined>(() => restoredPlayback?.queue[restoredPlayback.currentIndex])
@@ -254,11 +282,69 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(() => restoredPlayback?.volume ?? .74)
   const [shuffle, setShuffle] = useState(() => restoredPlayback?.shuffle ?? false)
   const [repeat, setRepeat] = useState(() => restoredPlayback?.repeat ?? false)
+  const isPlayingRef = useRef(isPlaying)
+  isPlayingRef.current = isPlaying
 
   const clearDemoTimer = useCallback(() => {
     if (timerRef.current !== null) window.clearInterval(timerRef.current)
     timerRef.current = null
   }, [])
+
+  const claimPlaybackFocus = useCallback(() => {
+    const previous = lastPlaybackFocusRef.current
+    const claim: PlaybackFocusClaim = {
+      type: 'playing',
+      sourceId: playbackTabIdRef.current,
+      claimedAt: Math.max(playbackFocusNow(), previous.claimedAt + 1),
+    }
+    lastPlaybackFocusRef.current = claim
+    try {
+      playbackChannelRef.current?.postMessage(claim)
+    } catch {
+      // The storage event below remains available when BroadcastChannel closes unexpectedly.
+    }
+    try {
+      window.localStorage.setItem(PLAYBACK_FOCUS_STORAGE_KEY, JSON.stringify(claim))
+    } catch {
+      // Cross-tab focus is best-effort when the browser blocks both communication mechanisms.
+    }
+  }, [])
+
+  useEffect(() => {
+    const acceptClaim = (value: unknown) => {
+      const claim = playbackFocusClaim(value)
+      if (!claim || claim.sourceId === playbackTabIdRef.current || !isNewerPlaybackFocus(claim, lastPlaybackFocusRef.current)) return
+      lastPlaybackFocusRef.current = claim
+      clearDemoTimer()
+      audioRef.current?.pause()
+      isPlayingRef.current = false
+      setIsPlaying(false)
+    }
+
+    let channel: BroadcastChannel | undefined
+    try {
+      channel = new BroadcastChannel(PLAYBACK_FOCUS_CHANNEL)
+      playbackChannelRef.current = channel
+      channel.addEventListener('message', (event) => acceptClaim(event.data))
+    } catch {
+      playbackChannelRef.current = null
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== PLAYBACK_FOCUS_STORAGE_KEY || !event.newValue) return
+      try {
+        acceptClaim(JSON.parse(event.newValue))
+      } catch {
+        // Ignore malformed or unrelated values.
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      playbackChannelRef.current = null
+      channel?.close()
+    }
+  }, [clearDemoTimer])
 
   const selectTrackAt = useCallback((items: Track[], index: number, startAtSeconds = 0) => {
     const track = items[index]
@@ -428,6 +514,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (current.id.startsWith('demo-')) {
       audio.pause()
       if (isPlaying) {
+        claimPlaybackFocus()
         timerRef.current = window.setInterval(() => {
           setProgress((value) => {
             const limit = current.durationMs / 1000
@@ -441,10 +528,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       return clearDemoTimer
     }
-    if (isPlaying) void audio.play().catch(() => setIsPlaying(false))
+    if (isPlaying) void audio.play()
+      .then(() => {
+        if (isPlayingRef.current && !audio.paused) claimPlaybackFocus()
+      })
+      .catch(() => {
+        isPlayingRef.current = false
+        setIsPlaying(false)
+      })
     else audio.pause()
     return undefined
-  }, [clearDemoTimer, current?.id, isPlaying, selectionVersion])
+  }, [claimPlaybackFocus, clearDemoTimer, current?.id, isPlaying, selectionVersion])
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || !current) return
