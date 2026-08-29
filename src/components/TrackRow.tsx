@@ -1,5 +1,5 @@
 import { Headphones, Heart, Pause, Play, X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { usePlayer, type PlaybackSource } from '../player/PlayerContext'
 import type { Track } from '../types'
 import { CoverArt } from './CoverArt'
@@ -22,6 +22,16 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
     : player.current?.id === track.id
   const liked = player.isTrackLiked(track)
   const [liking, setLiking] = useState(false)
+  const toggleTrack = () => active
+    ? player.togglePlayback()
+    : player.playTrack(track, context, contextIndex >= 0 ? contextIndex : index, playbackSource)
+
+  const onRowClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target
+    if (!(target instanceof Element) || !event.currentTarget.contains(target)) return
+    if (target.closest('button, a, input, select, textarea, summary, [role="button"], [role="link"]')) return
+    toggleTrack()
+  }
 
   const onLike = async () => {
     if (liking) return
@@ -37,8 +47,8 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
   }
 
   return (
-    <div className={`track-row ${active ? 'track-row--active' : ''} ${compact ? 'track-row--compact' : ''} ${readonly ? 'track-row--readonly' : ''} ${onQueueRemove ? 'track-row--queue' : ''}`}>
-      <button className="track-row__play" type="button" aria-label={active && player.isPlaying ? 'Пауза' : `Включить ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, context, contextIndex >= 0 ? contextIndex : index, playbackSource)}>
+    <div className={`track-row ${active ? 'track-row--active' : ''} ${compact ? 'track-row--compact' : ''} ${readonly ? 'track-row--readonly' : ''} ${onQueueRemove ? 'track-row--queue' : ''}`} onClick={onRowClick}>
+      <button className="track-row__play" type="button" aria-label={active && player.isPlaying ? 'Пауза' : `Включить ${track.title}`} onClick={toggleTrack}>
         <span className="track-row__index">{index === undefined ? <Play size={15} fill="currentColor" /> : index + 1}</span>
         <span className="track-row__control">{active && player.isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}</span>
       </button>

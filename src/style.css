@@ -509,7 +509,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .track-table { border: 1px solid var(--line); border-radius: 14px; overflow: visible; background: rgba(255,255,255,.018); }
 .track-table .track-row:first-child { border-radius: 13px 13px 0 0; }
 .track-table .track-row:last-child { border-radius: 0 0 13px 13px; }
-.track-row { min-height: 64px; padding: 6px 9px; display: grid; grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 48px 38px 38px; align-items: center; gap: 9px; border-bottom: 1px solid rgba(255,255,255,.045); transition: background .14s ease; }
+.track-row { min-height: 64px; padding: 6px 9px; display: grid; grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 48px 38px 38px; align-items: center; gap: 9px; border-bottom: 1px solid rgba(255,255,255,.045); cursor: pointer; transition: background .14s ease; }
 .track-row--queue { grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 48px 38px 76px; }
 .track-row:last-child { border-bottom: 0; }
 .track-row:hover, .track-row--active { background: rgba(255,255,255,.045); }
