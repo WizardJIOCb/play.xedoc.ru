@@ -1,6 +1,7 @@
-import { act, cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Track } from '../types'
+import { PlayerBar } from '../components/PlayerBar'
 import { PlayerProvider, usePlayer } from './PlayerContext'
 
 const api = vi.hoisted(() => ({ toggleLike: vi.fn(), updateNowPlaying: vi.fn(), clearNowPlaying: vi.fn(), recordListeningEvent: vi.fn() }))
@@ -311,6 +312,35 @@ describe('PlayerProvider state', () => {
       expect(secondPlayer.isPlaying).toBe(false)
     })
     expect(FakeAudio.instances[0].pause).toHaveBeenCalled()
+    expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
+  })
+
+  it('lets a mirrored tab seek and change the volume in the tab that owns the audio', async () => {
+    render(<PlayerProvider><PairProbe slot="first" /></PlayerProvider>)
+    act(() => firstPlayer.playQueue([track('first-tab', 'First tab')]))
+    await waitFor(() => expect(FakeAudio.instances[0].play).toHaveBeenCalled())
+
+    render(<PlayerProvider><PairProbe slot="second" /><PlayerBar onQueue={() => undefined} /></PlayerProvider>)
+    await waitFor(() => expect(secondPlayer.isRemotePlayback).toBe(true))
+
+    const timeline = screen.getByRole('slider', { name: 'Позиция воспроизведения' })
+    const volume = screen.getByRole('slider', { name: 'Громкость' })
+    expect(timeline).toBeEnabled()
+    expect(volume).toBeEnabled()
+
+    fireEvent.change(timeline, { target: { value: '91' } })
+    await waitFor(() => {
+      expect(FakeAudio.instances[0].currentTime).toBe(91)
+      expect(firstPlayer.progress).toBe(91)
+      expect(secondPlayer.progress).toBe(91)
+    })
+
+    fireEvent.change(volume, { target: { value: '.31' } })
+    await waitFor(() => {
+      expect(FakeAudio.instances[0].volume).toBe(.31)
+      expect(firstPlayer.volume).toBe(.31)
+      expect(secondPlayer.volume).toBe(.31)
+    })
     expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
   })
 

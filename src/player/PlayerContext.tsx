@@ -92,7 +92,8 @@ interface PlaybackSyncCommandMessage {
   type: 'command'
   sourceId: string
   targetId: string
-  command: 'pause'
+  command: 'pause' | 'seek' | 'volume'
+  value?: number
   issuedAt: number
 }
 
@@ -308,18 +309,21 @@ function playbackSyncMessage(value: unknown): PlaybackSyncMessage | undefined {
       : undefined
   }
   if (candidate.type === 'command') {
-    return typeof candidate.targetId === 'string'
-      && candidate.command === 'pause'
-      && typeof candidate.issuedAt === 'number'
-      && Number.isFinite(candidate.issuedAt)
-      ? {
-        type: 'command',
-        sourceId: candidate.sourceId,
-        targetId: candidate.targetId,
-        command: 'pause',
-        issuedAt: candidate.issuedAt,
-      }
-      : undefined
+    if (
+      typeof candidate.targetId !== 'string'
+      || (candidate.command !== 'pause' && candidate.command !== 'seek' && candidate.command !== 'volume')
+      || typeof candidate.issuedAt !== 'number'
+      || !Number.isFinite(candidate.issuedAt)
+      || (candidate.command !== 'pause' && (typeof candidate.value !== 'number' || !Number.isFinite(candidate.value)))
+    ) return undefined
+    return {
+      type: 'command',
+      sourceId: candidate.sourceId,
+      targetId: candidate.targetId,
+      command: candidate.command,
+      ...(candidate.command === 'pause' ? {} : { value: candidate.value }),
+      issuedAt: candidate.issuedAt,
+    }
   }
   return undefined
 }
@@ -496,10 +500,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       if (message.type === 'command') {
         if (message.targetId !== playbackTabIdRef.current || playbackOwnerRef.current !== playbackTabIdRef.current) return
-        clearDemoTimer()
-        audioRef.current?.pause()
-        isPlayingRef.current = false
-        setIsPlaying(false)
+        if (message.command === 'pause') {
+          clearDemoTimer()
+          audioRef.current?.pause()
+          isPlayingRef.current = false
+          setIsPlaying(false)
+          return
+        }
+        if (message.command === 'seek') {
+          const requested = Math.max(0, message.value || 0)
+          const audio = audioRef.current
+          const limit = audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : requested
+          const value = Math.min(requested, limit)
+          pendingSeekRef.current = null
+          setProgress(value)
+          if (audio) {
+            try {
+              audio.currentTime = value
+            } catch {
+              pendingSeekRef.current = value
+            }
+          }
+          return
+        }
+        const value = Math.max(0, Math.min(message.value || 0, 1))
+        setVolumeState(value)
+        if (audioRef.current) audioRef.current.volume = value
         return
       }
       if (allowStoredState && playbackFocusNow() - message.updatedAt > PLAYBACK_SYNC_MAX_AGE_MS) return
@@ -867,19 +893,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current, isPlaying, pauseRemotePlayback, playbackSource, progress, queue, selectTrackAt, setPlaybackOwner])
 
   const seek = useCallback((seconds: number) => {
-    if (isRemotePlayback) return
     const value = Math.max(0, Math.min(seconds, duration || 0))
+    if (isRemotePlayback) {
+      const targetId = playbackOwnerRef.current
+      if (!targetId) return
+      setProgress(value)
+      sendPlaybackSyncMessage({
+        type: 'command',
+        sourceId: playbackTabIdRef.current,
+        targetId,
+        command: 'seek',
+        value,
+        issuedAt: playbackFocusNow(),
+      })
+      return
+    }
     pendingSeekRef.current = null
     setProgress(value)
     if (audioRef.current && current && !current.id.startsWith('demo-')) audioRef.current.currentTime = value
-  }, [current, duration, isRemotePlayback])
+  }, [current, duration, isRemotePlayback, sendPlaybackSyncMessage])
 
   const changeVolume = useCallback((value: number) => {
-    if (isRemotePlayback) return
     const normalized = Math.max(0, Math.min(value, 1))
     setVolumeState(normalized)
+    if (isRemotePlayback) {
+      const targetId = playbackOwnerRef.current
+      if (!targetId) return
+      sendPlaybackSyncMessage({
+        type: 'command',
+        sourceId: playbackTabIdRef.current,
+        targetId,
+        command: 'volume',
+        value: normalized,
+        issuedAt: playbackFocusNow(),
+      })
+      return
+    }
     if (audioRef.current) audioRef.current.volume = normalized
-  }, [isRemotePlayback])
+  }, [isRemotePlayback, sendPlaybackSyncMessage])
 
   const addNext = useCallback((track: Track) => {
     setQueue((items) => {

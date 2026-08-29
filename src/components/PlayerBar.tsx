@@ -58,11 +58,11 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         </div>
         <div className="player-bar__timeline">
           <span>{formatTime(player.progress)}</span>
-          <input type="range" min="0" max={Math.max(player.duration, 1)} step="0.1" value={Math.min(player.progress, player.duration || 1)} onChange={(event) => player.seek(Number(event.target.value))} style={{ '--range-value': `${player.duration ? (player.progress / player.duration) * 100 : 0}%` } as React.CSSProperties} aria-label="Позиция воспроизведения" disabled={player.isRemotePlayback} />
+          <input type="range" min="0" max={Math.max(player.duration, 1)} step="0.1" value={Math.min(player.progress, player.duration || 1)} onChange={(event) => player.seek(Number(event.target.value))} style={{ '--range-value': `${player.duration ? (player.progress / player.duration) * 100 : 0}%` } as React.CSSProperties} aria-label="Позиция воспроизведения" disabled={!track} />
           <span>{formatTime(player.duration)}</span>
           <div className="volume-control">
             {player.volume === 0 ? <VolumeX size={17} /> : player.volume < 0.5 ? <Volume1 size={17} /> : <Volume2 size={17} />}
-            <input type="range" min="0" max="1" step="0.01" value={player.volume} onChange={(event) => player.setVolume(Number(event.target.value))} style={{ '--range-value': `${player.volume * 100}%` } as React.CSSProperties} aria-label="Громкость" disabled={player.isRemotePlayback} />
+            <input type="range" min="0" max="1" step="0.01" value={player.volume} onChange={(event) => player.setVolume(Number(event.target.value))} style={{ '--range-value': `${player.volume * 100}%` } as React.CSSProperties} aria-label="Громкость" />
           </div>
         </div>
       </div>
