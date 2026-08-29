@@ -1,11 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import App from './App'
+import App, { QuickTrack, filterCollectionTracks, stabilizeTrackOrder } from './App'
 import { getBootstrap, getListeningStats, getPublicShare } from './lib/api'
 import { PlayerProvider } from './player/PlayerContext'
 import type { Track } from './types'
-import { filterCollectionTracks, stabilizeTrackOrder } from './App'
 
 vi.mock('./lib/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./lib/api')>()
@@ -55,6 +54,23 @@ describe('favorite collection filtering', () => {
     const updated = stabilizeTrackOrder(initial.order, [removed, liked])
 
     expect(updated.tracks.map((track) => track.id)).toEqual(['liked', 'removed'])
+  })
+
+  it('turns the active quick track play icon into a pause control', () => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    const track: Track = { id: 'sunrise', title: 'Sunrise', artists: ['Qafeep'], durationMs: 173_000, streamUrl: '/api/public-search/tracks/sunrise/stream' }
+
+    render(createElement(PlayerProvider, null, createElement(QuickTrack, { track, context: [track] })))
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Sunrise' }))
+
+    const pauseButton = screen.getByRole('button', { name: 'Пауза Sunrise' })
+    expect(pauseButton.querySelector('.lucide-pause')).toBeInTheDocument()
+    fireEvent.click(pauseButton)
+    expect(screen.getByRole('button', { name: 'Включить Sunrise' }).querySelector('.lucide-play')).toBeInTheDocument()
   })
 
   it('shows actual session controls instead of a fixed discovery claim', async () => {

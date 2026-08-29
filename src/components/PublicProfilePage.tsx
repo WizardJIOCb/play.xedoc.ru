@@ -160,6 +160,13 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
   )
 
   const canEdit = viewer?.username.toLowerCase() === profile.username.toLowerCase()
+  const profileTrackActive = nowPlaying?.track.id === player.current?.id
+  const profileTrackPlaying = profileTrackActive && player.isPlaying
+  const toggleProfileTrack = () => {
+    if (!nowPlaying) return
+    if (profileTrackActive) player.togglePlayback()
+    else player.playTrack(nowPlaying.track)
+  }
   const body = <>
     {playlist ? <>
       <button className="public-profile-back" type="button" onClick={() => setPlaylist(undefined)}><ArrowLeft size={17} /> Профиль @{profile.username}</button>
@@ -185,8 +192,8 @@ export function PublicProfilePage({ username, embedded = false, viewer, onBack, 
       {nowPlaying && <section className="public-profile-now-playing" aria-label="Слушает сейчас">
         <div className="public-profile-now-playing__live"><span /><Radio size={16} /> СЛУШАЕТ СЕЙЧАС</div>
         <CoverArt title={nowPlaying.track.title} url={nowPlaying.track.coverUrl} tone={nowPlaying.track.coverTone} className="public-profile-now-playing__cover" />
-        <div className="public-profile-now-playing__track" role="button" tabIndex={0} aria-label={`Включить ${nowPlaying.track.title}`} onClick={() => player.playTrack(nowPlaying.track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); player.playTrack(nowPlaying.track) } }}>
-          <span><strong>{nowPlaying.track.title}</strong><ArtistLinks artists={nowPlaying.track.artists} /></span><span className="public-profile-now-playing__play"><Play size={19} fill="currentColor" /></span>
+        <div className="public-profile-now-playing__track" role="button" tabIndex={0} aria-label={`${profileTrackPlaying ? 'Пауза' : 'Включить'} ${nowPlaying.track.title}`} onClick={toggleProfileTrack} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleProfileTrack() } }}>
+          <span><strong>{nowPlaying.track.title}</strong><ArtistLinks artists={nowPlaying.track.artists} /></span><span className="public-profile-now-playing__play">{profileTrackPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</span>
         </div>
         {nowPlaying.playlist && <button className="public-profile-now-playing__playlist" type="button" onClick={() => void openPlaylist(nowPlaying.playlist!)}><ListMusic size={17} /><span><small>ИЗ ПЛЕЙЛИСТА</small><strong>{nowPlaying.playlist.title}</strong></span><ChevronRight size={16} /></button>}
       </section>}
