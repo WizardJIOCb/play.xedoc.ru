@@ -1,5 +1,5 @@
 import { Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
@@ -12,15 +12,34 @@ function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 }
 
+function formatPlayOrdinal(value: number) {
+  return `${value.toLocaleString('ru-RU')}-й раз`
+}
+
 export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; readonly?: boolean }) {
   const player = usePlayer()
   const auth = useAuthPrompt()
   const [liking, setLiking] = useState(false)
+  const lastAudibleVolumeRef = useRef(player.volume > 0 ? player.volume : .74)
   const track = player.current
   const liked = track ? player.isTrackLiked(track) : false
-  const sourceStatus = track
-    ? [player.isRemotePlayback ? `${player.isPlaying ? 'Играет' : 'Пауза'} в другой вкладке` : player.isPlaying ? 'Играет' : 'Пауза', player.playbackSource?.playlistTitle].filter(Boolean).join(' · ')
+  const muted = player.volume === 0
+  const playbackStatus = track
+    ? player.isRemotePlayback ? `${player.isPlaying ? 'Играет' : 'Пауза'} в другой вкладке` : player.isPlaying ? 'Играет' : 'Пауза'
     : undefined
+
+  useEffect(() => {
+    if (player.volume > 0) lastAudibleVolumeRef.current = player.volume
+  }, [player.volume])
+
+  const toggleMute = () => {
+    if (muted) {
+      player.setVolume(lastAudibleVolumeRef.current)
+      return
+    }
+    lastAudibleVolumeRef.current = player.volume
+    player.setVolume(0)
+  }
 
   const onLike = async () => {
     if (!track || liking) return
@@ -42,7 +61,11 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         <div>
           <strong>{track?.title || 'Выберите музыку'}</strong>
           {track ? <ArtistLinks artists={track.artists} /> : <span>Плейлисты и рекомендации ждут вас</span>}
-          {sourceStatus && <span className="player-bar__source-status" aria-live="polite">{sourceStatus}</span>}
+          {playbackStatus && <span className="player-bar__source-status" aria-live="polite">
+            {playbackStatus}
+            {player.playOrdinal && <> <span className="player-bar__play-ordinal">({formatPlayOrdinal(player.playOrdinal)})</span></>}
+            {player.playbackSource?.playlistTitle && <> · {player.playbackSource.playlistTitle}</>}
+          </span>}
         </div>
       </div>
 
@@ -61,7 +84,9 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
           <input type="range" min="0" max={Math.max(player.duration, 1)} step="0.1" value={Math.min(player.progress, player.duration || 1)} onChange={(event) => player.seek(Number(event.target.value))} style={{ '--range-value': `${player.duration ? (player.progress / player.duration) * 100 : 0}%` } as React.CSSProperties} aria-label="Позиция воспроизведения" disabled={!track} />
           <span>{formatTime(player.duration)}</span>
           <div className="volume-control">
-            {player.volume === 0 ? <VolumeX size={17} /> : player.volume < 0.5 ? <Volume1 size={17} /> : <Volume2 size={17} />}
+            <button className="icon-button volume-control__toggle" type="button" onClick={toggleMute} aria-label={muted ? 'Включить звук' : 'Выключить звук'} aria-pressed={muted} data-tooltip={muted ? 'Включить звук' : 'Выключить звук'}>
+              {muted ? <VolumeX size={17} /> : player.volume < 0.5 ? <Volume1 size={17} /> : <Volume2 size={17} />}
+            </button>
             <input type="range" min="0" max="1" step="0.01" value={player.volume} onChange={(event) => player.setVolume(Number(event.target.value))} style={{ '--range-value': `${player.volume * 100}%` } as React.CSSProperties} aria-label="Громкость" />
           </div>
         </div>

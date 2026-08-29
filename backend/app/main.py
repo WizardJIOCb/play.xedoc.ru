@@ -74,6 +74,7 @@ from .models import (
     SessionPreferences,
     TrackDTO,
     TrackLikeRequest,
+    TrackPlayCountDTO,
     TrackShareRequest,
     UserProfileDTO,
     VKImportRequest,
@@ -723,6 +724,15 @@ def create_app(
                 body.source,
             )
         return ActionResponse()
+
+    @app.get("/api/tracks/{track_id}/play-count", response_model=TrackPlayCountDTO)
+    async def track_play_count(
+        track_id: str,
+        request: Request,
+        _: None = Depends(require_access),
+    ) -> TrackPlayCountDTO:
+        require_app_user(request)
+        return TrackPlayCountDTO(play_count=store.track_play_count(_safe_identifier(track_id)))
 
     @app.put("/api/presence/now-playing", response_model=ActionResponse)
     async def update_now_playing(

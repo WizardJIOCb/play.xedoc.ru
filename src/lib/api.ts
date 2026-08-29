@@ -262,6 +262,11 @@ export async function recordListeningEvent(track: Track, listenedMs: number): Pr
   await request('/listening-events', { method: 'POST', body: JSON.stringify({ track, listenedMs, source: 'player' }) })
 }
 
+export async function getTrackPlayCount(trackId: string): Promise<number> {
+  const result = await request<{ playCount: number }>(`/tracks/${encodeURIComponent(trackId)}/play-count`)
+  return result.playCount
+}
+
 export async function updateNowPlaying(track: Track, playlistId?: string): Promise<void> {
   await request('/presence/now-playing', {
     method: 'PUT',

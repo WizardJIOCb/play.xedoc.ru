@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { clearNowPlaying, recordListeningEvent, toggleLike as persistTrackLike, updateNowPlaying } from '../lib/api'
+import { clearNowPlaying, getTrackPlayCount, recordListeningEvent, toggleLike as persistTrackLike, updateNowPlaying } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
 import type { Track } from '../types'
 
@@ -24,6 +24,7 @@ interface PlayerContextValue {
   progress: number
   duration: number
   volume: number
+  playOrdinal?: number
   shuffle: boolean
   repeat: boolean
   playbackSource?: PlaybackSource
@@ -69,6 +70,7 @@ interface PersistedPlaybackState {
   currentIndex: number
   progress: number
   volume: number
+  playOrdinal?: number
   shuffle: boolean
   repeat: boolean
   playbackSource?: PlaybackSource
@@ -207,6 +209,9 @@ function safePlaybackState(value: unknown): PersistedPlaybackState | undefined {
     currentIndex,
     progress,
     volume,
+    ...(typeof candidate.playOrdinal === 'number' && Number.isInteger(candidate.playOrdinal) && candidate.playOrdinal > 0
+      ? { playOrdinal: candidate.playOrdinal }
+      : {}),
     shuffle: candidate.shuffle === true,
     repeat: candidate.repeat === true,
     playbackSource: safePlaybackSource(candidate.playbackSource),
@@ -374,6 +379,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState(() => restoredPlayback?.progress ?? 0)
   const [duration, setDuration] = useState(() => current ? current.durationMs / 1000 : 0)
   const [volume, setVolumeState] = useState(() => restoredPlayback?.volume ?? .74)
+  const [playOrdinal, setPlayOrdinal] = useState<number | undefined>(() => restoredPlayback?.playOrdinal)
   const [shuffle, setShuffle] = useState(() => restoredPlayback?.shuffle ?? false)
   const [repeat, setRepeat] = useState(() => restoredPlayback?.repeat ?? false)
   const isPlayingRef = useRef(isPlaying)
@@ -544,6 +550,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setProgress(message.state.progress)
       setDuration(remoteCurrent.durationMs / 1000)
       setVolumeState(message.state.volume)
+      setPlayOrdinal(message.state.playOrdinal)
       setShuffle(message.state.shuffle)
       setRepeat(message.state.repeat)
       setPlaybackSource((source) => (
@@ -610,6 +617,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrent(track)
     setProgress(startAt)
     setDuration(track.durationMs / 1000)
+    setPlayOrdinal(Math.max(1, Math.floor(track.playCount || 0) + 1))
     setPlaybackOwner(playbackTabIdRef.current)
     isPlayingRef.current = true
     setIsPlaying(true)
@@ -700,6 +708,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentIndex,
     progress,
     volume,
+    playOrdinal,
     shuffle,
     repeat,
     playbackSource,
@@ -708,12 +717,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const persistedProgressSecond = Math.floor(progress)
   useEffect(() => {
     writePlaybackState(playbackSnapshotRef.current)
-  }, [current?.id, currentIndex, persistedProgressSecond, playbackSource, queue, repeat, shuffle, volume])
+  }, [current?.id, currentIndex, persistedProgressSecond, playOrdinal, playbackSource, queue, repeat, shuffle, volume])
 
   useEffect(() => {
     if (playbackOwnerId !== playbackTabIdRef.current || !current) return
     publishPlaybackState(isPlaying)
-  }, [current?.id, currentIndex, isPlaying, persistedProgressSecond, playbackOwnerId, playbackSource, publishPlaybackState, queue, repeat, shuffle, volume])
+  }, [current?.id, currentIndex, isPlaying, persistedProgressSecond, playOrdinal, playbackOwnerId, playbackSource, publishPlaybackState, queue, repeat, shuffle, volume])
 
   useEffect(() => {
     const persist = () => writePlaybackState(playbackSnapshotRef.current)
@@ -727,6 +736,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!track) return
     const entry = { track, playedAt: Date.now() }
     setHistoryEntries((items) => [entry, ...items.filter((item) => item.track.id !== track.id)].slice(0, HISTORY_LIMIT))
+  }, [current?.id, selectionVersion])
+
+  useEffect(() => {
+    if (!current) {
+      setPlayOrdinal(undefined)
+      return
+    }
+    if (selectionVersion === 0 && playOrdinal) return
+    const fallbackOrdinal = Math.max(1, Math.floor(current.playCount || 0) + 1)
+    setPlayOrdinal(fallbackOrdinal)
+    if (current.id.startsWith('demo-') || isPublicStreamUrl(current.streamUrl)) return
+    let cancelled = false
+    void getTrackPlayCount(current.id)
+      .then((count) => {
+        if (!cancelled) setPlayOrdinal(Math.max(1, Math.floor(count) + 1))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
   }, [current?.id, selectionVersion])
 
   useEffect(() => {
@@ -996,6 +1025,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIsPlaying(false)
     setProgress(0)
     setDuration(0)
+    setPlayOrdinal(undefined)
     setTrackLikes({})
     setHistoryEntries([])
   }, [clearDemoTimer, publishPlaybackState, setPlaybackOwner])
@@ -1019,6 +1049,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     progress,
     duration,
     volume,
+    playOrdinal,
     shuffle,
     repeat,
     playbackSource,
@@ -1037,7 +1068,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isTrackLiked,
     setTrackLiked,
     clear,
-  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isRemotePlayback, isTrackLiked, next, playQueue, playTrack, playbackSource, previous, progress, queue, removeFromQueue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
+  }), [addNext, changeVolume, clear, current, currentIndex, duration, history, historyEntries, isPlaying, isRemotePlayback, isTrackLiked, next, playOrdinal, playQueue, playTrack, playbackSource, previous, progress, queue, removeFromQueue, repeat, seek, setTrackLiked, shuffle, togglePlayback, upNext, volume])
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
 }

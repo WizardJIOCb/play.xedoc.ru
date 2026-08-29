@@ -4,7 +4,7 @@ import type { Track } from '../types'
 import { PlayerBar } from '../components/PlayerBar'
 import { PlayerProvider, usePlayer } from './PlayerContext'
 
-const api = vi.hoisted(() => ({ toggleLike: vi.fn(), updateNowPlaying: vi.fn(), clearNowPlaying: vi.fn(), recordListeningEvent: vi.fn() }))
+const api = vi.hoisted(() => ({ toggleLike: vi.fn(), updateNowPlaying: vi.fn(), clearNowPlaying: vi.fn(), recordListeningEvent: vi.fn(), getTrackPlayCount: vi.fn() }))
 
 vi.mock('../lib/api', () => api)
 
@@ -104,6 +104,7 @@ describe('PlayerProvider state', () => {
     api.updateNowPlaying.mockReset().mockResolvedValue(undefined)
     api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
     api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
+    api.getTrackPlayCount.mockReset().mockResolvedValue(0)
     vi.stubGlobal('Audio', FakeAudio)
     vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel)
   })
@@ -341,7 +342,33 @@ describe('PlayerProvider state', () => {
       expect(firstPlayer.volume).toBe(.31)
       expect(secondPlayer.volume).toBe(.31)
     })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Выключить звук' }))
+    await waitFor(() => {
+      expect(FakeAudio.instances[0].volume).toBe(0)
+      expect(firstPlayer.volume).toBe(0)
+      expect(secondPlayer.volume).toBe(0)
+    })
+    expect(screen.getByRole('button', { name: 'Включить звук' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить звук' }))
+    await waitFor(() => {
+      expect(FakeAudio.instances[0].volume).toBe(.31)
+      expect(firstPlayer.volume).toBe(.31)
+      expect(secondPlayer.volume).toBe(.31)
+    })
+    expect(screen.getByRole('button', { name: 'Выключить звук' })).toHaveAttribute('aria-pressed', 'false')
     expect(FakeAudio.instances[1].play).not.toHaveBeenCalled()
+  })
+
+  it('shows the personal ordinal number for the current playback', async () => {
+    api.getTrackPlayCount.mockResolvedValue(665)
+    render(<PlayerProvider><Probe /><PlayerBar onQueue={() => undefined} /></PlayerProvider>)
+
+    act(() => player.playQueue([track('often-played', 'Often played')]))
+
+    await waitFor(() => expect(api.getTrackPlayCount).toHaveBeenCalledWith('often-played'))
+    expect(screen.getByText(/Играет/)).toHaveTextContent('Играет (666-й раз)')
   })
 
   it('moves playback ownership when another tab starts a different track', async () => {

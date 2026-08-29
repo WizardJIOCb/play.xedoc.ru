@@ -875,6 +875,7 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .player-bar__track strong { font-size: var(--type-body); }
 .player-bar__track span { color: var(--muted); font-size: var(--type-caption); }
 .player-bar__track .player-bar__source-status { color: var(--acid); font-size: var(--type-micro); }
+.player-bar__track .player-bar__play-ordinal { display: inline-flex; margin-left: 3px; padding: 1px 6px; border: 1px solid rgba(217,255,99,.22); border-radius: 999px; background: rgba(217,255,99,.08); color: #e1ff86; font-size: .625rem; font-weight: 800; line-height: 1.3; vertical-align: 1px; }
 .player-bar__center { display: grid; gap: 7px; }
 .player-bar__controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .player-bar__controls .icon-button { width: 31px; height: 31px; }
@@ -894,9 +895,11 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .player-bar input[type="range"]::-moz-range-progress { height: 3px; border-radius: 4px; background: var(--acid); }
 .player-bar input[type="range"]::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--text); }
 .player-bar__tools { width: 100%; min-width: 0; justify-self: end; display: flex; align-items: center; justify-content: flex-end; gap: 2px; overflow: hidden; }
-.volume-control { min-width: 0; padding-left: 10px; display: grid; grid-template-columns: 18px minmax(0,1fr); align-items: center; gap: 7px; border-left: 1px solid var(--line); color: var(--muted); }
+.volume-control { min-width: 0; padding-left: 10px; display: grid; grid-template-columns: 24px minmax(0,1fr); align-items: center; gap: 5px; border-left: 1px solid var(--line); color: var(--muted); }
 .volume-control input { min-width: 0; }
 .volume-control svg { color: var(--cyan); filter: drop-shadow(0 0 7px rgba(87,211,255,.25)); }
+.volume-control .volume-control__toggle { width: 24px; height: 24px; border-radius: 7px; }
+.volume-control .volume-control__toggle[aria-pressed="true"] { background: rgba(87,211,255,.08); }
 .player-bar .volume-control input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(90deg,var(--cyan) 0%,var(--violet) var(--range-value),rgba(255,255,255,.13) var(--range-value)); }
 .player-bar .volume-control input[type="range"]::-webkit-slider-thumb { background: #eefbff; box-shadow: 0 0 8px rgba(87,211,255,.55); }
 .player-bar .volume-control input[type="range"]::-moz-range-progress { background: linear-gradient(90deg,var(--cyan),var(--violet)); }
