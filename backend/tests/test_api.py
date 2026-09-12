@@ -333,6 +333,56 @@ def test_generation_rejects_non_english_lyrics(client: TestClient) -> None:
     assert "только на английском" in response.json()["detail"]
 
 
+def test_completed_generation_can_be_saved_and_played_from_a_local_playlist(
+    client: TestClient,
+    settings: Settings,
+    store: CredentialStore,
+) -> None:
+    unlock(client)
+    created = client.post("/api/generation/jobs", json={
+        "title": "Machine Rising",
+        "style": "Post-rock, dramatic electric guitar",
+        "lyrics": "[Verse]\nThe machines are waking up",
+    })
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+
+    claimed = store.claim_music_generation_job()
+    assert claimed is not None
+    assert claimed["id"] == job_id
+    settings.generated_audio_path.mkdir(parents=True, exist_ok=True)
+    wav = b"RIFF\x24\x00\x00\x00WAVEfmt "
+    (settings.generated_audio_path / f"{job_id}.wav").write_bytes(wav)
+    assert store.complete_music_generation_job(job_id, f"{job_id}.wav", duration_ms=187_000) is True
+
+    completed = client.get(f"/api/generation/jobs/{job_id}")
+    assert completed.status_code == 200
+    track = completed.json()["track"]
+    assert track["id"] == f"generated:{job_id}"
+    assert track["title"] == "Machine Rising"
+    assert track["generated"] is True
+    assert track["lyrics"] == "[Verse]\nThe machines are waking up"
+    assert track["streamUrl"] == f"/api/tracks/generated%3A{job_id}/stream"
+
+    playlist = client.post("/api/local-playlists", json={"title": "My generated tracks"})
+    assert playlist.status_code == 200
+    playlist_id = playlist.json()["id"]
+    saved = client.post(f"/api/local-playlists/{playlist_id}/tracks", json={"track": track})
+    assert saved.status_code == 200
+    assert saved.json()["tracks"][0]["generated"] is True
+    assert saved.json()["tracks"][0]["lyrics"] == "[Verse]\nThe machines are waking up"
+
+    loaded = client.get(f"/api/playlists/{playlist_id}")
+    assert loaded.status_code == 200
+    restored_track = loaded.json()["tracks"][0]
+    assert restored_track["id"] == f"generated:{job_id}"
+    assert restored_track["generated"] is True
+    audio = client.get(restored_track["streamUrl"])
+    assert audio.status_code == 200
+    assert audio.content == wav
+    assert audio.headers["cache-control"] == "private, no-store, max-age=0"
+
+
 def test_device_flow_connects_and_persists_encrypted_token(
     client: TestClient,
     store: CredentialStore,

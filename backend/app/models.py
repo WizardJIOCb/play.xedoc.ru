@@ -30,6 +30,8 @@ class TrackDTO(APIModel):
     liked: bool | None = None
     explicit: bool | None = None
     stream_url: str | None = None
+    generated: bool = False
+    lyrics: str | None = None
     play_count: int | None = None
     total_listened_ms: int | None = None
     last_played_at: int | None = None
@@ -50,6 +52,7 @@ class MusicGenerationDTO(APIModel):
     error: str | None = None
     duration_ms: int | None = None
     stream_url: str | None = None
+    track: TrackDTO | None = None
     retry_upload_available: bool = False
     created_at: int
     updated_at: int

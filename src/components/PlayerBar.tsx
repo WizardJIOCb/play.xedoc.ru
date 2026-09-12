@@ -1,4 +1,4 @@
-import { Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from 'lucide-react'
+import { FileText, Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, SkipForward, Volume1, Volume2, VolumeX } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
@@ -20,6 +20,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
   const player = usePlayer()
   const auth = useAuthPrompt()
   const [liking, setLiking] = useState(false)
+  const [lyricsOpen, setLyricsOpen] = useState(false)
   const lastAudibleVolumeRef = useRef(player.volume > 0 ? player.volume : .74)
   const track = player.current
   const liked = track ? player.isTrackLiked(track) : false
@@ -34,6 +35,10 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
   useEffect(() => {
     if (player.volume > 0) lastAudibleVolumeRef.current = player.volume
   }, [player.volume])
+
+  useEffect(() => {
+    setLyricsOpen(false)
+  }, [track?.id])
 
   const toggleMute = () => {
     if (muted) {
@@ -63,12 +68,14 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         <CoverArt title={track?.title || 'XEDOC'} url={track?.coverUrl} tone={track?.coverTone || 'mono'} className="player-bar__cover" />
         <div>
           <strong>{track?.title || 'Выберите музыку'}</strong>
+          {track?.generated && <span className="player-bar__generated">YuE2 · сгенерировано</span>}
           {track ? <ArtistLinks artists={track.artists} /> : <span>Плейлисты и рекомендации ждут вас</span>}
           {playbackLabel && <span className="player-bar__source-status" aria-live="polite">
             {playbackLabel}
             {player.playbackSource?.playlistTitle && <> · {player.playbackSource.playlistTitle}</>}
           </span>}
         </div>
+        {track?.lyrics && <button className={`player-bar__lyrics-toggle ${lyricsOpen ? 'is-active' : ''}`} type="button" aria-label={lyricsOpen ? 'Скрыть текст песни' : 'Показать текст песни'} aria-expanded={lyricsOpen} onClick={() => setLyricsOpen((value) => !value)}><FileText size={16} /><span>Текст</span></button>}
       </div>
 
       <div className="player-bar__center">
@@ -100,6 +107,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
         {!readonly && track && !player.isRemotePlayback && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}
         {!readonly && <button className="icon-button" type="button" onClick={onQueue} aria-label="Очередь"><ListMusic size={19} /></button>}
       </div>
+      {lyricsOpen && track?.lyrics && <section className="player-bar__lyrics" role="dialog" aria-label={`Текст песни: ${track.title}`}><header><span>Текст песни</span><button type="button" onClick={() => setLyricsOpen(false)} aria-label="Закрыть окно текста песни">Скрыть</button></header><p>{track.lyrics}</p></section>}
     </footer>
   )
 }

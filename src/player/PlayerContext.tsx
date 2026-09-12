@@ -123,6 +123,8 @@ function safeHistoryTrack(value: unknown): Track | undefined {
     ...(typeof candidate.coverTone === 'string' && coverTones.has(candidate.coverTone) ? { coverTone: candidate.coverTone } : {}),
     ...(typeof candidate.liked === 'boolean' ? { liked: candidate.liked } : {}),
     ...(typeof candidate.explicit === 'boolean' ? { explicit: candidate.explicit } : {}),
+    ...(candidate.generated === true ? { generated: true } : {}),
+    ...(typeof candidate.lyrics === 'string' ? { lyrics: candidate.lyrics } : {}),
   }
 }
 
@@ -345,6 +347,8 @@ function samePlaybackQueue(left: Track[], right: Track[]) {
       && track.coverTone === candidate.coverTone
       && track.liked === candidate.liked
       && track.explicit === candidate.explicit
+      && track.generated === candidate.generated
+      && track.lyrics === candidate.lyrics
       && track.artists.join('\u0000') === candidate.artists.join('\u0000')
   })
 }

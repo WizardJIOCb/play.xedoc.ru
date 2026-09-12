@@ -26,6 +26,7 @@ class FakeAudio {
 
 const likedTrack: Track = { id: 'one', title: 'One', artists: ['Artist'], durationMs: 180_000, liked: true }
 const unlikedTrack: Track = { id: 'two', title: 'Two', artists: ['Artist'], durationMs: 180_000, liked: false }
+const generatedTrack: Track = { id: 'generated:one', title: 'Machine Rising', artists: ['YuE2 · XEDOC Play'], durationMs: 180_000, generated: true, lyrics: '[Verse]\nThe machines are waking up' }
 
 function PlayingBar({ track }: { track: Track }) {
   const player = usePlayer()
@@ -86,5 +87,15 @@ describe('player like controls', () => {
     expect(screen.getByRole('button', { name: 'Добавить Two в плейлист или очередь' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Убрать Two из очереди' }))
     expect(removeFromQueue).toHaveBeenCalledOnce()
+  })
+
+  it('shows the lyrics of a generated track in the player', async () => {
+    render(<PlayerProvider><PlayingBar track={generatedTrack} /></PlayerProvider>)
+
+    expect(await screen.findByText('YuE2 · XEDOC Play')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Показать текст песни' }))
+    expect(screen.getByRole('dialog', { name: 'Текст песни: Machine Rising' })).toHaveTextContent('The machines are waking up')
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть окно текста песни' }))
+    expect(screen.queryByRole('dialog', { name: 'Текст песни: Machine Rising' })).not.toBeInTheDocument()
   })
 })

@@ -12,6 +12,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Literal
 from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
@@ -95,6 +96,7 @@ from .store import ANONYMOUS_USER_ID, LEGACY_USER_ID, AppUser, Credential, Crede
 
 
 ENGLISH_LYRICS_RE = re.compile(r"^[\x00-\x7F]+$")
+GENERATED_TRACK_PREFIX = "generated:"
 
 
 @dataclass(slots=True)
@@ -204,6 +206,77 @@ def create_app(
         if not has_generation_worker_token(request):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован воркер генерации")
 
+    def generated_track_job_id(track_id: str) -> str | None:
+        if not track_id.startswith(GENERATED_TRACK_PREFIX):
+            return None
+        job_id = track_id.removeprefix(GENERATED_TRACK_PREFIX)
+        return job_id or None
+
+    def generated_audio_path(job: dict) -> Path | None:
+        job_id = str(job.get("id") or "")
+        output_file = str(job.get("output_file") or "")
+        if job.get("status") != "completed" or not job_id or output_file != f"{job_id}.wav":
+            return None
+        base = settings.generated_audio_path.resolve()
+        output = (base / output_file).resolve()
+        return output if output.parent == base and output.is_file() else None
+
+    def generated_audio_response(
+        job: dict,
+        *,
+        cache_control: str = "private, no-store, max-age=0",
+    ) -> FileResponse:
+        output = generated_audio_path(job)
+        if output is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Готовый трек не найден")
+        return FileResponse(
+            output,
+            media_type="audio/wav",
+            filename=f"{job['title']}.wav",
+            headers={"Cache-Control": cache_control, "Referrer-Policy": "no-referrer"},
+        )
+
+    def generated_audio_for_owner(
+        track_id: str,
+        *,
+        owner_id: str | None = None,
+        cache_control: str = "private, no-store, max-age=0",
+    ) -> FileResponse | None:
+        job_id = generated_track_job_id(track_id)
+        if job_id is None:
+            return None
+        job = store.load_music_generation_job(job_id, user_id=owner_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сгенерированный трек не найден")
+        return generated_audio_response(job, cache_control=cache_control)
+
+    def generated_track_dto(job: dict) -> TrackDTO | None:
+        if generated_audio_path(job) is None:
+            return None
+        job_id = str(job["id"])
+        track_id = f"{GENERATED_TRACK_PREFIX}{job_id}"
+        return TrackDTO(
+            id=track_id,
+            title=str(job["title"]),
+            artists=["YuE2 · XEDOC Play"],
+            album="Сгенерировано в XEDOC Play",
+            duration_ms=max(0, int(job.get("duration_ms") or 0)),
+            cover_tone="violet",
+            stream_url=f"/api/tracks/{quote(track_id, safe='')}/stream",
+            generated=True,
+            lyrics=str(job["lyrics"]),
+        )
+
+    def hydrate_generated_tracks(tracks: list[TrackDTO]) -> None:
+        for index, track in enumerate(tracks):
+            job_id = generated_track_job_id(track.id)
+            if job_id is None:
+                continue
+            job = store.load_music_generation_job(job_id)
+            generated = generated_track_dto(job) if job else None
+            if generated is not None:
+                tracks[index] = generated
+
     def music_generation_dto(job: dict) -> MusicGenerationDTO:
         output_file = str(job.get("output_file") or "")
         stream_url = f"/api/generation/jobs/{quote(str(job['id']), safe='')}/audio" if job.get("status") == "completed" and output_file else None
@@ -211,6 +284,7 @@ def create_app(
             id=str(job["id"]), title=str(job["title"]), style=str(job["style"]), lyrics=str(job["lyrics"]),
             status=job["status"], error=job.get("error"), duration_ms=job.get("duration_ms"),
             stream_url=stream_url,
+            track=generated_track_dto(job),
             retry_upload_available=job.get("status") == "failed" and (
                 bool(job.get("upload_only")) or "413" in str(job.get("error") or "")
             ),
@@ -563,14 +637,9 @@ def create_app(
     async def stream_music_generation_audio(job_id: str, request: Request) -> FileResponse:
         require_app_user(request)
         job = store.load_music_generation_job(job_id)
-        output_file = str(job.get("output_file") or "") if job else ""
-        if job is None or job.get("status") != "completed" or output_file != f"{job_id}.wav":
+        if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Готовый трек не найден")
-        base = settings.generated_audio_path.resolve()
-        output = (base / output_file).resolve()
-        if output.parent != base or not output.is_file():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл трека недоступен")
-        return FileResponse(output, media_type="audio/wav", filename=f"{job['title']}.wav")
+        return generated_audio_response(job)
 
     @app.post("/api/generation/worker/claim", response_model=MusicGenerationWorkerJobDTO | None)
     async def claim_music_generation_job(request: Request) -> MusicGenerationWorkerJobDTO | None:
@@ -821,6 +890,13 @@ def create_app(
             "total_listened_ms": None,
             "last_played_at": None,
         })
+        generated_job_id = generated_track_job_id(track.id)
+        if generated_job_id is not None:
+            job = store.load_music_generation_job(generated_job_id)
+            generated = generated_track_dto(job) if job else None
+            if generated is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Готовый сгенерированный трек не найден")
+            track = generated.model_copy(update={"stream_url": None})
         if track.id.startswith("demo-"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Демо-трек нельзя сохранить")
         playlist = store.add_local_playlist_track(
@@ -1592,11 +1668,8 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Профиль не найден")
         return PublicListeningHistoryDTO.model_validate(history)
 
-    @app.get(
-        "/api/profiles/{username}/top-tracks/{track_id}/stream",
-        response_class=RedirectResponse,
-    )
-    async def public_profile_top_track_stream(username: str, track_id: str, request: Request) -> RedirectResponse:
+    @app.get("/api/profiles/{username}/top-tracks/{track_id}/stream")
+    async def public_profile_top_track_stream(username: str, track_id: str, request: Request) -> Response:
         await enforce_rate_limit(request, "public-profile-top-stream", maximum=240, window_seconds=60)
         safe_username = _safe_username(username)
         track_identifier = _safe_identifier(track_id)
@@ -1604,6 +1677,9 @@ def create_app(
         if loaded is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не опубликован в профиле")
         _track, owner_id = loaded
+        generated = generated_audio_for_owner(track_identifier, owner_id=owner_id, cache_control="public, no-store, max-age=0")
+        if generated is not None:
+            return generated
         try:
             credential = store.load_for_user(owner_id)
         except CredentialStoreError as exc:
@@ -1635,11 +1711,8 @@ def create_app(
         _decorate_public_now_playing({"nowPlaying": value}, safe_username)
         return PublicNowPlayingDTO.model_validate(value)
 
-    @app.get(
-        "/api/profiles/{username}/now-playing/tracks/{track_id}/stream",
-        response_class=RedirectResponse,
-    )
-    async def public_now_playing_stream(username: str, track_id: str, request: Request) -> RedirectResponse:
+    @app.get("/api/profiles/{username}/now-playing/tracks/{track_id}/stream")
+    async def public_now_playing_stream(username: str, track_id: str, request: Request) -> Response:
         await enforce_rate_limit(request, "public-now-playing-stream", maximum=240, window_seconds=60)
         safe_username = _safe_username(username)
         track_identifier = _safe_identifier(track_id)
@@ -1647,6 +1720,9 @@ def create_app(
         if loaded is None or str(loaded[0].get("track", {}).get("id", "")) != track_identifier:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек уже не играет")
         _value, owner_id = loaded
+        generated = generated_audio_for_owner(track_identifier, owner_id=owner_id, cache_control="public, no-store, max-age=0")
+        if generated is not None:
+            return generated
         try:
             credential = store.load_for_user(owner_id)
         except CredentialStoreError as exc:
@@ -1683,16 +1759,13 @@ def create_app(
         ]
         return dto
 
-    @app.get(
-        "/api/profiles/{username}/playlists/{playlist_id}/tracks/{track_id}/stream",
-        response_class=RedirectResponse,
-    )
+    @app.get("/api/profiles/{username}/playlists/{playlist_id}/tracks/{track_id}/stream")
     async def public_profile_playlist_stream(
         username: str,
         playlist_id: str,
         track_id: str,
         request: Request,
-    ) -> RedirectResponse:
+    ) -> Response:
         await enforce_rate_limit(request, "public-profile-stream", maximum=240, window_seconds=60)
         safe_username = _safe_username(username)
         identifier = _safe_local_playlist_id(playlist_id)
@@ -1703,6 +1776,9 @@ def create_app(
         playlist, owner_id = loaded
         if track_identifier not in {str(track.get("id", "")) for track in playlist.get("tracks", [])}:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не входит в публичный плейлист")
+        generated = generated_audio_for_owner(track_identifier, owner_id=owner_id, cache_control="public, no-store, max-age=0")
+        if generated is not None:
+            return generated
         try:
             credential = store.load_for_user(owner_id)
         except CredentialStoreError as exc:
@@ -1868,12 +1944,16 @@ def create_app(
                 pass
         return ActionResponse()
 
-    @app.get("/api/tracks/{track_id}/stream", response_class=RedirectResponse)
+    @app.get("/api/tracks/{track_id}/stream")
     async def stream_track(
         track_id: str,
         request: Request,
         _: None = Depends(require_access),
-    ) -> RedirectResponse:
+    ) -> Response:
+        identifier = _safe_identifier(track_id)
+        generated = generated_audio_for_owner(identifier)
+        if generated is not None:
+            return generated
         credential = optional_credential(request)
         shared_catalog = credential is None
         if shared_catalog:
@@ -1884,7 +1964,7 @@ def create_app(
         if credential is None:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Каталог временно недоступен")
         try:
-            url = await gateway.stream_url(credential, _safe_identifier(track_id))
+            url = await gateway.stream_url(credential, identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
         return RedirectResponse(
@@ -1970,21 +2050,21 @@ def create_app(
             playlist=playlist,
         )
 
-    @app.get(
-        "/api/shares/{token}/tracks/{track_id}/stream",
-        response_class=RedirectResponse,
-    )
+    @app.get("/api/shares/{token}/tracks/{track_id}/stream")
     async def public_share_stream(
         token: str,
         track_id: str,
         request: Request,
-    ) -> RedirectResponse:
+    ) -> Response:
         await enforce_rate_limit(request, "public-stream", maximum=240, window_seconds=60)
         share = _load_public_share(store, token)
         identifier = _safe_identifier(track_id)
         allowed_ids = _shared_track_ids(share.kind, share.payload)
         if identifier not in allowed_ids:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Трек не входит в эту публичную ссылку")
+        generated = generated_audio_for_owner(identifier, owner_id=share.owner_id, cache_control="public, no-store, max-age=0")
+        if generated is not None:
+            return generated
         try:
             credential = store.load_for_user(share.owner_id)
         except CredentialStoreError as exc:
@@ -2017,6 +2097,7 @@ def create_app(
         identifier = _safe_identifier(playlist_id)
         if identifier.startswith("local-"):
             playlist = _require_local_playlist(store.load_local_playlist(_safe_local_playlist_id(identifier)))
+            hydrate_generated_tracks(playlist.tracks or [])
             _decorate_tracks_with_stats(playlist.tracks or [], store)
             return playlist
         credential = optional_credential(request)

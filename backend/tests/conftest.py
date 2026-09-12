@@ -219,6 +219,7 @@ def settings(tmp_path: Path) -> Settings:
         cookie_secret="test-cookie-secret-that-is-long-enough",
         token_encryption_key=Fernet.generate_key().decode("ascii"),
         database_path=tmp_path / "play.db",
+        generated_audio_path=tmp_path / "generated-audio",
         cookie_secure=False,
         demo_fallback=True,
     )

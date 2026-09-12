@@ -13,6 +13,8 @@ export interface Track {
   liked?: boolean
   explicit?: boolean
   streamUrl?: string
+  generated?: boolean
+  lyrics?: string
   playCount?: number
   totalListenedMs?: number
   lastPlayedAt?: number
@@ -27,6 +29,7 @@ export interface MusicGeneration {
   error?: string
   durationMs?: number
   streamUrl?: string
+  track?: Track
   retryUploadAvailable?: boolean
   createdAt: number
   updatedAt: number

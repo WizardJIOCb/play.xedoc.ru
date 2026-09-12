@@ -55,7 +55,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       </button>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="track-row__cover" />
       <div className="track-row__meta">
-        <span className="track-row__title-line"><strong>{track.title}</strong>{Boolean(track.playCount) && <span className="track-row__plays" data-tooltip={`${track.playCount} прослушиваний · учтено после 20 секунд воспроизведения`}><Headphones size={11} /> {track.playCount}</span>}</span>
+        <span className="track-row__title-line"><strong>{track.title}</strong>{track.generated && <span className="track-row__generated" data-tooltip="Сгенерировано в XEDOC Play с YuE2">YuE2</span>}{Boolean(track.playCount) && <span className="track-row__plays" data-tooltip={`${track.playCount} прослушиваний · учтено после 20 секунд воспроизведения`}><Headphones size={11} /> {track.playCount}</span>}</span>
         <ArtistLinks artists={track.artists} />
       </div>
       {!compact && <AlbumLink track={track} />}
