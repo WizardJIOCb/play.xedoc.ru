@@ -426,6 +426,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   const [sessionDiscovery, setSessionDiscovery] = useState(58)
   const [connectOpen, setConnectOpen] = useState(false)
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false)
+  const generationAvailable = data.generationEnabled || Boolean(data.appUser?.isAdmin)
   const [sourcesOpen, setSourcesOpen] = useState(() => new URLSearchParams(window.location.search).has('vkImport'))
   const [queueOpen, setQueueOpen] = useState(false)
   const [queuePlaylistTitle, setQueuePlaylistTitle] = useState('')
@@ -691,6 +692,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   }, [navigatePath, requireAuth])
 
   const openGeneration = useCallback(() => {
+    if (!generationAvailable) return
     if (!requireAuth()) return
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
@@ -701,7 +703,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setSearchOpen(false)
     setGenerationOpen(true)
     if (!isGenerationPath()) navigatePath('/generate')
-  }, [navigatePath, requireAuth])
+  }, [generationAvailable, navigatePath, requireAuth])
 
   const openSearch = useCallback(() => {
     setQueueOpen(false)
@@ -762,14 +764,20 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     navigatePath('/')
     setAuthOpen(true)
   }, [adminOpen, albumOpen, authenticated, generationOpen, globalTopOpen, loading, navigatePath, profileUsername, recommendationsOpen, searchOpen, topOpen, view])
+
+  useEffect(() => {
+    if (loading || !generationOpen || generationAvailable) return
+    setGenerationOpen(false)
+    navigatePath('/')
+  }, [generationAvailable, generationOpen, loading, navigatePath])
   const content = useMemo(() => {
     if (profileUsername) return <PublicProfilePage username={profileUsername} embedded viewer={data.appUser} onBack={() => changeView('home')} onProfileUpdated={(user) => setData((value) => ({ ...value, appUser: user }))} />
     if (queueOpen) return <QueueContentView playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} />
     if (albumOpen) return <AlbumPage />
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
-    if (generationOpen) return <GenerationPage />
-    if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
+    if (generationOpen && generationAvailable) return <GenerationPage />
+    if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} onGenerationEnabledChange={refresh} />
     if (globalTopOpen) return <GlobalTopPage data={globalTop} loading={globalTopLoading} error={globalTopError} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} authenticated={authenticated} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
@@ -781,7 +789,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={openNewPlaylist} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, albumOpen, allLiked, authenticated, changeView, data, generationOpen, globalTop, globalTopError, globalTopLoading, globalTopOpen, likedError, likedLoading, listeningStats, openNewPlaylist, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, albumOpen, allLiked, authenticated, changeView, data, generationAvailable, generationOpen, globalTop, globalTopError, globalTopLoading, globalTopOpen, likedError, likedLoading, listeningStats, openNewPlaylist, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, refresh, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <MusicLoader />
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -794,7 +802,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   return (
     <AuthPromptProvider authenticated={authenticated} onRequireAuth={() => setAuthOpen(true)}>
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
-      <Sidebar view={searchOpen || albumOpen || profileUsername || generationOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} globalTopActive={!profileUsername && globalTopOpen} generationActive={!profileUsername && generationOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onGlobalTop={openGlobalTop} onGeneration={openGeneration} onPlaylist={openPlaylist} onCreatePlaylist={openNewPlaylist} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
+      <Sidebar view={searchOpen || albumOpen || profileUsername || generationOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} globalTopActive={!profileUsername && globalTopOpen} generationActive={generationAvailable && !profileUsername && generationOpen} generationVisible={generationAvailable} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onGlobalTop={openGlobalTop} onGeneration={openGeneration} onPlaylist={openPlaylist} onCreatePlaylist={openNewPlaylist} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!profileUsername && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !searchOpen && !albumOpen} onClick={() => selectedPlaylist && !profileUsername ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>

@@ -539,6 +539,23 @@ class CredentialStore:
             )
         return bool(cursor.rowcount)
 
+    def music_generation_enabled(self) -> bool:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM app_state WHERE key = 'music_generation_enabled'"
+            ).fetchone()
+        return row is None or str(row[0]) == "1"
+
+    def set_music_generation_enabled(self, enabled: bool) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_state(key, value) VALUES('music_generation_enabled', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                ("1" if enabled else "0",),
+            )
+
     def save_app_session(self, token_hash: str, user_id: str, expires_at: int) -> None:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM app_session WHERE expires_at < ?", (int(time.time()),))

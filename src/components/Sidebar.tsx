@@ -19,6 +19,7 @@ export function Sidebar({
   topActive,
   globalTopActive,
   generationActive,
+  generationVisible,
   onView,
   onRecommendations,
   onTop,
@@ -36,6 +37,7 @@ export function Sidebar({
   topActive: boolean
   globalTopActive: boolean
   generationActive?: boolean
+  generationVisible?: boolean
   onView: (view: ViewId) => void
   onRecommendations: () => void
   onTop: () => void
@@ -72,10 +74,10 @@ export function Sidebar({
           <Globe2 size={20} />
           <span>Топ глобальный</span>
         </button>
-        <button className={generationActive ? 'is-active' : ''} type="button" onClick={onGeneration} aria-label="Сгенерировать">
+        {generationVisible !== false && <button className={generationActive ? 'is-active' : ''} type="button" onClick={onGeneration} aria-label="Сгенерировать">
           <WandSparkles size={20} />
           <span>Сгенерировать</span>
-        </button>
+        </button>}
       </nav>
 
       <button className="sidebar__session" type="button" onClick={onSession} aria-label="Собрать сессию">

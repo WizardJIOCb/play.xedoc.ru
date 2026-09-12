@@ -21,6 +21,7 @@ vi.mock('../lib/api', async (importOriginal) => {
       }],
       topTracks: [{ id: '1', title: 'Signal', artists: ['Artist'], durationMs: 180_000, playCount: 12 }],
     }),
+    getMusicGenerationSettings: vi.fn().mockResolvedValue({ enabled: true }),
   }
 })
 

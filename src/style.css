@@ -1313,6 +1313,13 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .admin-metrics strong { font-size: 25px; line-height: 1.1; }
 .admin-metrics b { font-size: var(--type-label); font-weight: 650; }
 .admin-metrics small { margin-top: 5px; color: var(--muted); font-size: var(--type-caption); }
+.admin-generation-setting { margin-top: 18px; padding: 22px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px 28px; align-items: center; border: 1px solid var(--line); border-radius: 17px; background: rgba(16,18,23,.82); }
+.admin-generation-setting h2 { margin: 6px 0; font-size: 25px; }
+.admin-generation-setting p { max-width: 650px; margin: 0; color: var(--muted); line-height: 1.5; }
+.admin-generation-setting__action { min-width: 138px; display: grid; justify-items: end; gap: 10px; }
+.admin-generation-setting__action > b { color: #ff9d95; font-size: var(--type-label); }
+.admin-generation-setting__action > b.is-enabled { color: var(--acid); }
+.admin-generation-setting__error { grid-column: 1 / -1; color: #ff9d95; }
 .admin-users, .admin-top-tracks { margin-top: 30px; }
 .admin-users > header, .admin-top-tracks > header { min-height: 62px; display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .admin-users h2, .admin-top-tracks h2 { margin: 5px 0 0; font-size: 29px; }
@@ -1696,6 +1703,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .admin-metrics article { min-height: 104px; padding: 12px; gap: 8px; }
   .admin-metrics strong { font-size: 21px; }
   .admin-metrics article:nth-child(7) { grid-column: 1 / -1; }
+  .admin-generation-setting { padding: 18px; grid-template-columns: 1fr; }
+  .admin-generation-setting__action { justify-items: start; }
   .admin-users > header { align-items: stretch; flex-direction: column; }
   .admin-users > header label { width: 100%; }
   .admin-users__head { display: none; }

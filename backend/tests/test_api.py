@@ -241,6 +241,45 @@ def test_admin_dashboard_requires_role_and_aggregates_service_data(
     assert [user["username"] for user in filtered.json()["users"]] == ["testuser"]
 
 
+def test_admin_can_toggle_music_generation_while_retaining_access(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    unlock(client)
+    denied = client.get("/api/admin/generation-settings")
+    assert denied.status_code == 403
+
+    assert store.set_user_admin("@testuser", True) is True
+    assert client.get("/api/admin/generation-settings").json() == {"enabled": True}
+
+    disabled = client.put("/api/admin/generation-settings", json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json() == {"enabled": False}
+    assert client.get("/api/bootstrap").json()["generationEnabled"] is False
+
+    admin_job = client.post("/api/generation/jobs", json={
+        "title": "Admin check",
+        "style": "Minimal electronic",
+        "lyrics": "[Verse] Admin may still create a job",
+    })
+    assert admin_job.status_code == 200
+
+    assert client.post("/api/account/logout").status_code == 200
+    registered = client.post("/api/account/register", json={
+        "username": "listener",
+        "displayName": "Listener",
+        "password": "a-secure-listener-password",
+    })
+    assert registered.status_code == 200
+    assert client.get("/api/bootstrap").json()["generationEnabled"] is False
+    listener_job = client.post("/api/generation/jobs", json={
+        "title": "Listener check",
+        "style": "Minimal electronic",
+        "lyrics": "[Verse] This must be refused",
+    })
+    assert listener_job.status_code == 403
+
+
 def test_device_flow_connects_and_persists_encrypted_token(
     client: TestClient,
     store: CredentialStore,

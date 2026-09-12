@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, MusicGeneration, Playlist, ProfileSummary, PublicListeningHistory, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, MusicGeneration, MusicGenerationSettings, Playlist, ProfileSummary, PublicListeningHistory, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -224,6 +224,14 @@ export async function getPublicProfilePlaylist(username: string, playlistId: str
 export async function getAdminDashboard(query = ''): Promise<AdminDashboard> {
   const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''
   return request<AdminDashboard>(`/admin/dashboard${suffix}`)
+}
+
+export async function getMusicGenerationSettings(): Promise<MusicGenerationSettings> {
+  return request<MusicGenerationSettings>('/admin/generation-settings')
+}
+
+export async function updateMusicGenerationSettings(enabled: boolean): Promise<MusicGenerationSettings> {
+  return request<MusicGenerationSettings>('/admin/generation-settings', { method: 'PUT', body: JSON.stringify({ enabled }) })
 }
 
 export async function getAllLikedTracks(): Promise<LikedTracksPayload> {

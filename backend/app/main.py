@@ -54,6 +54,8 @@ from .models import (
     ListeningTopDTO,
     MusicGenerationCreateRequest,
     MusicGenerationDTO,
+    MusicGenerationSettingsDTO,
+    MusicGenerationSettingsUpdateRequest,
     MusicGenerationWorkerJobDTO,
     LikedTracksPayload,
     LocalPlaylistCreateRequest,
@@ -520,7 +522,9 @@ def create_app(
 
     @app.post("/api/generation/jobs", response_model=MusicGenerationDTO, response_model_exclude_none=True)
     async def create_music_generation_job(body: MusicGenerationCreateRequest, request: Request) -> MusicGenerationDTO:
-        require_app_user(request)
+        user = require_app_user(request)
+        if not store.music_generation_enabled() and not user.is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Генерация треков временно отключена администратором")
         await enforce_rate_limit(request, "music-generation", maximum=3, window_seconds=900)
         if store.has_active_music_generation():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="У вас уже есть трек в очереди или в генерации")
@@ -688,6 +692,7 @@ def create_app(
                 for playlist in payload.recommendations
             ]
             payload.authenticated = False
+            payload.generation_enabled = store.music_generation_enabled()
             return payload
 
         credential = optional_credential(request)
@@ -700,6 +705,7 @@ def create_app(
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
+            payload.generation_enabled = store.music_generation_enabled()
             return payload
         try:
             payload = await gateway.bootstrap(credential)
@@ -708,6 +714,7 @@ def create_app(
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
+            payload.generation_enabled = store.music_generation_enabled()
             return payload
         except GatewayUnauthorized:
             store.delete()
@@ -715,6 +722,7 @@ def create_app(
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
+            payload.generation_enabled = store.music_generation_enabled()
             return payload
         except GatewayError as exc:
             if not settings.demo_fallback:
@@ -723,6 +731,7 @@ def create_app(
             payload.authenticated = True
             payload.app_user = app_user_dto(app_user)
             _attach_xedoc_library(payload, store)
+            payload.generation_enabled = store.music_generation_enabled()
             return payload
 
     @app.get("/api/local-playlists", response_model=list[PlaylistDTO], response_model_exclude_none=True)
@@ -1520,6 +1529,20 @@ def create_app(
         require_admin(request)
         await enforce_rate_limit(request, "admin-dashboard", maximum=120, window_seconds=60)
         return AdminDashboardDTO.model_validate(store.admin_dashboard(q, limit))
+
+    @app.get("/api/admin/generation-settings", response_model=MusicGenerationSettingsDTO)
+    async def get_music_generation_settings(request: Request) -> MusicGenerationSettingsDTO:
+        require_admin(request)
+        return MusicGenerationSettingsDTO(enabled=store.music_generation_enabled())
+
+    @app.put("/api/admin/generation-settings", response_model=MusicGenerationSettingsDTO)
+    async def update_music_generation_settings(
+        body: MusicGenerationSettingsUpdateRequest,
+        request: Request,
+    ) -> MusicGenerationSettingsDTO:
+        require_admin(request)
+        store.set_music_generation_enabled(body.enabled)
+        return MusicGenerationSettingsDTO(enabled=body.enabled)
 
     @app.get("/api/profiles/{username}", response_model=PublicProfileDTO, response_model_exclude_none=True)
     async def public_profile(username: str, request: Request) -> PublicProfileDTO:

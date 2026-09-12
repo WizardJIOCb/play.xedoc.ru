@@ -61,6 +61,14 @@ class MusicGenerationWorkerJobDTO(APIModel):
     lyrics: str
 
 
+class MusicGenerationSettingsDTO(APIModel):
+    enabled: bool = True
+
+
+class MusicGenerationSettingsUpdateRequest(APIModel):
+    enabled: bool
+
+
 class PlaylistDTO(APIModel):
     id: str
     title: str
@@ -336,6 +344,7 @@ class BootstrapPayload(APIModel):
     catalog_available: bool = False
     access_locked: bool
     authenticated: bool = False
+    generation_enabled: bool = True
     app_user: AppUserDTO | None = None
     user: UserProfileDTO | None = None
     quick_tracks: list[TrackDTO] = Field(default_factory=list)

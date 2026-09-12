@@ -1,6 +1,6 @@
-import { Activity, Clock3, Disc3, ExternalLink, Globe2, Headphones, Library, Link2, LoaderCircle, Search, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
+import { Activity, Clock3, Disc3, ExternalLink, Globe2, Headphones, Library, Link2, LoaderCircle, Power, Search, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { getAdminDashboard } from '../lib/api'
+import { getAdminDashboard, getMusicGenerationSettings, updateMusicGenerationSettings } from '../lib/api'
 import type { AdminDashboard } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
@@ -24,8 +24,11 @@ function registrationTime(timestamp: number) {
   return new Intl.DateTimeFormat('ru-RU', { timeStyle: 'short' }).format(new Date(timestamp * 1000))
 }
 
-export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
+export function AdminDashboardPage({ isAdmin, onGenerationEnabledChange }: { isAdmin: boolean; onGenerationEnabledChange?: () => void }) {
   const [dashboard, setDashboard] = useState<AdminDashboard>()
+  const [generationEnabled, setGenerationEnabled] = useState<boolean>()
+  const [generationSaving, setGenerationSaving] = useState(false)
+  const [generationError, setGenerationError] = useState('')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(isAdmin)
   const [error, setError] = useState('')
@@ -43,6 +46,28 @@ export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
     }, query ? 260 : 0)
     return () => { active = false; window.clearTimeout(timeout) }
   }, [isAdmin, query])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    let active = true
+    void getMusicGenerationSettings()
+      .then((value) => active && setGenerationEnabled(value.enabled))
+      .catch((reason) => active && setGenerationError(reason instanceof Error ? reason.message : 'Не удалось загрузить настройку генерации'))
+    return () => { active = false }
+  }, [isAdmin])
+
+  const toggleGeneration = () => {
+    if (generationEnabled === undefined || generationSaving) return
+    setGenerationSaving(true)
+    setGenerationError('')
+    void updateMusicGenerationSettings(!generationEnabled)
+      .then((value) => {
+        setGenerationEnabled(value.enabled)
+        onGenerationEnabledChange?.()
+      })
+      .catch((reason) => setGenerationError(reason instanceof Error ? reason.message : 'Не удалось сохранить настройку генерации'))
+      .finally(() => setGenerationSaving(false))
+  }
 
   if (!isAdmin) return <section className="admin-denied"><ShieldCheck size={34} /><h1>Раздел только для администратора</h1><p>Сервер проверяет права для каждого запроса. Войдите под административным аккаунтом.</p></section>
   if (!dashboard && loading) return <section className="admin-state"><LoaderCircle className="spin" size={26} /> Загружаем данные сервиса…</section>
@@ -67,6 +92,12 @@ export function AdminDashboardPage({ isAdmin }: { isAdmin: boolean }) {
       </header>
 
       <div className="admin-metrics">{metrics.map(([Icon, value, label, detail]) => <article key={label}><Icon size={20} /><span><strong>{typeof value === 'number' ? value.toLocaleString('ru-RU') : value}</strong><b>{label}</b><small>{detail}</small></span></article>)}</div>
+
+      <section className="admin-generation-setting">
+        <div><span className="eyebrow"><Power size={14} /> XEDOC GENERATE</span><h2>Генерация треков</h2><p>Управляет пунктом «Сгенерировать» в меню и приёмом новых задач. Уже запущенные треки продолжат обработку.</p></div>
+        <div className="admin-generation-setting__action"><b className={generationEnabled ? 'is-enabled' : ''}>{generationEnabled === undefined ? 'Проверяем состояние…' : generationEnabled ? 'Включена' : 'Отключена'}</b><button className={generationEnabled ? 'secondary-button' : 'primary-button'} type="button" onClick={toggleGeneration} disabled={generationEnabled === undefined || generationSaving} aria-pressed={generationEnabled}>{generationSaving ? <LoaderCircle className="spin" size={16} /> : <Power size={16} />}{generationEnabled ? 'Отключить' : 'Включить'}</button></div>
+        {generationError && <p className="admin-generation-setting__error">{generationError}</p>}
+      </section>
 
       <section className="admin-users">
         <header><div><span className="eyebrow">АККАУНТЫ</span><h2>Пользователи</h2></div><label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя или @логин" />{loading && <LoaderCircle className="spin" size={16} />}</label></header>

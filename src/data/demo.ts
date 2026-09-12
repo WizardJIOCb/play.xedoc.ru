@@ -50,6 +50,7 @@ export const demoBootstrap: BootstrapPayload = {
   catalogAvailable: false,
   accessLocked: false,
   authenticated: false,
+  generationEnabled: true,
   quickTracks: demoTracks.slice(0, 6),
   likedTracks: demoTracks.filter((track) => track.liked),
   likedCount: demoTracks.filter((track) => track.liked).length,

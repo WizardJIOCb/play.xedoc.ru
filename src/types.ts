@@ -96,12 +96,17 @@ export interface AdminDashboard {
   topTracks: Track[]
 }
 
+export interface MusicGenerationSettings {
+  enabled: boolean
+}
+
 export interface BootstrapPayload {
   connected: boolean
   demo: boolean
   catalogAvailable: boolean
   accessLocked: boolean
   authenticated: boolean
+  generationEnabled?: boolean
   appUser?: AppUser
   user?: UserProfile
   quickTracks: Track[]
