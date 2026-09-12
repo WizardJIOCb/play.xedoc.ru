@@ -656,8 +656,9 @@ def create_app(
         if content_type not in {"audio/wav", "audio/x-wav", "application/octet-stream"}:
             raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Ожидается WAV-файл")
         payload = await request.body()
-        if not payload or len(payload) > 64 * 1024 * 1024:
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Размер трека должен быть от 1 байта до 64 МБ")
+        # The worker location in Nginx uses the same scoped 128 MiB limit.
+        if not payload or len(payload) > 128 * 1024 * 1024:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Размер трека должен быть от 1 байта до 128 МБ")
         duration_value = request.headers.get("x-generation-duration-ms")
         try:
             duration_ms = max(0, min(int(duration_value), 30 * 60 * 1000)) if duration_value else None
