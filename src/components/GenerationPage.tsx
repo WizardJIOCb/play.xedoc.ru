@@ -1,4 +1,4 @@
-import { AudioLines, CircleAlert, Clock3, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react'
+import { AudioLines, ChevronDown, ChevronUp, CircleAlert, Clock3, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { createMusicGeneration, getMusicGenerations, retryMusicGenerationUpload } from '../lib/api'
 import type { MusicGeneration } from '../types'
@@ -19,6 +19,7 @@ export function GenerationPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [retryingId, setRetryingId] = useState('')
+  const [expandedLyricsId, setExpandedLyricsId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const refresh = () => getMusicGenerations().then(setJobs).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Не удалось получить список генераций')).finally(() => setLoading(false))
 
@@ -61,7 +62,8 @@ export function GenerationPage() {
     <section className="generation-history"><header><div><span className="eyebrow">МОИ ГЕНЕРАЦИИ</span><h2>Последние треки</h2></div><button type="button" className="secondary-button" onClick={() => { setLoading(true); refresh() }}>Обновить</button></header>
       {loading ? <div className="generation-history__empty"><LoaderCircle className="spin" size={23} /> Загружаем задачи…</div> : !jobs.length ? <div className="generation-history__empty">Пока здесь тихо. Первый трек будет ждать вас здесь.</div> : <div className="generation-job-list">{jobs.map((job) => {
         const canRetryUpload = job.status === 'failed' && Boolean(job.retryUploadAvailable)
-        return <article key={job.id} className={`generation-job generation-job--${job.status}`}><div className="generation-job__top"><div><strong>{job.title}</strong><span>{job.style}</span></div><b>{statusCopy[job.status]}</b></div><div className="generation-job__meta"><span><Clock3 size={14} /> {formatTime(job.createdAt)}</span>{job.durationMs ? <span>{Math.round(job.durationMs / 1000)} с</span> : null}</div>{job.status === 'completed' && job.streamUrl ? <audio controls preload="metadata" src={job.streamUrl}>Ваш браузер не поддерживает воспроизведение аудио.</audio> : null}{job.status === 'failed' && <><p className="generation-job__error">{job.error || 'Неизвестная ошибка генератора'}</p>{canRetryUpload && <div className="generation-job__retry"><small>Трек уже создан на вашем компе. Проверим файл и повторим только загрузку.</small><button className="secondary-button" type="button" onClick={() => retryUpload(job.id)} disabled={Boolean(retryingId)}>{retryingId === job.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}{retryingId === job.id ? 'Проверяем…' : 'Проверить готовность'}</button></div>}</>}</article>
+        const lyricsExpanded = expandedLyricsId === job.id
+        return <article key={job.id} className={`generation-job generation-job--${job.status}`}><div className="generation-job__top"><div><strong>{job.title}</strong><span>{job.style}</span></div><b>{statusCopy[job.status]}</b></div><div className="generation-job__meta"><span><Clock3 size={14} /> {formatTime(job.createdAt)}</span>{job.durationMs ? <span>{Math.round(job.durationMs / 1000)} с</span> : null}</div><button className="generation-job__lyrics-toggle" type="button" aria-expanded={lyricsExpanded} aria-controls={`generation-lyrics-${job.id}`} onClick={() => setExpandedLyricsId((current) => current === job.id ? null : job.id)}>{lyricsExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}{lyricsExpanded ? 'Скрыть текст песни' : 'Показать текст песни'}</button>{lyricsExpanded && <div className="generation-job__lyrics" id={`generation-lyrics-${job.id}`}><span>Текст песни</span><p>{job.lyrics}</p></div>}{job.status === 'completed' && job.streamUrl ? <audio controls preload="metadata" src={job.streamUrl}>Ваш браузер не поддерживает воспроизведение аудио.</audio> : null}{job.status === 'failed' && <><p className="generation-job__error">{job.error || 'Неизвестная ошибка генератора'}</p>{canRetryUpload && <div className="generation-job__retry"><small>Трек уже создан на вашем компе. Проверим файл и повторим только загрузку.</small><button className="secondary-button" type="button" onClick={() => retryUpload(job.id)} disabled={Boolean(retryingId)}>{retryingId === job.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}{retryingId === job.id ? 'Проверяем…' : 'Проверить готовность'}</button></div>}</>}</article>
       })}</div>}
     </section>
   </section>
