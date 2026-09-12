@@ -193,10 +193,12 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   letter-spacing: -.08em;
 }
 .brand__word { display: flex; align-items: baseline; gap: 5px; }
+.sidebar__brand .brand__word strong { color: var(--acid); }
+.sidebar__brand .brand__word small { color: var(--text); }
 .brand__word strong { font-size: 16px; letter-spacing: .08em; }
 .brand__word small { color: var(--acid); font-size: var(--type-micro); letter-spacing: .18em; font-weight: 850; }
 .sidebar__brand { width: 100%; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
-.sidebar__brand:hover .brand__word { color: var(--acid); }
+.sidebar__brand:hover .brand__word small { color: var(--acid); }
 
 .sidebar__nav { display: grid; gap: 3px; margin-top: 26px; }
 .sidebar__nav button, .sidebar__section > button {

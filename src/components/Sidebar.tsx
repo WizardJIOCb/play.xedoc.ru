@@ -46,7 +46,7 @@ export function Sidebar({
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <button className="brand sidebar__brand" type="button" onClick={() => onView('home')} aria-label="На главную">
         <span className="brand__mark">X</span>
-        <span className="brand__word"><strong>XEDOC</strong><small>PLAY</small></span>
+        <span className="brand__word"><strong>PLAY</strong><small>.XEDOC.RU</small></span>
       </button>
 
       <nav className="sidebar__nav" aria-label="Основная навигация">
