@@ -21,6 +21,8 @@ if (-not (Test-Path -LiteralPath $config.modelPath)) { throw "YuE2 model directo
 New-Item -ItemType Directory -Force -Path $config.outputPath | Out-Null
 $headers = @{ Authorization = "Bearer $($config.token)" }
 $claimUri = "$($config.apiBase.TrimEnd('/'))/api/generation/worker/claim"
+$translatorPython = 'C:\ProgramData\XEDOCPlay\style-translator\Scripts\python.exe'
+$translatorScript = Join-Path $PSScriptRoot 'translate-style.py'
 $job = $null
 
 function Report-Failure([string]$JobId, [string]$Message) {
@@ -69,6 +71,30 @@ function Upload-Wav([string]$JobId, [string]$Output, [object]$DurationMs) {
     }
 }
 
+function Translate-Style([string]$Style) {
+    if ($Style -notmatch '[\u0400-\u052F]') {
+        return $Style
+    }
+    if (-not (Test-Path -LiteralPath $translatorPython) -or -not (Test-Path -LiteralPath $translatorScript)) {
+        throw 'The local Russian-to-English style translator is not installed'
+    }
+    $previousOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        $translatedLines = $Style | & $translatorPython $translatorScript
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The local Russian-to-English style translator failed'
+        }
+        $translated = ($translatedLines -join "`n").Trim()
+        if ([string]::IsNullOrWhiteSpace($translated) -or $translated -match '[\u0400-\u052F]') {
+            throw 'The local Russian-to-English style translator did not return an English prompt'
+        }
+        return $translated
+    } finally {
+        $OutputEncoding = $previousOutputEncoding
+    }
+}
+
 while ($true) {
     try {
         $job = $null
@@ -78,6 +104,7 @@ while ($true) {
             continue
         }
         $job = $claim.Content | ConvertFrom-Json
+        $modelStyle = Translate-Style -Style ([string]$job.style)
 
         $output = Join-Path $config.outputPath "$($job.id).wav"
         if (-not [bool]$job.uploadOnly) {
@@ -85,7 +112,7 @@ while ($true) {
             $arguments = @(
                 '--task', 'gen', '--family', 'yue2', '--model', $config.modelPath,
                 '--backend', 'cuda', '--threads', '8', '--lyrics', [string]$job.lyrics,
-                '--request-option', "style=$([string]$job.style)", '--request-option', 'cot=full',
+                '--request-option', "style=$modelStyle", '--request-option', 'cot=full', '--request-option', 'cfg_scale=1.2',
                 '--session-option', 'yue2.model_gguf=yue2-3b-q4_0.gguf',
                 '--session-option', 'yue2.vae_gguf=yue2-vae-f16.gguf',
                 '--out', $output, '--metrics', '--log'

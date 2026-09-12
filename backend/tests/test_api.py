@@ -322,6 +322,17 @@ def test_generation_413_can_retry_only_the_local_upload(
     assert second_upload_claim["upload_only"] is True
 
 
+def test_generation_rejects_non_english_lyrics(client: TestClient) -> None:
+    unlock(client)
+    response = client.post("/api/generation/jobs", json={
+        "title": "Russian lyrics",
+        "style": "Metal, electric guitar",
+        "lyrics": "[Куплет] Восстание машин",
+    })
+    assert response.status_code == 422
+    assert "только на английском" in response.json()["detail"]
+
+
 def test_device_flow_connects_and_persists_encrypted_token(
     client: TestClient,
     store: CredentialStore,

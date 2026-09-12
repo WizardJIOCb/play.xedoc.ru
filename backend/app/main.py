@@ -94,6 +94,9 @@ from .security import CookieSigner, hash_password, session_token_hash, verify_pa
 from .store import ANONYMOUS_USER_ID, LEGACY_USER_ID, AppUser, Credential, CredentialStore, CredentialStoreError
 
 
+ENGLISH_LYRICS_RE = re.compile(r"^[\x00-\x7F]+$")
+
+
 @dataclass(slots=True)
 class PendingAuthorization:
     authorization: DeviceAuthorization
@@ -529,6 +532,11 @@ def create_app(
         user = require_app_user(request)
         if not store.music_generation_enabled() and not user.is_admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Генерация треков временно отключена администратором")
+        if not ENGLISH_LYRICS_RE.fullmatch(body.lyrics) or not re.search(r"[A-Za-z]", body.lyrics):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="YuE2 сейчас принимает текст песни только на английском: используйте латиницу и обычные английские символы.",
+            )
         await enforce_rate_limit(request, "music-generation", maximum=3, window_seconds=900)
         if store.has_active_music_generation():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="У вас уже есть трек в очереди или в генерации")

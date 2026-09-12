@@ -3,5 +3,6 @@
   "token": "copy-the-same-secret-as-PLAY_GENERATION_WORKER_TOKEN",
   "cliPath": "C:\\Projects\\audio.cpp\\build\\windows-cuda-release\\bin\\audiocpp_cli.exe",
   "modelPath": "C:\\Projects\\models\\Yue2-3B-GGUF",
-  "outputPath": "C:\\ProgramData\\XEDOCPlay\\generated-audio"
+  "outputPath": "C:\\ProgramData\\XEDOCPlay\\generated-audio",
+  "styleTranslator": "Local Argos Russian-to-English model in C:\\ProgramData\\XEDOCPlay\\style-translator"
 }

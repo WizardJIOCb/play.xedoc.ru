@@ -15,7 +15,7 @@ export function GenerationPage() {
   const [jobs, setJobs] = useState<MusicGeneration[]>([])
   const [title, setTitle] = useState('Новый трек')
   const [style, setStyle] = useState('Русский инди-поп, тёплый вокал, живые барабаны, ночной город')
-  const [lyrics, setLyrics] = useState('[Куплет]\nНапишите здесь свой текст\n\n[Припев]\nИ повторите главную мысль')
+  const [lyrics, setLyrics] = useState('[Verse]\nWrite your lyrics in English\n\n[Chorus]\nRepeat the central idea')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [retryingId, setRetryingId] = useState('')
@@ -31,6 +31,10 @@ export function GenerationPage() {
   const active = jobs.some((job) => job.status === 'queued' || job.status === 'running')
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!/^[\x00-\x7F]+$/.test(lyrics) || !/[A-Za-z]/.test(lyrics)) {
+      setError('YuE2 сейчас принимает текст песни только на английском: используйте латиницу и обычные английские символы.')
+      return
+    }
     setSubmitting(true)
     setError('')
     void createMusicGeneration({ title, style, lyrics }).then((job) => setJobs((current) => [job, ...current])).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Не удалось поставить трек в очередь')).finally(() => setSubmitting(false))
@@ -46,11 +50,11 @@ export function GenerationPage() {
   }
 
   return <section className="generation-page">
-    <header className="generation-page__hero"><div><span className="eyebrow"><Sparkles size={14} /> XEDOC GENERATE</span><h1>Сгенерировать трек</h1><p>YuE2 работает на моём компе. Напишите стиль и текст — результат появится здесь, когда освободится GPU.</p></div><div className="generation-page__gpu"><AudioLines size={24} /><span>RTX 4070 Ti</span><small>один трек за раз</small></div></header>
+    <header className="generation-page__hero"><div><span className="eyebrow"><Sparkles size={14} /> XEDOC GENERATE</span><h1>Сгенерировать трек</h1><p>YuE2 работает на моём компе. Русский стиль переведём перед генерацией; текст песни нужен на английском.</p></div><div className="generation-page__gpu"><AudioLines size={24} /><span>RTX 4070 Ti</span><small>один трек за раз</small></div></header>
     <form className="generation-form" onSubmit={submit}>
       <label><span>Название</span><input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} required /></label>
-      <label><span>Стиль и аранжировка</span><textarea value={style} maxLength={500} onChange={(event) => setStyle(event.target.value)} required rows={3} placeholder="Жанр, инструменты, голос, настроение, темп" /></label>
-      <label><span>Текст песни</span><textarea value={lyrics} maxLength={1800} onChange={(event) => setLyrics(event.target.value)} required rows={10} placeholder={'[Куплет]\n...\n\n[Припев]\n...'} /></label>
+      <label><span>Стиль и аранжировка</span><textarea value={style} maxLength={500} onChange={(event) => setStyle(event.target.value)} required rows={3} placeholder="Жанр, инструменты, голос, настроение, темп" /><small>Русские музыкальные теги автоматически переведутся на английский для YuE2.</small></label>
+      <label><span>Текст песни — только английский</span><textarea value={lyrics} maxLength={1800} onChange={(event) => setLyrics(event.target.value)} required rows={10} placeholder={'[Verse]\n...\n\n[Chorus]\n...'} /><small>YuE2 надёжно поёт только английский текст. Русские буквы не будут приняты.</small></label>
       <div className="generation-form__footer"><small>Только свои тексты и музыка, на которую у вас есть права. Весы YuE2 — для некоммерческого использования.</small><button className="primary-button" type="submit" disabled={submitting || active}>{submitting ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{active ? 'Трек уже в очереди' : 'Сгенерировать'}</button></div>
       {error && <p className="generation-form__error"><CircleAlert size={16} /> {error}</p>}
     </form>
