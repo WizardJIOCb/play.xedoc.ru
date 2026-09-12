@@ -41,6 +41,7 @@ class MusicGenerationCreateRequest(APIModel):
     title: str = Field(min_length=1, max_length=120)
     style: str = Field(min_length=3, max_length=500)
     lyrics: str = Field(min_length=3, max_length=1800)
+    lyrics_language: Literal["en", "ru"] = "en"
 
 
 class MusicGenerationDTO(APIModel):
@@ -48,6 +49,7 @@ class MusicGenerationDTO(APIModel):
     title: str
     style: str
     lyrics: str
+    lyrics_language: Literal["en", "ru"] = "en"
     status: Literal["queued", "running", "completed", "failed"]
     error: str | None = None
     duration_ms: int | None = None
@@ -63,6 +65,7 @@ class MusicGenerationWorkerJobDTO(APIModel):
     title: str
     style: str
     lyrics: str
+    lyrics_language: Literal["en", "ru"] = "en"
     upload_only: bool = False
 
 

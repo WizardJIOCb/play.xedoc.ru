@@ -289,6 +289,7 @@ class CredentialStore:
                     title TEXT NOT NULL,
                     style TEXT NOT NULL,
                     lyrics TEXT NOT NULL,
+                    lyrics_language TEXT NOT NULL DEFAULT 'en',
                     status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
                     error TEXT,
                     output_file TEXT,
@@ -305,6 +306,7 @@ class CredentialStore:
                 "CREATE INDEX IF NOT EXISTS idx_music_generation_queue ON music_generation_job(status, created_at)"
             )
             self._ensure_column(connection, "music_generation_job", "upload_only", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(connection, "music_generation_job", "lyrics_language", "TEXT NOT NULL DEFAULT 'en'")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS social_post (
@@ -629,20 +631,20 @@ class CredentialStore:
             ).fetchone()
             return self._vk_import_job_row(row) if row else None
 
-    def create_music_generation_job(self, title: str, style: str, lyrics: str) -> dict:
+    def create_music_generation_job(self, title: str, style: str, lyrics: str, lyrics_language: str) -> dict:
         job_id = secrets.token_urlsafe(18)
         now = int(time.time())
         with self._lock, self._connect() as connection:
             connection.execute(
-                "INSERT INTO music_generation_job (id, user_id, title, style, lyrics, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
-                (job_id, self.current_user_id(), title, style, lyrics, now, now),
+                "INSERT INTO music_generation_job (id, user_id, title, style, lyrics, lyrics_language, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+                (job_id, self.current_user_id(), title, style, lyrics, lyrics_language, now, now),
             )
         return self.load_music_generation_job(job_id) or {}
 
     def list_music_generation_jobs(self, limit: int = 30) -> list[dict]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
-                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                "SELECT id, title, style, lyrics, lyrics_language, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
                 (self.current_user_id(), limit),
             ).fetchall()
         return [self._music_generation_job_row(row) for row in rows]
@@ -651,7 +653,7 @@ class CredentialStore:
         owner_id = user_id if user_id is not None else self.current_user_id()
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE id = ? AND user_id = ?",
+                "SELECT id, title, style, lyrics, lyrics_language, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE id = ? AND user_id = ?",
                 (job_id, owner_id),
             ).fetchone()
         return self._music_generation_job_row(row) if row else None
@@ -683,7 +685,7 @@ class CredentialStore:
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT id, user_id, title, style, lyrics, upload_only FROM music_generation_job WHERE status = 'queued' ORDER BY created_at LIMIT 1"
+                "SELECT id, user_id, title, style, lyrics, lyrics_language, upload_only FROM music_generation_job WHERE status = 'queued' ORDER BY created_at LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
@@ -691,7 +693,7 @@ class CredentialStore:
                 "UPDATE music_generation_job SET status = 'running', updated_at = ? WHERE id = ? AND status = 'queued'",
                 (now, row[0]),
             )
-        return {"id": row[0], "user_id": row[1], "title": row[2], "style": row[3], "lyrics": row[4], "upload_only": bool(row[5])}
+        return {"id": row[0], "user_id": row[1], "title": row[2], "style": row[3], "lyrics": row[4], "lyrics_language": row[5], "upload_only": bool(row[6])}
 
     def complete_music_generation_job(self, job_id: str, output_file: str, duration_ms: int | None = None) -> bool:
         now = int(time.time())
@@ -714,9 +716,9 @@ class CredentialStore:
     @staticmethod
     def _music_generation_job_row(row: tuple) -> dict:
         return {
-            "id": row[0], "title": row[1], "style": row[2], "lyrics": row[3], "status": row[4],
-            "error": row[5], "output_file": row[6], "duration_ms": row[7], "created_at": row[8], "updated_at": row[9],
-            "upload_only": bool(row[10]),
+            "id": row[0], "title": row[1], "style": row[2], "lyrics": row[3], "lyrics_language": row[4], "status": row[5],
+            "error": row[6], "output_file": row[7], "duration_ms": row[8], "created_at": row[9], "updated_at": row[10],
+            "upload_only": bool(row[11]),
         }
 
     def incomplete_vk_import_jobs(self) -> list[dict]:

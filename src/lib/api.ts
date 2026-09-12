@@ -46,7 +46,7 @@ export async function getMusicGenerations(): Promise<MusicGeneration[]> {
   return request<MusicGeneration[]>('/generation/jobs')
 }
 
-export async function createMusicGeneration(input: { title: string; style: string; lyrics: string }): Promise<MusicGeneration> {
+export async function createMusicGeneration(input: { title: string; style: string; lyrics: string; lyricsLanguage: 'en' | 'ru' }): Promise<MusicGeneration> {
   return request<MusicGeneration>('/generation/jobs', { method: 'POST', body: JSON.stringify(input) })
 }
 

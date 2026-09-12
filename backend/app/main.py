@@ -96,6 +96,7 @@ from .store import ANONYMOUS_USER_ID, LEGACY_USER_ID, AppUser, Credential, Crede
 
 
 ENGLISH_LYRICS_RE = re.compile(r"^[\x00-\x7F]+$")
+RUSSIAN_LYRICS_RE = re.compile(r"[\u0400-\u052F]")
 GENERATED_TRACK_PREFIX = "generated:"
 
 
@@ -282,6 +283,7 @@ def create_app(
         stream_url = f"/api/generation/jobs/{quote(str(job['id']), safe='')}/audio" if job.get("status") == "completed" and output_file else None
         return MusicGenerationDTO(
             id=str(job["id"]), title=str(job["title"]), style=str(job["style"]), lyrics=str(job["lyrics"]),
+            lyrics_language=str(job.get("lyrics_language") or "en"),
             status=job["status"], error=job.get("error"), duration_ms=job.get("duration_ms"),
             stream_url=stream_url,
             track=generated_track_dto(job),
@@ -606,15 +608,20 @@ def create_app(
         user = require_app_user(request)
         if not store.music_generation_enabled() and not user.is_admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Генерация треков временно отключена администратором")
-        if not ENGLISH_LYRICS_RE.fullmatch(body.lyrics) or not re.search(r"[A-Za-z]", body.lyrics):
+        if body.lyrics_language == "en" and (not ENGLISH_LYRICS_RE.fullmatch(body.lyrics) or not re.search(r"[A-Za-z]", body.lyrics)):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="YuE2 сейчас принимает текст песни только на английском: используйте латиницу и обычные английские символы.",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Для режима English используйте латиницу и английский текст. Для русского текста выберите «Русский (экспериментально)».",
+            )
+        if body.lyrics_language == "ru" and not RUSSIAN_LYRICS_RE.search(body.lyrics):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Для режима «Русский» добавьте текст песни с русскими буквами.",
             )
         await enforce_rate_limit(request, "music-generation", maximum=3, window_seconds=900)
         if store.has_active_music_generation():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="У вас уже есть трек в очереди или в генерации")
-        job = store.create_music_generation_job(body.title.strip(), body.style.strip(), body.lyrics.strip())
+        job = store.create_music_generation_job(body.title.strip(), body.style.strip(), body.lyrics.strip(), body.lyrics_language)
         return music_generation_dto(job)
 
     @app.get("/api/generation/jobs/{job_id}", response_model=MusicGenerationDTO, response_model_exclude_none=True)
@@ -647,7 +654,7 @@ def create_app(
         job = store.claim_music_generation_job()
         if job is None:
             return None
-        return MusicGenerationWorkerJobDTO(id=job["id"], title=job["title"], style=job["style"], lyrics=job["lyrics"], upload_only=bool(job.get("upload_only")))
+        return MusicGenerationWorkerJobDTO(id=job["id"], title=job["title"], style=job["style"], lyrics=job["lyrics"], lyrics_language=job.get("lyrics_language") or "en", upload_only=bool(job.get("upload_only")))
 
     @app.post("/api/generation/worker/{job_id}/complete", response_model=ActionResponse)
     async def complete_music_generation_job(job_id: str, request: Request) -> ActionResponse:

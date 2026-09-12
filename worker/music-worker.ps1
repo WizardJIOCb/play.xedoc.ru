@@ -105,6 +105,9 @@ while ($true) {
         }
         $job = $claim.Content | ConvertFrom-Json
         $modelStyle = Translate-Style -Style ([string]$job.style)
+        if (($job.PSObject.Properties.Name -contains 'lyricsLanguage') -and [string]$job.lyricsLanguage -eq 'ru') {
+            $modelStyle = "Russian language, clear Russian pronunciation, $modelStyle"
+        }
 
         $output = Join-Path $config.outputPath "$($job.id).wav"
         if (-not [bool]$job.uploadOnly) {

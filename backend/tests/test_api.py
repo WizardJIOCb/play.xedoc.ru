@@ -322,7 +322,7 @@ def test_generation_413_can_retry_only_the_local_upload(
     assert second_upload_claim["upload_only"] is True
 
 
-def test_generation_rejects_non_english_lyrics(client: TestClient) -> None:
+def test_generation_requires_matching_lyrics_language(client: TestClient) -> None:
     unlock(client)
     response = client.post("/api/generation/jobs", json={
         "title": "Russian lyrics",
@@ -330,7 +330,26 @@ def test_generation_rejects_non_english_lyrics(client: TestClient) -> None:
         "lyrics": "[Куплет] Восстание машин",
     })
     assert response.status_code == 422
-    assert "только на английском" in response.json()["detail"]
+    assert "выберите «Русский" in response.json()["detail"]
+
+
+def test_generation_accepts_russian_lyrics_when_russian_is_selected(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    unlock(client)
+    created = client.post("/api/generation/jobs", json={
+        "title": "Russian lyrics",
+        "style": "Metal, electric guitar",
+        "lyrics": "[Куплет] Восстание машин",
+        "lyricsLanguage": "ru",
+    })
+    assert created.status_code == 200
+    assert created.json()["lyricsLanguage"] == "ru"
+
+    claimed = store.claim_music_generation_job()
+    assert claimed is not None
+    assert claimed["lyrics_language"] == "ru"
 
 
 def test_completed_generation_can_be_saved_and_played_from_a_local_playlist(

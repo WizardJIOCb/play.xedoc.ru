@@ -25,6 +25,7 @@ export interface MusicGeneration {
   title: string
   style: string
   lyrics: string
+  lyricsLanguage: 'en' | 'ru'
   status: 'queued' | 'running' | 'completed' | 'failed'
   error?: string
   durationMs?: number
