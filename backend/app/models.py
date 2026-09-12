@@ -50,6 +50,7 @@ class MusicGenerationDTO(APIModel):
     error: str | None = None
     duration_ms: int | None = None
     stream_url: str | None = None
+    retry_upload_available: bool = False
     created_at: int
     updated_at: int
 

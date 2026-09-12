@@ -207,7 +207,11 @@ def create_app(
         return MusicGenerationDTO(
             id=str(job["id"]), title=str(job["title"]), style=str(job["style"]), lyrics=str(job["lyrics"]),
             status=job["status"], error=job.get("error"), duration_ms=job.get("duration_ms"),
-            stream_url=stream_url, created_at=int(job["created_at"]), updated_at=int(job["updated_at"]),
+            stream_url=stream_url,
+            retry_upload_available=job.get("status") == "failed" and (
+                bool(job.get("upload_only")) or "413" in str(job.get("error") or "")
+            ),
+            created_at=int(job["created_at"]), updated_at=int(job["updated_at"]),
         )
 
     def is_access_unlocked(request: Request) -> bool:
@@ -544,7 +548,7 @@ def create_app(
         require_app_user(request)
         job = store.retry_music_generation_upload(job_id)
         if job is None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Повторная загрузка доступна только после ошибки размера файла")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Повторная загрузка для этой задачи недоступна")
         return music_generation_dto(job)
 
     @app.get("/api/generation/jobs/{job_id}/audio")

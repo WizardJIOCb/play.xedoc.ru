@@ -642,7 +642,7 @@ class CredentialStore:
     def list_music_generation_jobs(self, limit: int = 30) -> list[dict]:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
-                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at FROM music_generation_job WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
                 (self.current_user_id(), limit),
             ).fetchall()
         return [self._music_generation_job_row(row) for row in rows]
@@ -651,7 +651,7 @@ class CredentialStore:
         owner_id = user_id if user_id is not None else self.current_user_id()
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at FROM music_generation_job WHERE id = ? AND user_id = ?",
+                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at, upload_only FROM music_generation_job WHERE id = ? AND user_id = ?",
                 (job_id, owner_id),
             ).fetchone()
         return self._music_generation_job_row(row) if row else None
@@ -671,7 +671,8 @@ class CredentialStore:
                 """
                 UPDATE music_generation_job
                 SET status = 'queued', error = NULL, upload_only = 1, updated_at = ?
-                WHERE id = ? AND user_id = ? AND status = 'failed' AND error LIKE '%413%'
+                WHERE id = ? AND user_id = ? AND status = 'failed'
+                  AND (upload_only = 1 OR error LIKE '%413%')
                 """,
                 (now, job_id, self.current_user_id()),
             )
@@ -715,6 +716,7 @@ class CredentialStore:
         return {
             "id": row[0], "title": row[1], "style": row[2], "lyrics": row[3], "status": row[4],
             "error": row[5], "output_file": row[6], "duration_ms": row[7], "created_at": row[8], "updated_at": row[9],
+            "upload_only": bool(row[10]),
         }
 
     def incomplete_vk_import_jobs(self) -> list[dict]:

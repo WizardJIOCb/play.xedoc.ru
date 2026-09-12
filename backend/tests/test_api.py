@@ -308,6 +308,18 @@ def test_generation_413_can_retry_only_the_local_upload(
     assert upload_claim is not None
     assert upload_claim["id"] == job_id
     assert upload_claim["upload_only"] is True
+    assert store.fail_music_generation_job(job_id, "Temporary connection failure") is True
+    failed_after_transport_failure = client.get(f"/api/generation/jobs/{job_id}")
+    assert failed_after_transport_failure.status_code == 200
+    assert failed_after_transport_failure.json()["retryUploadAvailable"] is True
+
+    retried_after_transport_failure = client.post(f"/api/generation/jobs/{job_id}/retry-upload")
+    assert retried_after_transport_failure.status_code == 200
+    assert retried_after_transport_failure.json()["status"] == "queued"
+
+    second_upload_claim = store.claim_music_generation_job()
+    assert second_upload_claim is not None
+    assert second_upload_claim["upload_only"] is True
 
 
 def test_device_flow_connects_and_persists_encrypted_token(

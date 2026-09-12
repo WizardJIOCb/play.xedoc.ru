@@ -27,6 +27,7 @@ export interface MusicGeneration {
   error?: string
   durationMs?: number
   streamUrl?: string
+  retryUploadAvailable?: boolean
   createdAt: number
   updatedAt: number
 }
