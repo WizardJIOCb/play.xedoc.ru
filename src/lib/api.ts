@@ -50,6 +50,10 @@ export async function createMusicGeneration(input: { title: string; style: strin
   return request<MusicGeneration>('/generation/jobs', { method: 'POST', body: JSON.stringify(input) })
 }
 
+export async function retryMusicGenerationUpload(jobId: string): Promise<MusicGeneration> {
+  return request<MusicGeneration>(`/generation/jobs/${encodeURIComponent(jobId)}/retry-upload`, { method: 'POST' })
+}
+
 export async function registerAccount(username: string, displayName: string, password: string): Promise<AppUser> {
   return request<AppUser>('/account/register', { method: 'POST', body: JSON.stringify({ username, displayName, password }) })
 }

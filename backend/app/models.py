@@ -59,6 +59,7 @@ class MusicGenerationWorkerJobDTO(APIModel):
     title: str
     style: str
     lyrics: str
+    upload_only: bool = False
 
 
 class MusicGenerationSettingsDTO(APIModel):

@@ -41,19 +41,23 @@ while ($true) {
         $job = $claim.Content | ConvertFrom-Json
 
         $output = Join-Path $config.outputPath "$($job.id).wav"
-        if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Force }
-        $arguments = @(
-            '--task', 'gen', '--family', 'yue2', '--model', $config.modelPath,
-            '--backend', 'cuda', '--threads', '8', '--lyrics', [string]$job.lyrics,
-            '--request-option', "style=$([string]$job.style)", '--request-option', 'cot=full',
-            '--session-option', 'yue2.model_gguf=yue2-3b-q4_0.gguf',
-            '--session-option', 'yue2.vae_gguf=yue2-vae-f16.gguf',
-            '--out', $output, '--metrics', '--log'
-        )
-        Write-Host "[$(Get-Date -Format s)] Generating $($job.id): $($job.title)"
-        & $config.cliPath @arguments
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output) -or (Get-Item -LiteralPath $output).Length -lt 44) {
-            throw "YuE2 exited with code $LASTEXITCODE and did not produce a valid WAV"
+        if (-not [bool]$job.uploadOnly) {
+            if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Force }
+            $arguments = @(
+                '--task', 'gen', '--family', 'yue2', '--model', $config.modelPath,
+                '--backend', 'cuda', '--threads', '8', '--lyrics', [string]$job.lyrics,
+                '--request-option', "style=$([string]$job.style)", '--request-option', 'cot=full',
+                '--session-option', 'yue2.model_gguf=yue2-3b-q4_0.gguf',
+                '--session-option', 'yue2.vae_gguf=yue2-vae-f16.gguf',
+                '--out', $output, '--metrics', '--log'
+            )
+            Write-Host "[$(Get-Date -Format s)] Generating $($job.id): $($job.title)"
+            & $config.cliPath @arguments
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output) -or (Get-Item -LiteralPath $output).Length -lt 44) {
+                throw "YuE2 exited with code $LASTEXITCODE and did not produce a valid WAV"
+            }
+        } elseif (-not (Test-Path -LiteralPath $output) -or (Get-Item -LiteralPath $output).Length -lt 44) {
+            throw "The ready WAV is no longer available on this computer"
         }
 
         $durationMs = $null
@@ -64,6 +68,7 @@ while ($true) {
         }
         $uploadHeaders = @{ Authorization = "Bearer $($config.token)" }
         if ($null -ne $durationMs) { $uploadHeaders['X-Generation-Duration-Ms'] = [string]$durationMs }
+        Write-Host "[$(Get-Date -Format s)] Uploading $($job.id): $($job.title)"
         Invoke-WebRequest -Uri "$($config.apiBase.TrimEnd('/'))/api/generation/worker/$($job.id)/complete" -Method Post -Headers $uploadHeaders -ContentType 'audio/wav' -InFile $output | Out-Null
         Remove-Item -LiteralPath $output -Force
         Write-Host "[$(Get-Date -Format s)] Completed $($job.id)"

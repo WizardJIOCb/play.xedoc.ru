@@ -280,6 +280,36 @@ def test_admin_can_toggle_music_generation_while_retaining_access(
     assert listener_job.status_code == 403
 
 
+def test_generation_413_can_retry_only_the_local_upload(
+    client: TestClient,
+    store: CredentialStore,
+) -> None:
+    unlock(client)
+    created = client.post("/api/generation/jobs", json={
+        "title": "Upload retry",
+        "style": "Minimal electronic",
+        "lyrics": "[Verse] Keep the generated WAV",
+    })
+    assert created.status_code == 200
+    job_id = created.json()["id"]
+
+    claimed = store.claim_music_generation_job()
+    assert claimed is not None
+    assert claimed["id"] == job_id
+    assert claimed["upload_only"] is False
+    assert store.fail_music_generation_job(job_id, "Remote server returned (413) Request Entity Too Large") is True
+
+    retried = client.post(f"/api/generation/jobs/{job_id}/retry-upload")
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "queued"
+    assert "error" not in retried.json()
+
+    upload_claim = store.claim_music_generation_job()
+    assert upload_claim is not None
+    assert upload_claim["id"] == job_id
+    assert upload_claim["upload_only"] is True
+
+
 def test_device_flow_connects_and_persists_encrypted_token(
     client: TestClient,
     store: CredentialStore,

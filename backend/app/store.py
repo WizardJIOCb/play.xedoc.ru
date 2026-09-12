@@ -304,6 +304,7 @@ class CredentialStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_music_generation_queue ON music_generation_job(status, created_at)"
             )
+            self._ensure_column(connection, "music_generation_job", "upload_only", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS social_post (
@@ -663,12 +664,25 @@ class CredentialStore:
             ).fetchone()
         return row is not None
 
+    def retry_music_generation_upload(self, job_id: str) -> dict | None:
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE music_generation_job
+                SET status = 'queued', error = NULL, upload_only = 1, updated_at = ?
+                WHERE id = ? AND user_id = ? AND status = 'failed' AND error LIKE '%413%'
+                """,
+                (now, job_id, self.current_user_id()),
+            )
+        return self.load_music_generation_job(job_id) if cursor.rowcount == 1 else None
+
     def claim_music_generation_job(self) -> dict | None:
         now = int(time.time())
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT id, user_id, title, style, lyrics FROM music_generation_job WHERE status = 'queued' ORDER BY created_at LIMIT 1"
+                "SELECT id, user_id, title, style, lyrics, upload_only FROM music_generation_job WHERE status = 'queued' ORDER BY created_at LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
@@ -676,13 +690,13 @@ class CredentialStore:
                 "UPDATE music_generation_job SET status = 'running', updated_at = ? WHERE id = ? AND status = 'queued'",
                 (now, row[0]),
             )
-        return {"id": row[0], "user_id": row[1], "title": row[2], "style": row[3], "lyrics": row[4]}
+        return {"id": row[0], "user_id": row[1], "title": row[2], "style": row[3], "lyrics": row[4], "upload_only": bool(row[5])}
 
     def complete_music_generation_job(self, job_id: str, output_file: str, duration_ms: int | None = None) -> bool:
         now = int(time.time())
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
-                "UPDATE music_generation_job SET status = 'completed', output_file = ?, duration_ms = ?, error = NULL, updated_at = ? WHERE id = ? AND status = 'running'",
+                "UPDATE music_generation_job SET status = 'completed', output_file = ?, duration_ms = ?, error = NULL, upload_only = 0, updated_at = ? WHERE id = ? AND status = 'running'",
                 (output_file, duration_ms, now, job_id),
             )
         return cursor.rowcount == 1

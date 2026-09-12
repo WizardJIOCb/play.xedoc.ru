@@ -539,6 +539,14 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Задача генерации не найдена")
         return music_generation_dto(job)
 
+    @app.post("/api/generation/jobs/{job_id}/retry-upload", response_model=MusicGenerationDTO, response_model_exclude_none=True)
+    async def retry_music_generation_upload(job_id: str, request: Request) -> MusicGenerationDTO:
+        require_app_user(request)
+        job = store.retry_music_generation_upload(job_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Повторная загрузка доступна только после ошибки размера файла")
+        return music_generation_dto(job)
+
     @app.get("/api/generation/jobs/{job_id}/audio")
     async def stream_music_generation_audio(job_id: str, request: Request) -> FileResponse:
         require_app_user(request)
@@ -558,7 +566,7 @@ def create_app(
         job = store.claim_music_generation_job()
         if job is None:
             return None
-        return MusicGenerationWorkerJobDTO(id=job["id"], title=job["title"], style=job["style"], lyrics=job["lyrics"])
+        return MusicGenerationWorkerJobDTO(id=job["id"], title=job["title"], style=job["style"], lyrics=job["lyrics"], upload_only=bool(job.get("upload_only")))
 
     @app.post("/api/generation/worker/{job_id}/complete", response_model=ActionResponse)
     async def complete_music_generation_job(job_id: str, request: Request) -> ActionResponse:
