@@ -26,18 +26,19 @@ function Report-Failure([string]$JobId, [string]$Message) {
     try {
         Invoke-WebRequest -Uri "$($config.apiBase.TrimEnd('/'))/api/generation/worker/$JobId/failed" -Method Post -Headers $headers -ContentType 'text/plain; charset=utf-8' -Body $Message | Out-Null
     } catch {
-        Write-Warning "Could not report failed job $JobId: $($_.Exception.Message)"
+        Write-Warning "Could not report failed job ${JobId}: $($_.Exception.Message)"
     }
 }
 
 while ($true) {
     try {
         $job = $null
-        $job = Invoke-RestMethod -Uri $claimUri -Method Post -Headers $headers -ContentType 'application/json'
-        if ($null -eq $job) {
+        $claim = Invoke-WebRequest -Uri $claimUri -Method Post -Headers $headers -ContentType 'application/json'
+        if ([string]::IsNullOrWhiteSpace($claim.Content) -or $claim.Content.Trim() -eq 'null') {
             Start-Sleep -Seconds 8
             continue
         }
+        $job = $claim.Content | ConvertFrom-Json
 
         $output = Join-Path $config.outputPath "$($job.id).wav"
         if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Force }
@@ -69,7 +70,7 @@ while ($true) {
     } catch {
         $message = $_.Exception.Message
         Write-Warning "YuE2 worker error: $message"
-        if ($null -ne $job -and $job.id) { Report-Failure -JobId ([string]$job.id) -Message $message }
+        if ($null -ne $job -and $null -ne $job.PSObject.Properties['id']) { Report-Failure -JobId ([string]$job.id) -Message $message }
         Start-Sleep -Seconds 12
     }
 }
