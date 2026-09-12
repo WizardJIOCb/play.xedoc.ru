@@ -1,4 +1,4 @@
-import { BarChart3, Compass, Disc3, Globe2, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound } from 'lucide-react'
+import { BarChart3, Compass, Disc3, Globe2, Heart, History, Home, Library, ListMusic, PanelLeftClose, PanelLeftOpen, Plus, Rss, Sparkles, UsersRound, WandSparkles } from 'lucide-react'
 import type { Playlist, ViewId } from '../types'
 import { CoverArt } from './CoverArt'
 
@@ -18,10 +18,12 @@ export function Sidebar({
   recommendationsActive,
   topActive,
   globalTopActive,
+  generationActive,
   onView,
   onRecommendations,
   onTop,
   onGlobalTop,
+  onGeneration,
   onPlaylist,
   onCreatePlaylist,
   onToggle,
@@ -33,10 +35,12 @@ export function Sidebar({
   recommendationsActive: boolean
   topActive: boolean
   globalTopActive: boolean
+  generationActive?: boolean
   onView: (view: ViewId) => void
   onRecommendations: () => void
   onTop: () => void
   onGlobalTop: () => void
+  onGeneration?: () => void
   onPlaylist: (playlist: Playlist) => void
   onCreatePlaylist: () => void
   onToggle: () => void
@@ -67,6 +71,10 @@ export function Sidebar({
         <button className={globalTopActive ? 'is-active' : ''} type="button" onClick={onGlobalTop} aria-label="Топ глобальный">
           <Globe2 size={20} />
           <span>Топ глобальный</span>
+        </button>
+        <button className={generationActive ? 'is-active' : ''} type="button" onClick={onGeneration} aria-label="Сгенерировать">
+          <WandSparkles size={20} />
+          <span>Сгенерировать</span>
         </button>
       </nav>
 

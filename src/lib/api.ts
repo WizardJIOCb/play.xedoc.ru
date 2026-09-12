@@ -1,4 +1,4 @@
-import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, Playlist, ProfileSummary, PublicListeningHistory, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
+import type { AdminDashboard, AppUser, BootstrapPayload, DeviceAuthStart, DiscoveryRecommendations, FriendStatus, FriendsPayload, GenrePeriod, GlobalRelease, GlobalTopPayload, GlobalTopSection, LikedTracksPayload, ListeningStats, MusicGeneration, Playlist, ProfileSummary, PublicListeningHistory, PublicNowPlaying, PublicProfile, PublicShare, SearchPayload, SessionPreferences, ShareLink, SocialAttachment, SocialComment, SocialFeed, SocialPost, Track, VKImportJob, VKImportResult } from '../types'
 
 class ApiError extends Error {
   constructor(
@@ -40,6 +40,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getBootstrap(): Promise<BootstrapPayload> {
   return request<BootstrapPayload>('/bootstrap')
+}
+
+export async function getMusicGenerations(): Promise<MusicGeneration[]> {
+  return request<MusicGeneration[]>('/generation/jobs')
+}
+
+export async function createMusicGeneration(input: { title: string; style: string; lyrics: string }): Promise<MusicGeneration> {
+  return request<MusicGeneration>('/generation/jobs', { method: 'POST', body: JSON.stringify(input) })
 }
 
 export async function registerAccount(username: string, displayName: string, password: string): Promise<AppUser> {

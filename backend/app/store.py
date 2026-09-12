@@ -283,6 +283,29 @@ class CredentialStore:
             self._ensure_column(connection, "vk_import_job", "reused", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS music_generation_job (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    style TEXT NOT NULL,
+                    lyrics TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+                    error TEXT,
+                    output_file TEXT,
+                    duration_ms INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_music_generation_owner ON music_generation_job(user_id, created_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_music_generation_queue ON music_generation_job(status, created_at)"
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS social_post (
                     id TEXT PRIMARY KEY,
                     owner_id TEXT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
@@ -586,7 +609,82 @@ class CredentialStore:
                 """,
                 (self.current_user_id(),),
             ).fetchone()
-        return self._vk_import_job_row(row) if row else None
+            return self._vk_import_job_row(row) if row else None
+
+    def create_music_generation_job(self, title: str, style: str, lyrics: str) -> dict:
+        job_id = secrets.token_urlsafe(18)
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT INTO music_generation_job (id, user_id, title, style, lyrics, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+                (job_id, self.current_user_id(), title, style, lyrics, now, now),
+            )
+        return self.load_music_generation_job(job_id) or {}
+
+    def list_music_generation_jobs(self, limit: int = 30) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at FROM music_generation_job WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (self.current_user_id(), limit),
+            ).fetchall()
+        return [self._music_generation_job_row(row) for row in rows]
+
+    def load_music_generation_job(self, job_id: str, *, user_id: str | None = None) -> dict | None:
+        owner_id = user_id if user_id is not None else self.current_user_id()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT id, title, style, lyrics, status, error, output_file, duration_ms, created_at, updated_at FROM music_generation_job WHERE id = ? AND user_id = ?",
+                (job_id, owner_id),
+            ).fetchone()
+        return self._music_generation_job_row(row) if row else None
+
+    def has_active_music_generation(self) -> bool:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM music_generation_job WHERE user_id = ? AND status IN ('queued', 'running') LIMIT 1",
+                (self.current_user_id(),),
+            ).fetchone()
+        return row is not None
+
+    def claim_music_generation_job(self) -> dict | None:
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT id, user_id, title, style, lyrics FROM music_generation_job WHERE status = 'queued' ORDER BY created_at LIMIT 1"
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                "UPDATE music_generation_job SET status = 'running', updated_at = ? WHERE id = ? AND status = 'queued'",
+                (now, row[0]),
+            )
+        return {"id": row[0], "user_id": row[1], "title": row[2], "style": row[3], "lyrics": row[4]}
+
+    def complete_music_generation_job(self, job_id: str, output_file: str, duration_ms: int | None = None) -> bool:
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE music_generation_job SET status = 'completed', output_file = ?, duration_ms = ?, error = NULL, updated_at = ? WHERE id = ? AND status = 'running'",
+                (output_file, duration_ms, now, job_id),
+            )
+        return cursor.rowcount == 1
+
+    def fail_music_generation_job(self, job_id: str, error: str) -> bool:
+        now = int(time.time())
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE music_generation_job SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'running'",
+                (error[:500], now, job_id),
+            )
+        return cursor.rowcount == 1
+
+    @staticmethod
+    def _music_generation_job_row(row: tuple) -> dict:
+        return {
+            "id": row[0], "title": row[1], "style": row[2], "lyrics": row[3], "status": row[4],
+            "error": row[5], "output_file": row[6], "duration_ms": row[7], "created_at": row[8], "updated_at": row[9],
+        }
 
     def incomplete_vk_import_jobs(self) -> list[dict]:
         with self._lock, self._connect() as connection:

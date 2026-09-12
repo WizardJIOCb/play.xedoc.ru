@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import math
+import os
 import re
 import secrets
 import time
@@ -14,7 +15,7 @@ from datetime import date, timedelta
 from typing import Literal
 from urllib.parse import quote, urlparse
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
 from .gateway import (
@@ -51,6 +52,9 @@ from .models import (
     NowPlayingRequest,
     ListeningStatsPayload,
     ListeningTopDTO,
+    MusicGenerationCreateRequest,
+    MusicGenerationDTO,
+    MusicGenerationWorkerJobDTO,
     LikedTracksPayload,
     LocalPlaylistCreateRequest,
     LocalPlaylistUpdateRequest,
@@ -185,6 +189,24 @@ def create_app(
         if not user.is_admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Доступ только для администратора")
         return user
+
+    def has_generation_worker_token(request: Request) -> bool:
+        configured = settings.generation_worker_token.get_secret_value() if settings.generation_worker_token else ""
+        presented = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        return bool(configured) and hmac.compare_digest(presented, configured)
+
+    def require_generation_worker(request: Request) -> None:
+        if not has_generation_worker_token(request):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован воркер генерации")
+
+    def music_generation_dto(job: dict) -> MusicGenerationDTO:
+        output_file = str(job.get("output_file") or "")
+        stream_url = f"/api/generation/jobs/{quote(str(job['id']), safe='')}/audio" if job.get("status") == "completed" and output_file else None
+        return MusicGenerationDTO(
+            id=str(job["id"]), title=str(job["title"]), style=str(job["style"]), lyrics=str(job["lyrics"]),
+            status=job["status"], error=job.get("error"), duration_ms=job.get("duration_ms"),
+            stream_url=stream_url, created_at=int(job["created_at"]), updated_at=int(job["updated_at"]),
+        )
 
     def is_access_unlocked(request: Request) -> bool:
         if not settings.access_key.get_secret_value():
@@ -458,7 +480,8 @@ def create_app(
                 migrated_legacy_session = user is not None
         request.state.app_user = user
         tenant_token = store.set_current_user(user.id if user else ANONYMOUS_USER_ID)
-        if settings.environment == "production" and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        worker_request = request.url.path.startswith("/api/generation/worker/") and has_generation_worker_token(request)
+        if settings.environment == "production" and request.method not in {"GET", "HEAD", "OPTIONS"} and not worker_request:
             origin = request.headers.get("origin")
             if origin != settings.public_origin.rstrip("/"):
                 store.reset_current_user(tenant_token)
@@ -489,6 +512,84 @@ def create_app(
             "storage": "ok" if healthy else "error",
             "yandexConfigured": True,
         }
+
+    @app.get("/api/generation/jobs", response_model=list[MusicGenerationDTO], response_model_exclude_none=True)
+    async def list_music_generation_jobs(request: Request) -> list[MusicGenerationDTO]:
+        require_app_user(request)
+        return [music_generation_dto(job) for job in store.list_music_generation_jobs()]
+
+    @app.post("/api/generation/jobs", response_model=MusicGenerationDTO, response_model_exclude_none=True)
+    async def create_music_generation_job(body: MusicGenerationCreateRequest, request: Request) -> MusicGenerationDTO:
+        require_app_user(request)
+        await enforce_rate_limit(request, "music-generation", maximum=3, window_seconds=900)
+        if store.has_active_music_generation():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="У вас уже есть трек в очереди или в генерации")
+        job = store.create_music_generation_job(body.title.strip(), body.style.strip(), body.lyrics.strip())
+        return music_generation_dto(job)
+
+    @app.get("/api/generation/jobs/{job_id}", response_model=MusicGenerationDTO, response_model_exclude_none=True)
+    async def get_music_generation_job(job_id: str, request: Request) -> MusicGenerationDTO:
+        require_app_user(request)
+        job = store.load_music_generation_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Задача генерации не найдена")
+        return music_generation_dto(job)
+
+    @app.get("/api/generation/jobs/{job_id}/audio")
+    async def stream_music_generation_audio(job_id: str, request: Request) -> FileResponse:
+        require_app_user(request)
+        job = store.load_music_generation_job(job_id)
+        output_file = str(job.get("output_file") or "") if job else ""
+        if job is None or job.get("status") != "completed" or output_file != f"{job_id}.wav":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Готовый трек не найден")
+        base = settings.generated_audio_path.resolve()
+        output = (base / output_file).resolve()
+        if output.parent != base or not output.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл трека недоступен")
+        return FileResponse(output, media_type="audio/wav", filename=f"{job['title']}.wav")
+
+    @app.post("/api/generation/worker/claim", response_model=MusicGenerationWorkerJobDTO | None)
+    async def claim_music_generation_job(request: Request) -> MusicGenerationWorkerJobDTO | None:
+        require_generation_worker(request)
+        job = store.claim_music_generation_job()
+        if job is None:
+            return None
+        return MusicGenerationWorkerJobDTO(id=job["id"], title=job["title"], style=job["style"], lyrics=job["lyrics"])
+
+    @app.post("/api/generation/worker/{job_id}/complete", response_model=ActionResponse)
+    async def complete_music_generation_job(job_id: str, request: Request) -> ActionResponse:
+        require_generation_worker(request)
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+        if content_type not in {"audio/wav", "audio/x-wav", "application/octet-stream"}:
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Ожидается WAV-файл")
+        payload = await request.body()
+        if not payload or len(payload) > 64 * 1024 * 1024:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Размер трека должен быть от 1 байта до 64 МБ")
+        duration_value = request.headers.get("x-generation-duration-ms")
+        try:
+            duration_ms = max(0, min(int(duration_value), 30 * 60 * 1000)) if duration_value else None
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Некорректная длительность трека")
+        output_dir = settings.generated_audio_path
+        output_dir.mkdir(parents=True, exist_ok=True)
+        final_path = output_dir / f"{job_id}.wav"
+        temporary_path = output_dir / f".{job_id}.{secrets.token_urlsafe(6)}.upload"
+        try:
+            temporary_path.write_bytes(payload)
+            if not store.complete_music_generation_job(job_id, final_path.name, duration_ms):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Задача уже не ожидает результат")
+            os.replace(temporary_path, final_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return ActionResponse()
+
+    @app.post("/api/generation/worker/{job_id}/failed", response_model=ActionResponse)
+    async def fail_music_generation_job(job_id: str, request: Request) -> ActionResponse:
+        require_generation_worker(request)
+        detail = (await request.body()).decode("utf-8", errors="replace").strip()
+        if not store.fail_music_generation_job(job_id, detail or "Генератор остановился без сообщения об ошибке"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Задача уже не ожидает результат")
+        return ActionResponse()
 
     @app.post("/api/account/register", response_model=AppUserDTO)
     async def register_account(

@@ -18,6 +18,19 @@ export interface Track {
   lastPlayedAt?: number
 }
 
+export interface MusicGeneration {
+  id: string
+  title: string
+  style: string
+  lyrics: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  error?: string
+  durationMs?: number
+  streamUrl?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Playlist {
   id: string
   title: string

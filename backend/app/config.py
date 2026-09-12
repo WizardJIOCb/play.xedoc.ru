@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     yandex_client_id: SecretStr | None = None
     yandex_client_secret: SecretStr | None = None
     request_timeout_seconds: float = 20.0
+    generation_worker_token: SecretStr | None = None
+    generated_audio_path: Path = BACKEND_ROOT / "data" / "generated-audio"
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

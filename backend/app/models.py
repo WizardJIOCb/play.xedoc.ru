@@ -35,6 +35,32 @@ class TrackDTO(APIModel):
     last_played_at: int | None = None
 
 
+class MusicGenerationCreateRequest(APIModel):
+    title: str = Field(min_length=1, max_length=120)
+    style: str = Field(min_length=3, max_length=500)
+    lyrics: str = Field(min_length=3, max_length=1800)
+
+
+class MusicGenerationDTO(APIModel):
+    id: str
+    title: str
+    style: str
+    lyrics: str
+    status: Literal["queued", "running", "completed", "failed"]
+    error: str | None = None
+    duration_ms: int | None = None
+    stream_url: str | None = None
+    created_at: int
+    updated_at: int
+
+
+class MusicGenerationWorkerJobDTO(APIModel):
+    id: str
+    title: str
+    style: str
+    lyrics: str
+
+
 class PlaylistDTO(APIModel):
     id: str
     title: str

@@ -37,6 +37,7 @@ import { GlobalTooltip } from './components/GlobalTooltip'
 import { FriendsPage } from './components/FriendsPage'
 import { GlobalTopPage } from './components/GlobalTopPage'
 import { GenresPage } from './components/GenresPage'
+import { GenerationPage } from './components/GenerationPage'
 import { MoodMap, type MoodSettings } from './components/MoodMap'
 import { MusicLoader } from './components/MusicLoader'
 import { PlayerBar } from './components/PlayerBar'
@@ -78,6 +79,7 @@ const isRecommendationsPath = () => window.location.pathname.replace(/\/+$/, '')
 const isTopPath = () => window.location.pathname.replace(/\/+$/, '') === '/top'
 const isGlobalTopPath = () => isGlobalTopRoutePath(window.location.pathname)
 const isAdminPath = () => window.location.pathname.replace(/\/+$/, '') === '/admin'
+const isGenerationPath = () => window.location.pathname.replace(/\/+$/, '') === '/generate'
 const isSearchPath = () => window.location.pathname.replace(/\/+$/, '') === '/search'
 const isAlbumPath = () => window.location.pathname.replace(/\/+$/, '') === '/album'
 const pathView = (): ViewId => {
@@ -407,6 +409,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   const [topOpen, setTopOpen] = useState(isTopPath)
   const [globalTopOpen, setGlobalTopOpen] = useState(isGlobalTopPath)
   const [adminOpen, setAdminOpen] = useState(isAdminPath)
+  const [generationOpen, setGenerationOpen] = useState(isGenerationPath)
   const [listeningStats, setListeningStats] = useState<ListeningStats>()
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState('')
@@ -505,6 +508,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
       setTopOpen(isTopPath())
       setGlobalTopOpen(isGlobalTopPath())
       setAdminOpen(isAdminPath())
+      setGenerationOpen(isGenerationPath())
       setSearchOpen(isSearchPath())
       setAlbumOpen(isAlbumPath())
       setPlaylistEditorOpen(false)
@@ -632,6 +636,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     setTopOpen(false)
     setGlobalTopOpen(false)
     setAdminOpen(false)
+    setGenerationOpen(false)
     setSearchOpen(false)
     const nextPath = nextView === 'liked' ? '/liked' : nextView === 'feed' ? '/feed' : nextView === 'friends' ? '/friends' : nextView === 'genres' ? '/genres' : '/'
     navigatePath(nextPath)
@@ -685,6 +690,19 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (!isAdminPath()) navigatePath('/admin')
   }, [navigatePath, requireAuth])
 
+  const openGeneration = useCallback(() => {
+    if (!requireAuth()) return
+    setQueueOpen(false)
+    setSelectedPlaylist(undefined)
+    setRecommendationsOpen(false)
+    setTopOpen(false)
+    setGlobalTopOpen(false)
+    setAdminOpen(false)
+    setSearchOpen(false)
+    setGenerationOpen(true)
+    if (!isGenerationPath()) navigatePath('/generate')
+  }, [navigatePath, requireAuth])
+
   const openSearch = useCallback(() => {
     setQueueOpen(false)
     setSelectedPlaylist(undefined)
@@ -734,21 +752,23 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   useEffect(() => {
     if (loading || authenticated || profileUsername || searchOpen || albumOpen) return
     if (topOpen || globalTopOpen) return
-    if ((view === 'home' || view === 'genres') && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen) return
+    if ((view === 'home' || view === 'genres') && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !generationOpen) return
     setView('home')
     setRecommendationsOpen(false)
     setTopOpen(false)
     setGlobalTopOpen(false)
     setAdminOpen(false)
+    setGenerationOpen(false)
     navigatePath('/')
     setAuthOpen(true)
-  }, [adminOpen, albumOpen, authenticated, globalTopOpen, loading, navigatePath, profileUsername, recommendationsOpen, searchOpen, topOpen, view])
+  }, [adminOpen, albumOpen, authenticated, generationOpen, globalTopOpen, loading, navigatePath, profileUsername, recommendationsOpen, searchOpen, topOpen, view])
   const content = useMemo(() => {
     if (profileUsername) return <PublicProfilePage username={profileUsername} embedded viewer={data.appUser} onBack={() => changeView('home')} onProfileUpdated={(user) => setData((value) => ({ ...value, appUser: user }))} />
     if (queueOpen) return <QueueContentView playlistTitle={queuePlaylistTitle} loading={queueLoading} error={queueError} />
     if (albumOpen) return <AlbumPage />
     if (selectedPlaylist) return <PlaylistDetailView playlist={selectedPlaylist} loading={playlistLoading} error={playlistError} onBack={() => setSelectedPlaylist(undefined)} onEdit={(playlist) => { setEditingPlaylist(playlist); setPlaylistEditorOpen(true) }} />
     if (searchOpen) return <SearchPalette suggestions={data.quickTracks} onPlaylistPlay={playPlaylistInQueue} />
+    if (generationOpen) return <GenerationPage />
     if (adminOpen) return <AdminDashboardPage isAdmin={Boolean(data.appUser?.isAdmin)} />
     if (globalTopOpen) return <GlobalTopPage data={globalTop} loading={globalTopLoading} error={globalTopError} />
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} authenticated={authenticated} />
@@ -761,7 +781,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (view === 'library') return <LibraryView data={data} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onSession={() => openSession()} onCreate={openNewPlaylist} />
     if (view === 'liked') return <TrackCollectionView type="liked" tracks={allLiked?.tracks || data.likedTracks} total={allLiked?.total ?? data.likedCount} loading={likedLoading} error={likedError} />
     return <TrackCollectionView type="history" tracks={player.history} />
-  }, [adminOpen, albumOpen, allLiked, authenticated, changeView, data, globalTop, globalTopError, globalTopLoading, globalTopOpen, likedError, likedLoading, listeningStats, openNewPlaylist, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
+  }, [adminOpen, albumOpen, allLiked, authenticated, changeView, data, generationOpen, globalTop, globalTopError, globalTopLoading, globalTopOpen, likedError, likedLoading, listeningStats, openNewPlaylist, openPlaylist, openRecommendations, openSession, playPlaylist, playPlaylistInQueue, player.history, playlistError, playlistLoading, profileUsername, queueError, queueLoading, queueOpen, queuePlaylistTitle, recommendationsOpen, searchOpen, selectedPlaylist, statsError, statsLoading, topOpen, view])
 
   if (loading && data.accessLocked) return <MusicLoader />
   if (loadError) return <main className="access-gate"><div className="access-gate__glow" /><form><span className="brand__mark">X</span><span className="eyebrow">XEDOC PLAY</span><h1>Не удалось подключиться.</h1><p>{loadError}</p><button className="primary-button" type="button" onClick={refresh}>Повторить</button></form></main>
@@ -774,7 +794,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
   return (
     <AuthPromptProvider authenticated={authenticated} onRequireAuth={() => setAuthOpen(true)}>
     <div className={`app-shell ${sidebarCollapsed ? 'app-shell--compact' : ''}`}>
-      <Sidebar view={searchOpen || albumOpen || profileUsername ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} globalTopActive={!profileUsername && globalTopOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onGlobalTop={openGlobalTop} onPlaylist={openPlaylist} onCreatePlaylist={openNewPlaylist} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
+      <Sidebar view={searchOpen || albumOpen || profileUsername || generationOpen ? null : view} playlists={data.localPlaylists.concat(data.playlists)} collapsed={sidebarCollapsed} recommendationsActive={!profileUsername && recommendationsOpen} topActive={!profileUsername && topOpen} globalTopActive={!profileUsername && globalTopOpen} generationActive={!profileUsername && generationOpen} onView={changeView} onRecommendations={openRecommendations} onTop={openTop} onGlobalTop={openGlobalTop} onGeneration={openGeneration} onPlaylist={openPlaylist} onCreatePlaylist={openNewPlaylist} onToggle={() => setSidebarCollapsed((value) => !value)} onSession={() => openSession()} />
       <main className="main-view">
         <header className="topbar">
           <div className="topbar__history"><button className="icon-button" type="button" aria-label="Назад" disabled={!profileUsername && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !searchOpen && !albumOpen} onClick={() => selectedPlaylist && !profileUsername ? setSelectedPlaylist(undefined) : changeView('home')}><ArrowLeft size={18} /></button></div>
@@ -787,7 +807,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
         </header>
 
         <div className="page-content">
-          {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !searchOpen && !albumOpen && view !== 'genres' && <header className="page-heading">
+          {!profileUsername && !queueOpen && !selectedPlaylist && !recommendationsOpen && !topOpen && !globalTopOpen && !adminOpen && !generationOpen && !searchOpen && !albumOpen && view !== 'genres' && <header className="page-heading">
             <div><span className="eyebrow">{title.eyebrow}</span><h1>{view === 'home' && data.appUser?.displayName ? `${title.title}, ${data.appUser.displayName.split(' ')[0]}` : title.title}</h1><p>{!authenticated && view === 'home' ? 'Популярная музыка XEDOC — можно слушать без регистрации.' : title.description}</p></div>
           </header>}
           {content}
