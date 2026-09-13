@@ -137,6 +137,42 @@ describe('content search page', () => {
     expect(screen.getByText('3:00')).toBeInTheDocument()
   })
 
+  it.each([false, true])('seeks the active search result while playing and paused (public: %s)', async (publicMode) => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    Object.defineProperty(audio, 'duration', { configurable: true, value: 221 })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    window.history.replaceState(null, '', '/search?q=Новый')
+    api.searchMusic.mockResolvedValue({ tracks: [result, secondSuggestion], playlists: [], profiles: [] })
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} publicMode={publicMode} /></PlayerProvider>)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Включить Найденный трек' }))
+    fireEvent.loadedMetadata(audio)
+    const seek = screen.getByRole('slider', { name: 'Перемотка Найденный трек' })
+    expect(seek).toHaveAttribute('max', '221')
+    expect(screen.getAllByRole('slider')).toHaveLength(1)
+    fireEvent.click(seek)
+    fireEvent.change(seek, { target: { value: '90' } })
+    expect(audio.currentTime).toBe(90)
+    expect(screen.getByText('1:30 / 3:41')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пауза Найденный трек' })).toBeInTheDocument()
+
+    audio.currentTime = 95
+    fireEvent.timeUpdate(audio)
+    expect(seek).toHaveValue('95')
+    fireEvent.click(screen.getByRole('button', { name: 'Пауза Найденный трек' }))
+    fireEvent.change(seek, { target: { value: '120' } })
+    expect(audio.currentTime).toBe(120)
+    expect(seek).toHaveAttribute('aria-valuetext', '2:00 из 3:41')
+    expect(screen.getByRole('button', { name: 'Включить Найденный трек' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Другой трек' }))
+    expect(screen.queryByRole('slider', { name: 'Перемотка Найденный трек' })).not.toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Перемотка Другой трек' })).toHaveValue('0')
+  })
+
   it('shows pause only for the search result that is currently playing', () => {
     render(<PlayerProvider><SearchPalette suggestions={[suggestion, secondSuggestion]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
 

@@ -1,5 +1,5 @@
 import { ArrowDownToLine, Clock3, Command, CornerDownLeft, LoaderCircle, Pause, Play, Search, UserRound, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { searchMusic } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
 import { APP_NAVIGATE_EVENT, navigateApp } from '../lib/navigation'
@@ -130,7 +130,10 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
           </div>
           <div className="search-results">
             {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => {
-              const playing = player.current?.id === track.id && player.isPlaying
+              const active = player.current?.id === track.id
+              const playing = active && player.isPlaying
+              const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : Math.max(0, track.durationMs / 1000)
+              const progress = Math.min(Math.max(0, player.progress || 0), duration)
               return (
                 <div key={track.id} className={`search-result ${playing ? 'search-result--active' : ''} ${publicMode ? 'search-result--public' : ''}`}>
                   <div className="search-result__main" role="button" tabIndex={0} aria-label={playing ? `Пауза ${track.title}` : `Включить ${track.title}`} onClick={() => toggleTrack(track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleTrack(track) } }}>
@@ -140,6 +143,19 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
                   </div>
                   {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
+                  {active && <input
+                    className="quick-track__seek search-result__seek"
+                    type="range"
+                    min="0"
+                    max={duration || 1}
+                    step="1"
+                    value={progress}
+                    disabled={!duration}
+                    aria-label={`Перемотка ${track.title}`}
+                    aria-valuetext={`${Math.floor(progress / 60)}:${String(Math.floor(progress % 60)).padStart(2, '0')} из ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`}
+                    onChange={(event) => player.seek(Number(event.target.value))}
+                    style={{ '--seek-progress': `${duration ? progress / duration * 100 : 0}%` } as CSSProperties}
+                  />}
                 </div>
               )
             })}
