@@ -33,6 +33,7 @@ import { AlbumPage } from './components/AlbumPage'
 import { AuthGate } from './components/AuthGate'
 import { ArtistLinks } from './components/ArtistLinks'
 import { CoverArt } from './components/CoverArt'
+import { DiscoveryHero } from './components/DiscoveryHero'
 import { GlobalTooltip } from './components/GlobalTooltip'
 import { FriendsPage } from './components/FriendsPage'
 import { GlobalTopPage } from './components/GlobalTopPage'
@@ -114,35 +115,31 @@ function SectionHeader({ title, hint, action, onAction }: { title: string; hint?
   )
 }
 
-function HomeView({ data, authenticated, onSession, onRequireAuth, onPlaylist, onPlaylistPlay, onRecommendations }: { data: BootstrapPayload; authenticated: boolean; onSession: () => void; onRequireAuth: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onRecommendations: () => void }) {
+function HomeView({ data, authenticated, onRequireAuth, onPlaylist, onPlaylistPlay, onRecommendations }: { data: BootstrapPayload; authenticated: boolean; onRequireAuth: () => void; onPlaylist: (playlist: Playlist) => void; onPlaylistPlay: (playlist: Playlist) => void; onRecommendations: () => void }) {
   const player = usePlayer()
   return (
     <>
-      <section className="hero-session">
+      {authenticated ? <DiscoveryHero data={data} onRecommendations={onRecommendations} /> : <section className="hero-session">
         <div className="hero-session__copy">
-          <span className="hero-session__label"><WandSparkles size={14} /> {authenticated ? 'XEDOC SESSION' : 'XEDOC PLAY · ГОСТЕВОЙ РЕЖИМ'}</span>
-          <h2>{authenticated ? <>Сессия под ваши правила.<br /><em>Настройте — и слушайте.</em></> : <>Музыка играет сразу.<br /><em>Без регистрации.</em></>}</h2>
-          <p>{authenticated ? (data.connected ? 'Выберите длительность, баланс знакомого и нового, источник музыки и период без повторов.' : 'Выберите длительность, источник музыки и период без повторов. Подборка строится по музыке, которую слушают в XEDOC.') : 'Слушайте популярное и ищите музыку в общем каталоге. Прослушивания не привязываются к профилю и не влияют на рекомендации.'}</p>
+          <span className="hero-session__label"><WandSparkles size={14} /> XEDOC PLAY · ГОСТЕВОЙ РЕЖИМ</span>
+          <h2>Музыка играет сразу.<br /><em>Без регистрации.</em></h2>
+          <p>Слушайте популярное и ищите музыку в общем каталоге. Прослушивания не привязываются к профилю и не влияют на рекомендации.</p>
           <div className="hero-session__actions">
-            {authenticated
-              ? <><button className="primary-button" type="button" onClick={onSession}><Sparkles size={18} /> Настроить сессию</button><button className="secondary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить подборку</button></>
-              : <><button className="primary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить популярное</button><button className="secondary-button" type="button" onClick={onRequireAuth}><LogIn size={17} /> Войти или зарегистрироваться</button></>}
+            <button className="primary-button" type="button" disabled={!data.quickTracks.length} onClick={() => player.playQueue(data.quickTracks)}><Play size={17} fill="currentColor" /> Включить популярное</button><button className="secondary-button" type="button" onClick={onRequireAuth}><LogIn size={17} /> Войти или зарегистрироваться</button>
           </div>
         </div>
         <div className="hero-session__visual">
           <div className="hero-session__settings">
-            <span className="hero-session__settings-label">{authenticated ? 'Что можно настроить' : 'Что доступно без входа'}</span>
+            <span className="hero-session__settings-label">Что доступно без входа</span>
             <div className="hero-session__setting-list">
-              <article><Clock3 size={19} /><span><strong>{authenticated ? '25 · 50 · 90 минут' : 'Популярное сейчас'}</strong><small>{authenticated ? 'Длительность сессии' : 'Общая подборка XEDOC'}</small></span></article>
-              {authenticated && data.connected
-                ? <article><Shuffle size={19} /><span><strong>0–100% открытий</strong><small>Баланс знакомого и нового</small></span></article>
-                : <article><Radio size={19} /><span><strong>Каталог XEDOC</strong><small>Популярное и недавнее в сервисе</small></span></article>}
-              <article><History size={19} /><span><strong>{authenticated ? '7 · 30 · 90 дней' : 'Без учёта профиля'}</strong><small>{authenticated ? 'Период без повторов' : 'Не привязываем к аккаунту'}</small></span></article>
+              <article><Clock3 size={19} /><span><strong>Популярное сейчас</strong><small>Общая подборка XEDOC</small></span></article>
+              <article><Radio size={19} /><span><strong>Каталог XEDOC</strong><small>Популярное и недавнее в сервисе</small></span></article>
+              <article><History size={19} /><span><strong>Без учёта профиля</strong><small>Не привязываем к аккаунту</small></span></article>
             </div>
             <p><Headphones size={17} /><span>{data.quickTracks.length ? `${data.quickTracks.length} треков готовы к быстрому запуску` : 'Быстрая подборка пока формируется'}</span></p>
           </div>
         </div>
-      </section>
+      </section>}
 
       <section className="content-section">
         <SectionHeader title={data.connected ? 'Продолжить слушать' : 'Сейчас слушают в XEDOC'} hint={data.connected ? undefined : 'Живые прослушивания пользователей сервиса'} action="Показать всё" />
@@ -782,7 +779,7 @@ function PrivateApp({ profileUsername }: { profileUsername?: string }) {
     if (topOpen) return <ListeningTopView stats={listeningStats} loading={statsLoading} error={statsError} authenticated={authenticated} />
     if (recommendationsOpen) return <RecommendationsView data={data} />
     if (view === 'genres') return <GenresPage data={globalTop} loading={globalTopLoading} error={globalTopError} />
-    if (view === 'home') return <HomeView data={data} authenticated={authenticated} onSession={() => openSession()} onRequireAuth={() => setAuthOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
+    if (view === 'home') return <HomeView data={data} authenticated={authenticated} onRequireAuth={() => setAuthOpen(true)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} onRecommendations={openRecommendations} />
     if (view === 'feed') return <SocialFeedPage user={data.appUser} tracks={data.quickTracks.concat(data.likedTracks)} playlists={data.localPlaylists.concat(data.playlists)} />
     if (view === 'friends') return <FriendsPage username={data.appUser?.username} />
     if (view === 'discover') return <DiscoverView data={data} onSession={(settings) => openSession(settings.novelty)} onPlaylist={openPlaylist} onPlaylistPlay={playPlaylist} />

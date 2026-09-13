@@ -83,16 +83,15 @@ describe('favorite collection filtering', () => {
     expect(screen.getByRole('button', { name: 'Включить Sunrise' }).querySelector('.lucide-play')).toBeInTheDocument()
   })
 
-  it('shows actual session controls instead of a fixed discovery claim', async () => {
+  it('shows music discoveries and keeps session creation in the sidebar', async () => {
     render(createElement(PlayerProvider, null, createElement(App)))
 
-    expect(await screen.findByRole('heading', { name: /Сессия под ваши правила/ })).toBeInTheDocument()
-    expect(screen.getByText('Настройте — и слушайте.')).toBeInTheDocument()
-    expect(screen.getByText('25 · 50 · 90 минут')).toBeInTheDocument()
-    expect(screen.getByText('Каталог XEDOC')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Настроить сессию' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Включить подборку' })).toBeDisabled()
-    expect(screen.queryByText('58%')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Новые для вас' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'За неделю' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'За месяц' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Слушать новое' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Собрать сессию' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Настроить сессию' })).not.toBeInTheDocument()
   })
 
   it('lets a guest open the home catalog and requests authentication for protected sections', async () => {
@@ -245,7 +244,7 @@ describe('favorite collection filtering', () => {
 
     await waitFor(() => expect(window.location.pathname).toBe('/'))
     expect(window.location.search).toBe('')
-    expect(await screen.findByRole('heading', { name: /Сессия под ваши правила/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Новые для вас' })).toBeInTheDocument()
     expect(AudioMock).toHaveBeenCalledTimes(1)
     expect(pause).not.toHaveBeenCalled()
     expect(audio.currentTime).toBe(83)
