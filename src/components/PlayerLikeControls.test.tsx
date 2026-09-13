@@ -89,6 +89,30 @@ describe('player like controls', () => {
     expect(removeFromQueue).toHaveBeenCalledOnce()
   })
 
+  it.each([{ compact: false }, { compact: true }, { readonly: true }])('keeps inline seeking and volume in sync with the player (%j)', async (props) => {
+    const tracks = [likedTrack, unlikedTrack]
+    render(<PlayerProvider>{tracks.map((track) => <TrackRow key={track.id} track={track} context={tracks} {...props} />)}<PlayerBar onQueue={() => undefined} /></PlayerProvider>)
+    expect(screen.queryByRole('slider', { name: 'Перемотка One' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить One' }))
+    const seek = await screen.findByRole('slider', { name: 'Перемотка One' })
+    fireEvent.click(seek)
+    fireEvent.change(seek, { target: { value: '90' } })
+    expect(screen.getByRole('slider', { name: 'Позиция воспроизведения' })).toHaveValue('90')
+    expect(screen.getAllByRole('button', { name: 'Пауза' })).toHaveLength(2)
+    fireEvent.change(screen.getByRole('slider', { name: 'Громкость One' }), { target: { value: '.25' } })
+    expect(screen.getByRole('slider', { name: 'Громкость' })).toHaveValue('0.25')
+    fireEvent.change(screen.getByRole('slider', { name: 'Громкость' }), { target: { value: '.6' } })
+    expect(screen.getByRole('slider', { name: 'Громкость One' })).toHaveValue('0.6')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Пауза' })[0])
+    fireEvent.change(seek, { target: { value: '120' } })
+    expect(screen.getByRole('slider', { name: 'Позиция воспроизведения' })).toHaveValue('120')
+    expect(screen.getByRole('button', { name: 'Воспроизвести' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Two' }))
+    expect(screen.queryByRole('slider', { name: 'Перемотка One' })).not.toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Перемотка Two' })).toHaveValue('0')
+    expect(screen.getByRole('slider', { name: 'Громкость Two' })).toHaveValue('0.6')
+  })
+
   it('shows the lyrics of a generated track in the player', async () => {
     render(<PlayerProvider><PlayingBar track={generatedTrack} /></PlayerProvider>)
 

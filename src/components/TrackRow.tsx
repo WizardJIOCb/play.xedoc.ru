@@ -9,6 +9,7 @@ import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
 import { useAuthPrompt } from '../auth/AuthPromptContext'
 import { TrackTime } from './TrackTime'
+import { TrackPlaybackControls } from './TrackPlaybackControls'
 
 export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource, onQueueRemove }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource; onQueueRemove?: () => void }) {
   const player = usePlayer()
@@ -67,6 +68,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
             <button className="icon-button track-row__remove" type="button" onClick={onQueueRemove} aria-label={`Убрать ${track.title} из очереди`} data-tooltip="Убрать из очереди"><X size={17} /></button>
           </div>
         : <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />)}
+      {active && <TrackPlaybackControls track={track} className="track-row__playback" />}
     </div>
   )
 }
