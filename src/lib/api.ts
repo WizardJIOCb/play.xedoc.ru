@@ -265,8 +265,8 @@ export async function getPlaylist(playlistId: string): Promise<Playlist> {
   return request<Playlist>(`/playlists/${encodeURIComponent(playlistId)}`)
 }
 
-export async function createLocalPlaylist(title: string, description = '', isPublic = false): Promise<Playlist> {
-  return request<Playlist>('/local-playlists', { method: 'POST', body: JSON.stringify({ title, description, isPublic }) })
+export async function createLocalPlaylist(title: string, description = '', isPublic = false, coverDataUrl?: string): Promise<Playlist> {
+  return request<Playlist>('/local-playlists', { method: 'POST', body: JSON.stringify({ title, description, isPublic, coverDataUrl }) })
 }
 
 export async function getLocalPlaylists(): Promise<Playlist[]> {

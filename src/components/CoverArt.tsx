@@ -1,6 +1,7 @@
 import { Play } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CoverTone } from '../types'
+import { CoverPreview } from './CoverPreview'
 
 interface CoverArtProps {
   title: string
@@ -14,9 +15,10 @@ interface CoverArtProps {
 export function CoverArt({ title, url, tone = 'violet', className = '', playable = false, onPlay }: CoverArtProps) {
   const imageUrl = url?.replace('%%', '400x400') || ''
   const [imageFailed, setImageFailed] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const hasImage = Boolean(imageUrl && !imageFailed)
 
-  useEffect(() => setImageFailed(false), [imageUrl])
+  useEffect(() => { setImageFailed(false); setExpanded(false) }, [imageUrl])
 
   const initials = title
     .split(/\s+/)
@@ -30,8 +32,12 @@ export function CoverArt({ title, url, tone = 'violet', className = '', playable
         <img
           className="cover__image"
           src={imageUrl}
-          alt=""
-          aria-hidden="true"
+          alt={`Обложка: ${title}`}
+          role="button"
+          tabIndex={0}
+          aria-label={`Увеличить обложку: ${title}`}
+          onClick={(event) => { event.preventDefault(); event.stopPropagation(); setExpanded(true) }}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); setExpanded(true) } }}
           loading="lazy"
           decoding="async"
           draggable={false}
@@ -49,6 +55,7 @@ export function CoverArt({ title, url, tone = 'violet', className = '', playable
           <Play size={19} fill="currentColor" />
         </button>
       )}
+      {expanded && hasImage && <CoverPreview title={title} url={url?.replace('%%', '1000x1000') || imageUrl} fallbackUrl={imageUrl} onClose={() => setExpanded(false)} />}
     </div>
   )
 }

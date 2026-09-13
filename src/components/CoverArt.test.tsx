@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CoverArt } from './CoverArt'
+
+afterEach(() => { cleanup(); vi.restoreAllMocks(); Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close') })
 
 describe('CoverArt', () => {
   it('renders generated initials when an image is unavailable', () => {
@@ -31,4 +33,26 @@ describe('CoverArt', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Включить Редкий фокус' }))
     expect(onPlay).toHaveBeenCalledOnce()
   })
+})
+
+
+it('opens a large cover without triggering its parent and closes back to the image', () => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function(this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function(this: HTMLDialogElement) { this.removeAttribute('open') } })
+  const play = vi.fn()
+  render(<div onClick={play}><CoverArt title="Альбом" url="https://example.test/%%" /></div>)
+  const trigger = screen.getByRole('button', { name: 'Увеличить обложку: Альбом' })
+  trigger.focus()
+  fireEvent.click(trigger)
+  expect(screen.getByRole('dialog', { name: 'Обложка: Альбом' })).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: 'Обложка: Альбом' })).toHaveAttribute('src', 'https://example.test/1000x1000')
+  fireEvent.error(screen.getByRole('img', { name: 'Обложка: Альбом' }))
+  expect(screen.getByRole('img', { name: 'Обложка: Альбом' })).toHaveAttribute('src', 'https://example.test/400x400')
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть обложку' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(trigger).toHaveFocus()
+  expect(play).not.toHaveBeenCalled()
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: true, cancelable: true }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

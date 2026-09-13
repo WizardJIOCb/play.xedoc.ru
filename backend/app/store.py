@@ -957,13 +957,13 @@ class CredentialStore:
             owner_id=str(row[6]),
         )
 
-    def create_local_playlist(self, title: str, description: str = "", is_public: bool = False) -> dict:
+    def create_local_playlist(self, title: str, description: str = "", is_public: bool = False, cover_url: str | None = None) -> dict:
         playlist_id = f"local-{secrets.token_urlsafe(10)}"
         now = int(time.time())
         with self._lock, self._connect() as connection:
             connection.execute(
-                "INSERT INTO local_playlist(id, title, description, created_at, updated_at, owner_id, is_public) VALUES(?, ?, ?, ?, ?, ?, ?)",
-                (playlist_id, title.strip(), description.strip(), now, now, self.current_user_id(), int(is_public)),
+                "INSERT INTO local_playlist(id, title, description, created_at, updated_at, owner_id, is_public, cover_url) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (playlist_id, title.strip(), description.strip(), now, now, self.current_user_id(), int(is_public), cover_url),
             )
         return self.load_local_playlist(playlist_id) or {}
 

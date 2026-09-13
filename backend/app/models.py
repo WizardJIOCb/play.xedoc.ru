@@ -462,6 +462,7 @@ class TrackPlayCountDTO(APIModel):
 
 
 class LocalPlaylistCreateRequest(APIModel):
+    cover_data_url: str | None = Field(default=None, min_length=32, max_length=2_000_000)
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=4000)
     is_public: bool = False

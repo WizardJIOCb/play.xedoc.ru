@@ -32,10 +32,12 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
   const [searchAttempted, setSearchAttempted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [pendingCover, setPendingCover] = useState<string>()
 
   useEffect(() => {
     if (!open) return
     setLoaded(playlist)
+    setPendingCover(undefined)
     setTitle(playlist?.title || '')
     setDescription(playlist?.description || playlist?.subtitle || '')
     setIsPublic(Boolean(playlist?.isPublic))
@@ -63,7 +65,7 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
     try {
       let value = loaded?.id
         ? await updateLocalPlaylist(loaded.id, { title: title.trim(), description: description.trim(), isPublic })
-        : await createLocalPlaylist(title.trim(), description.trim(), isPublic)
+        : await createLocalPlaylist(title.trim(), description.trim(), isPublic, pendingCover)
       if (!loaded?.id) trackGoal('playlist_created', { isPublic })
       const originalTracks = loaded?.tracks || []
       const originalIds = new Set(originalTracks.map((track) => track.id))
@@ -86,11 +88,16 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
   }
 
   const cover = async (file?: File) => {
-    if (!file || !loaded) return
+    if (!file) return
     setBusy(true)
     setError('')
     try {
-      const value = await updateLocalPlaylistCover(loaded.id, await imageDataUrl(file))
+      const dataUrl = await imageDataUrl(file)
+      if (!loaded) {
+        setPendingCover(dataUrl)
+        return
+      }
+      const value = await updateLocalPlaylistCover(loaded.id, dataUrl)
       setLoaded(value)
       window.dispatchEvent(new Event(PLAYLISTS_CHANGED_EVENT))
       onSaved(value)
@@ -139,8 +146,10 @@ export function PlaylistEditor({ open, playlist, onClose, onSaved, onDeleted }: 
         <div className="playlist-editor__scroll">
         <div className="playlist-editor__body">
           <div className="playlist-editor__cover-wrap">
-            <CoverArt title={title || 'Новый плейлист'} url={loaded?.coverUrl} tone={loaded?.coverTone || 'violet'} className="playlist-editor__cover" />
-            {loaded ? <label className="secondary-button"><Camera size={17} /> Сменить обложку<input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={busy} onChange={(event) => void cover(event.target.files?.[0])} /></label> : <small>Обложку можно выбрать после создания</small>}
+            <CoverArt title={title || 'Новый плейлист'} url={pendingCover || loaded?.coverUrl} tone={loaded?.coverTone || 'violet'} className="playlist-editor__cover" />
+            <label className="secondary-button"><Camera size={17} /> {loaded || pendingCover ? 'Сменить обложку' : 'Выбрать обложку'}<input type="file" aria-label="Обложка плейлиста" accept="image/jpeg,image/png,image/webp" hidden disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void cover(file) }} /></label>
+            {!loaded && pendingCover && <button className="secondary-button" type="button" disabled={busy} onClick={() => setPendingCover(undefined)}>Убрать обложку</button>}
+            <small>JPEG, PNG или WebP</small>
           </div>
           <form id="playlist-editor-form" onSubmit={(event) => void save(event)}>
             <label>Название<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="Например, Вечер без спешки" autoFocus /></label>

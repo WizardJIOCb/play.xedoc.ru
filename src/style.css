@@ -706,8 +706,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .track-table { border: 1px solid var(--line); border-radius: 14px; overflow: visible; background: rgba(255,255,255,.018); }
 .track-table .track-row:first-child { border-radius: 13px 13px 0 0; }
 .track-table .track-row:last-child { border-radius: 0 0 13px 13px; }
-.track-row { min-height: 64px; padding: 6px 9px; display: grid; grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 92px 38px 38px; align-items: center; gap: 9px; border-bottom: 1px solid rgba(255,255,255,.045); cursor: pointer; transition: background .14s ease; }
-.track-row--queue { grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 92px 38px 76px; }
+.track-row { min-height: 64px; padding: 6px 9px; display: grid; grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 92px 72px 38px; align-items: center; gap: 9px; border-bottom: 1px solid rgba(255,255,255,.045); cursor: pointer; transition: background .14s ease; }
+.track-row--queue { grid-template-columns: 28px 48px minmax(160px, 1.35fr) minmax(110px, .85fr) 38px 92px 72px 76px; }
 .track-row:last-child { border-bottom: 0; }
 .track-row:hover, .track-row--active { background: rgba(255,255,255,.045); }
 .track-row--active .track-row__meta strong { color: var(--acid); }
@@ -1510,8 +1510,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .playlist-grid > :nth-child(4), .playlist-grid > :nth-child(5) { display: none; }
   .playlist-grid--wide { grid-template-columns: 1fr; }
   .playlist-grid--wide > :nth-child(2) { display: none; }
-  .track-row { grid-template-columns: 28px 48px minmax(130px,1fr) 38px 92px 38px; }
-  .track-row--queue { grid-template-columns: 28px 48px minmax(130px,1fr) 38px 92px 38px 76px; }
+  .track-row { grid-template-columns: 28px 48px minmax(130px,1fr) 38px 92px 72px; }
+  .track-row--queue { grid-template-columns: 28px 48px minmax(130px,1fr) 38px 92px 72px 76px; }
   .track-row__album, .track-row__next { display: none; }
   .queue-page .track-row__queue-actions .track-row__next { display: grid; }
   .track-row--readonly { grid-template-columns: 28px 48px minmax(130px,1fr) 92px 38px; }
@@ -1661,8 +1661,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
   .playlist-grid > :nth-child(n+5) { display: none; }
   .playlist-card__more { display: none; }
   .rediscover-section .track-row:nth-child(n+4) { display: none; }
-  .track-row { grid-template-columns: 28px 46px minmax(0,1fr) 34px 34px 34px; min-height: 64px; padding-inline: 4px; gap: 5px; }
-  .track-row--queue { grid-template-columns: 28px 46px minmax(0,1fr) 34px 34px 72px; }
+  .track-row { grid-template-columns: 28px 46px minmax(0,1fr) 34px 68px 34px; min-height: 64px; padding-inline: 4px; gap: 5px; }
+  .track-row--queue { grid-template-columns: 28px 46px minmax(0,1fr) 34px 68px 72px; }
   .track-row__cover { width: 46px; height: 46px; }
   .track-row__album, .track-row__duration { display: none; }
   .track-row__inline-time { display: block; }
@@ -1889,8 +1889,8 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 /* Download actions share the existing action columns. */
 .download-control { position: relative; display: inline-flex; flex: 0 0 auto; }
 .download-control__error { position: absolute; z-index: 90; right: 0; top: 100%; width: 230px; padding: 9px 12px; border: 1px solid var(--coral); border-radius: 8px; background: #19151a; color: var(--text); font-size: 12px; white-space: normal; text-align: left; box-shadow: 0 8px 24px #0008; }
-.track-row__more, .track-row--compact .track-row__more { display: flex; flex-direction: column; align-items: center; opacity: 1; }
-.track-row__more .icon-button { height: 26px; }
+.track-row__more, .track-row--compact .track-row__more { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px; opacity: 1; }
+.track-row__more .icon-button { flex-shrink: 0; }
 .track-row--compact .track-row__more > .share-button { display: none; }
 .quick-track__actions { display: grid; justify-items: center; }
 .quick-track__actions .download-button { width: 30px; height: 24px; }
@@ -1906,3 +1906,16 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 @media (max-width: 720px) {
   .player-bar__tools > .icon-button:first-of-type { display: grid; }
 }
+
+.cover__image[role="button"] { cursor: zoom-in; pointer-events: auto; }
+.cover__image[role="button"]:focus-visible { outline: 3px solid var(--acid); outline-offset: -3px; }
+.cover-preview { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 24px; border: 0; background: transparent; color: var(--text); overflow: auto; }
+.cover-preview[open] { display: grid; place-items: center; }
+.cover-preview::backdrop { background: rgba(2,3,5,.9); backdrop-filter: blur(12px); }
+.cover-preview__panel { width: min(860px, 100%); min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: #111318; box-shadow: 0 20px 80px #0009; }
+.cover-preview__panel > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 10px 4px; }
+.cover-preview__panel > header strong { min-width: 0; overflow-wrap: anywhere; }
+.cover-preview__panel > img { display: block; width: 100%; max-height: calc(100dvh - 132px); object-fit: contain; border-radius: 8px; }
+@media (max-width: 600px) { .cover-preview { padding: 12px; } }
+
+@media (max-width: 720px) { .track-row__more { gap: 0; } }

@@ -843,7 +843,8 @@ def create_app(
         _: None = Depends(require_access),
     ) -> PlaylistDTO:
         require_app_user(request)
-        return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description, body.is_public))
+        cover_url = _safe_cover_data_url(body.cover_data_url) if body.cover_data_url else None
+        return PlaylistDTO.model_validate(store.create_local_playlist(body.title, body.description, body.is_public, cover_url))
 
     @app.patch("/api/local-playlists/{playlist_id}", response_model=PlaylistDTO, response_model_exclude_none=True)
     async def update_local_playlist(

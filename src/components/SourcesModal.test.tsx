@@ -30,7 +30,7 @@ describe('VK source refresh', () => {
     expect(screen.getByRole('button', { name: 'Настроить обновление' })).toBeInTheDocument()
     expect(await screen.findByText('Без закладки сбор в VK не запустится')).toBeInTheDocument()
     expect(screen.getByText('Ctrl')).toBeInTheDocument()
-    const bookmark = screen.getByRole('link', { name: 'Обновить XEDOC' })
+    const bookmark = await screen.findByRole('link', { name: 'Обновить XEDOC' })
     const currentUrl = window.location.href
     fireEvent.click(bookmark)
     expect(window.location.href).toBe(currentUrl)

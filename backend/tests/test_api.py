@@ -1205,3 +1205,17 @@ def test_interrupted_vk_import_is_resumable_after_restart(settings, store: Crede
     assert pending[0]["id"] == job["id"]
     assert pending[0]["status"] == "queued"
     assert pending[0]["processed"] == 1
+
+
+def test_create_playlist_with_cover_is_atomic(client: TestClient) -> None:
+    unlock(client)
+    cover = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    created = client.post('/api/local-playlists', json={'title': 'Cover at creation', 'coverDataUrl': cover})
+    assert created.status_code == 200
+    playlist = created.json()
+    assert playlist['coverUrl'] == cover
+    assert client.get('/api/local-playlists').json()[0]['coverUrl'] == cover
+    assert client.get(f"/api/playlists/{playlist['id']}").json()['coverUrl'] == cover
+    rejected = client.post('/api/local-playlists', json={'title': 'Invalid cover', 'coverDataUrl': 'data:image/png;base64,' + 'A' * 80})
+    assert rejected.status_code == 400
+    assert len(client.get('/api/local-playlists').json()) == 1
