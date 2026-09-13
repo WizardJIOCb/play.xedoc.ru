@@ -25,7 +25,7 @@ import {
   Trophy,
   WandSparkles,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AuthPromptProvider } from './auth/AuthPromptContext'
 import { ConnectModal } from './components/ConnectModal'
 import { AdminDashboardPage } from './components/AdminDashboardPage'
@@ -98,11 +98,13 @@ export function QuickTrack({ track, context }: { track: Track; context: Track[] 
   const active = player.current?.id === track.id
   const playing = active && player.isPlaying
   const toggle = () => active ? player.togglePlayback() : player.playTrack(track, context)
+  const duration = Number.isFinite(player.duration) && player.duration > 0 ? player.duration : Math.max(0, track.durationMs / 1000)
+  const progress = Math.min(Math.max(0, player.progress || 0), duration)
   return (
-    <div className={`quick-track ${playing ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle() } }}>
+    <div className={`quick-track ${playing ? 'is-active' : ''}`} onClick={(event) => { if (event.target instanceof Element && !event.target.closest('button, a, input')) toggle() }}>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="quick-track__cover" />
-      <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /><TrackTime track={track} /></span>
-      <span className="quick-track__play">{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</span>
+      <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /><span className="quick-track__timeline"><TrackTime track={track} />{active && <input className="quick-track__seek" type="range" min="0" max={duration || 1} step="1" value={progress} disabled={!duration} aria-label={`Перемотка ${track.title}`} aria-valuetext={`${Math.floor(progress / 60)}:${String(Math.floor(progress % 60)).padStart(2, '0')} из ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`} onChange={(event) => player.seek(Number(event.target.value))} style={{ '--seek-progress': `${duration ? progress / duration * 100 : 0}%` } as CSSProperties} />}</span></span>
+      <button className="quick-track__play" type="button" aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle}>{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button>
     </div>
   )
 }

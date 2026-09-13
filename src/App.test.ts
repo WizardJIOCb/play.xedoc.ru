@@ -83,6 +83,39 @@ describe('favorite collection filtering', () => {
     expect(screen.getByRole('button', { name: 'Включить Sunrise' }).querySelector('.lucide-play')).toBeInTheDocument()
   })
 
+  it('seeks inside the current quick track without toggling playback and moves the slider with the current track', () => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    const tracks: Track[] = [
+      { id: 'first', title: 'First', artists: ['Artist'], durationMs: 240_000 },
+      { id: 'second', title: 'Second', artists: ['Artist'], durationMs: 180_000 },
+    ]
+    render(createElement(PlayerProvider, null, tracks.map((track) => createElement(QuickTrack, { key: track.id, track, context: tracks }))))
+
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить First' }))
+    const seek = screen.getByRole('slider', { name: 'Перемотка First' })
+    fireEvent.click(seek)
+    fireEvent.change(seek, { target: { value: '120' } })
+    fireEvent.keyDown(seek, { key: ' ' })
+    expect(audio.currentTime).toBe(120)
+    expect(screen.getByText('2:00 / 4:00')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пауза First' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Пауза First' }))
+    fireEvent.change(seek, { target: { value: '42' } })
+    expect(audio.currentTime).toBe(42)
+    expect(screen.getByText('0:42 / 4:00')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Включить First' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Second' }))
+    expect(screen.queryByRole('slider', { name: 'Перемотка First' })).not.toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Перемотка Second' })).toHaveValue('0')
+  })
+
   it('shows music discoveries and keeps session creation in the sidebar', async () => {
     render(createElement(PlayerProvider, null, createElement(App)))
 
