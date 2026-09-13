@@ -57,6 +57,7 @@ import { Sidebar } from './components/Sidebar'
 import { SourcesModal } from './components/SourcesModal'
 import { SocialFeedPage } from './components/SocialFeedPage'
 import { TrackRow } from './components/TrackRow'
+import { TrackTime } from './components/TrackTime'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getGlobalTop, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
 import { trackGoal, trackSection } from './lib/analytics'
@@ -100,7 +101,7 @@ export function QuickTrack({ track, context }: { track: Track; context: Track[] 
   return (
     <div className={`quick-track ${playing ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle() } }}>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="quick-track__cover" />
-      <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
+      <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /><TrackTime track={track} /></span>
       <span className="quick-track__play">{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</span>
     </div>
   )

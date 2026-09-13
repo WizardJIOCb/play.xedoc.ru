@@ -8,11 +8,7 @@ import { AlbumLink } from './AlbumLink'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
 import { useAuthPrompt } from '../auth/AuthPromptContext'
-
-function formatDuration(durationMs: number) {
-  const total = Math.round(durationMs / 1000)
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
-}
+import { TrackTime } from './TrackTime'
 
 export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource, onQueueRemove }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource; onQueueRemove?: () => void }) {
   const player = usePlayer()
@@ -57,12 +53,13 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
       <div className="track-row__meta">
         <span className="track-row__title-line"><strong>{track.title}</strong>{track.generated && <span className="track-row__generated" data-tooltip="Сгенерировано в XEDOC Play с YuE2">YuE2</span>}{Boolean(track.playCount) && <span className="track-row__plays" data-tooltip={`${track.playCount} прослушиваний · учтено после 20 секунд воспроизведения`}><Headphones size={11} /> {track.playCount}</span>}</span>
         <ArtistLinks artists={track.artists} />
+        <TrackTime track={track} active={active} className="track-row__inline-time" />
       </div>
       {!compact && <AlbumLink track={track} />}
       {!readonly && <button className={`icon-button track-row__like ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={liking} onClick={() => void onLike()}>
         <Heart size={17} fill={liked ? 'currentColor' : 'none'} />
       </button>}
-      <span className="track-row__duration">{formatDuration(track.durationMs)}</span>
+      <TrackTime track={track} active={active} className="track-row__duration" />
       {!readonly && <ShareButton track={track} className="track-row__more" />}
       {!readonly && (onQueueRemove
         ? <div className="track-row__queue-actions">

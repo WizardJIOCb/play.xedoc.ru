@@ -8,6 +8,7 @@ import type { Playlist, SearchPayload, Track } from '../types'
 import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { PlaylistPicker } from './PlaylistPicker'
+import { TrackTime } from './TrackTime'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
@@ -130,6 +131,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                   <div className="search-result__main" role="button" tabIndex={0} aria-label={playing ? `Пауза ${track.title}` : `Включить ${track.title}`} onClick={() => toggleTrack(track)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleTrack(track) } }}>
                     <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="search-result__cover" />
                     <span className="search-result__meta"><strong>{track.title}</strong><ArtistLinks artists={track.artists} /></span>
+                    <TrackTime track={track} />
                     {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
                   </div>
                   {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}

@@ -4,6 +4,7 @@ import { getDiscoveryRecommendations } from '../lib/api'
 import { usePlayer } from '../player/PlayerContext'
 import type { BootstrapPayload, DiscoveryRecommendations } from '../types'
 import { CoverArt } from './CoverArt'
+import { TrackTime } from './TrackTime'
 
 export function DiscoveryHero({ data, onRecommendations }: { data: BootstrapPayload; onRecommendations: () => void }) {
   const player = usePlayer()
@@ -65,6 +66,7 @@ export function DiscoveryHero({ data, onRecommendations }: { data: BootstrapPayl
                 return <button className={`discovery-hero__track ${playing ? 'is-playing' : ''}`} key={track.id} type="button" aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={() => active ? player.togglePlayback() : player.playTrack(track, tracks)}>
                   <div className="discovery-hero__art"><CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} /><span className="discovery-hero__play">{playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</span></div>
                   <strong>{track.title}</strong><small>{track.artists.join(', ')}</small>
+                  <TrackTime track={track} />
                 </button>
               }) : <div className="discovery-hero__status" role="status"><Sparkles size={25} /><span>{period === 0 ? 'Послушайте несколько треков — здесь появятся новые открытия.' : 'В этом периоде пока нет треков. Ваша подборка появится после прослушиваний.'}</span></div>}
         </div>

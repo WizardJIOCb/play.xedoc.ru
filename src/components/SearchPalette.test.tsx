@@ -66,6 +66,34 @@ describe('content search page', () => {
     expect(screen.getByRole('button', { name: 'Добавить Найденный трек в плейлист или очередь' })).toBeInTheDocument()
   })
 
+  it('shows duration, updates elapsed time from audio, and preserves it while paused', () => {
+    const audio = document.createElement('audio')
+    Object.defineProperty(audio, 'play', { value: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(audio, 'pause', { value: vi.fn() })
+    Object.defineProperty(audio, 'load', { value: vi.fn() })
+    Object.defineProperty(audio, 'duration', { configurable: true, value: 221 })
+    vi.stubGlobal('Audio', vi.fn(function AudioMock() { return audio }))
+    render(<PlayerProvider><SearchPalette suggestions={[suggestion, secondSuggestion]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
+
+    expect(screen.getByText('3:00')).toBeInTheDocument()
+    expect(screen.getByText('2:55')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Быстрый трек' }))
+    fireEvent.loadedMetadata(audio)
+    audio.currentTime = 74
+    fireEvent.timeUpdate(audio)
+    expect(screen.getByText('1:14 / 3:41')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Пауза Быстрый трек' }))
+    expect(screen.getByText('1:14 / 3:41')).toBeInTheDocument()
+    audio.currentTime = 102
+    fireEvent.timeUpdate(audio)
+    expect(screen.getByText('1:42 / 3:41')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Другой трек' }))
+    expect(screen.getByText('0:00 / 2:55')).toBeInTheDocument()
+    expect(screen.getByText('3:00')).toBeInTheDocument()
+  })
+
   it('shows pause only for the search result that is currently playing', () => {
     render(<PlayerProvider><SearchPalette suggestions={[suggestion, secondSuggestion]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
 
