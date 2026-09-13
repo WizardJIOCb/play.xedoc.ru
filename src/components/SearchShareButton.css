@@ -1,0 +1,8 @@
+.search-share { position: relative; margin-left: auto; text-transform: none; letter-spacing: normal; }
+.search-share .search-share-button { min-height: 36px; padding: 0 10px; font-size: var(--type-caption); white-space: nowrap; }
+.search-share__fallback { position: absolute; z-index: 5; top: calc(100% + 8px); right: 0; width: min(320px, 75vw); padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); color: var(--text); font-weight: 500; }
+.search-share__fallback input { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+@media (max-width: 600px) {
+  .search-share .search-share-button { width: 36px; padding: 0; }
+  .search-share-button > span { display: none; }
+}

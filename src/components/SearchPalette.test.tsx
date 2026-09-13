@@ -49,6 +49,49 @@ describe('content search page', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it.each([false, true])('copies an artist search link, including in public mode (%s)', async (publicMode) => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }))
+    window.history.replaceState(null, '', '/search?q=Vinnie+Paz&type=artist&utm_source=test#old')
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} publicMode={publicMode} /></PlayerProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/search?q=Vinnie+Paz&type=artist`))
+    expect(await screen.findByRole('status')).toHaveTextContent('Ссылка скопирована')
+  })
+
+  it('copies the current query with special characters and hides sharing for an empty query', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }))
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
+    expect(screen.queryByRole('button', { name: 'Скопировать ссылку' })).not.toBeInTheDocument()
+    const input = screen.getByRole('textbox', { name: 'Поисковый запрос' })
+    fireEvent.change(input, { target: { value: '  Кино & AC/DC + #1  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
+    const copied = new URL(writeText.mock.calls[0][0])
+    expect(copied.searchParams.get('q')).toBe('Кино & AC/DC + #1')
+    expect(copied.searchParams.has('type')).toBe(false)
+    fireEvent.change(input, { target: { value: 'Signal' } })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(`${window.location.origin}/search?q=Signal`))
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить поиск' }))
+    expect(screen.queryByRole('button', { name: 'Скопировать ссылку' })).not.toBeInTheDocument()
+  })
+
+  it('offers a selectable search link when clipboard access is denied', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }))
+    window.history.replaceState(null, '', '/search?q=Signal')
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} publicMode /></PlayerProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Скопировать ссылку' }))
+    expect(await screen.findByRole('textbox', { name: 'Ссылка на результаты поиска' })).toHaveValue(`${window.location.origin}/search?q=Signal`)
+    expect(screen.getByRole('status')).toHaveTextContent('Не удалось скопировать')
   })
 
   it('renders inline and keeps results in the content area', async () => {

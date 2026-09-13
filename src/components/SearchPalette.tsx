@@ -9,6 +9,7 @@ import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { PlaylistPicker } from './PlaylistPicker'
 import { TrackTime } from './TrackTime'
+import { SearchShareButton } from './SearchShareButton'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
@@ -77,6 +78,9 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
   }, [artistOnly, query])
 
   const tracks = query.trim() ? results.tracks : suggestions
+  const searchUrl = new URL('/search', window.location.origin)
+  searchUrl.searchParams.set('q', query.trim())
+  if (artistOnly) searchUrl.searchParams.set('type', 'artist')
   const toggleTrack = (track: Track) => {
     trackGoal('search_result_selected', { resultType: 'track' })
     if (player.current?.id === track.id) player.togglePlayback()
@@ -122,6 +126,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
           <div className="search-page__caption">
             <span>{query.trim() ? artistOnly ? 'Треки исполнителя' : 'Треки' : publicMode ? 'Начните с запроса' : 'Можно включить сразу'}</span>
             {!query.trim() && <small><Clock3 size={13} /> {publicMode ? 'без регистрации' : 'быстрый выбор'}</small>}
+            {query.trim() && <SearchShareButton key={searchUrl.href} url={searchUrl.href} />}
           </div>
           <div className="search-results">
             {(artistOnly ? tracks : tracks.slice(0, 12)).map((track) => {
