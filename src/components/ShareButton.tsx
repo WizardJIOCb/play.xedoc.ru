@@ -1,4 +1,4 @@
-import { Check, Clock3, LoaderCircle, Share2, X } from 'lucide-react'
+import { Check, Clock3, Forward, LoaderCircle, Share2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPlaylistShare, createTrackShare } from '../lib/api'
 import { trackGoal } from '../lib/analytics'
@@ -122,7 +122,7 @@ export function ShareButton({ track, playlist, labeled = false, className = '', 
         data-tooltip={state === 'idle' ? buttonLabel : undefined}
         disabled={state === 'loading' || unavailable}
       >
-        {state === 'loading' ? <LoaderCircle className="spin" size={17} /> : state === 'done' ? <Check size={17} /> : <Share2 size={17} />}
+        {state === 'loading' ? <LoaderCircle className="spin" size={17} /> : state === 'done' ? <Check size={17} /> : direct ? <Forward size={17} /> : <Share2 size={17} />}
         {labeled && <span>{unavailable ? 'Поделиться' : label}</span>}
         {(state === 'done' || state === 'error') && <span className={`share-button__feedback ${state === 'error' ? 'share-button__feedback--error' : ''}`} role="status">{label}</span>}
       </button>

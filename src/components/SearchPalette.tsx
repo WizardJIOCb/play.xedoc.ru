@@ -143,7 +143,10 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     <TrackTime track={track} />
                     {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
                   </div>
-                  {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
+                  {!publicMode && <div className="search-result__actions">
+                    {active && <ShareButton track={track} direct />}
+                    <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />
+                  </div>}
                   {active && <div className="search-result__timeline"><input
                     className="quick-track__seek search-result__seek"
                     type="range"
@@ -156,7 +159,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     aria-valuetext={`${Math.floor(progress / 60)}:${String(Math.floor(progress % 60)).padStart(2, '0')} из ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`}
                     onChange={(event) => player.seek(Number(event.target.value))}
                     style={{ '--seek-progress': `${duration ? progress / duration * 100 : 0}%` } as CSSProperties}
-                  />{!publicMode && <ShareButton track={track} direct labeled className="search-result__share" />}</div>}
+                  /></div>}
                 </div>
               )
             })}
