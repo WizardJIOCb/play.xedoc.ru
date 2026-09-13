@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>XEDOC · Центр воркеров</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><a class="brand" href="/">X<span>◆</span>EDOC <small>LOCAL CONTROL</small></a><div class="connection" id="connection">Подключение к компьютеру…</div></header>
+<main>
+<section class="intro"><div><div class="eyebrow">ВАШ КОМПЬЮТЕР / ВАШИ ВЫЧИСЛЕНИЯ</div><h1>Центр воркеров<span>.</span></h1><p>Все движки в одном месте. Посмотрите, что работает,<br class="desktop"> и запустите то, что нужно сейчас.</p></div><a class="site-link" href="https://play.xedoc.ru/generate" target="_blank" rel="noopener">Генерация музыки ↗</a></section>
+<section class="overview" aria-label="Состояние компьютера"><div class="metric"><span>Подключено к центру</span><strong id="total">—</strong></div><div class="metric"><span>Работают</span><strong class="green" id="running">—</strong></div><div class="metric"><span>Можно запустить</span><strong id="stopped">—</strong></div><div class="gpu"><span id="gpu-name">Видеокарта · проверка</span><div id="gpu-values">—</div><progress id="vram" max="100" value="0" aria-label="Занятая видеопамять"></progress></div></section>
+<div class="toolbar"><div class="filters" role="group" aria-label="Фильтр воркеров"><button class="active" data-filter="all">Все воркеры</button><button data-filter="active">Работают</button><button data-filter="stopped">Можно запустить</button></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Найти воркер…" aria-label="Найти воркер"></label></div>
+<div id="notice" role="status"></div><div id="workers" aria-live="polite"><div class="empty">Проверяем процессы и доступность сервисов…</div></div>
+<section class="journal"><div><h2>Последние действия</h2><span>Запуски из этого центра</span></div><ol id="events"><li>Вы ещё не запускали воркеры из центра.</li></ol></section>
+<footer><span>Доступ только с этого компьютера · обновление каждые 5 секунд</span><span id="updated">Проверяем состояние…</span></footer>
+<p class="footnote">В центре показаны 9 настроенных движков и сервисов. «Работает» означает доступный сервис или обнаруженный процесс; готовность каждой модели зависит от её настроек. Остановленный воркер не требует запуска, пока он вам не нужен.</p>
+</main>
+<dialog id="logs"><div class="dialog-head"><h2 id="log-title">Журнал</h2><button id="close-logs" aria-label="Закрыть журнал">✕</button></div><pre id="log-text"></pre></dialog>
+</body></html>
