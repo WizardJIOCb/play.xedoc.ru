@@ -9,6 +9,7 @@ import { CoverArt } from './CoverArt'
 import { ArtistLinks } from './ArtistLinks'
 import { PlaylistPicker } from './PlaylistPicker'
 import { TrackTime } from './TrackTime'
+import { DownloadButton } from './DownloadButton'
 import { TrackPlaybackControls } from './TrackPlaybackControls'
 import { SearchShareButton } from './SearchShareButton'
 import { ShareButton } from './ShareButton'
@@ -142,10 +143,11 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     <TrackTime track={track} />
                     {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
                   </div>
-                  {!publicMode && <div className="search-result__actions">
-                    {active && <ShareButton track={track} direct />}
-                    <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />
-                  </div>}
+                  <div className="search-result__actions">
+                    {!publicMode && active && <ShareButton track={track} direct />}
+                    {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
+                    <DownloadButton track={track} />
+                  </div>
                   {active && <TrackPlaybackControls track={track} className="search-result__timeline" />}
                 </div>
               )

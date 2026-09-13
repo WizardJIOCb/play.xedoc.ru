@@ -9,6 +9,7 @@ import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
 import { useAuthPrompt } from '../auth/AuthPromptContext'
 import { TrackTime } from './TrackTime'
+import { DownloadButton } from './DownloadButton'
 import { TrackPlaybackControls } from './TrackPlaybackControls'
 
 export function TrackRow({ track, context, index, compact = false, readonly = false, playbackSource, onQueueRemove }: { track: Track; context: Track[]; index?: number; compact?: boolean; readonly?: boolean; playbackSource?: PlaybackSource; onQueueRemove?: () => void }) {
@@ -61,7 +62,7 @@ export function TrackRow({ track, context, index, compact = false, readonly = fa
         <Heart size={17} fill={liked ? 'currentColor' : 'none'} />
       </button>}
       <TrackTime track={track} active={active} className="track-row__duration" />
-      {!readonly && <ShareButton track={track} className="track-row__more" />}
+      <div className="track-row__more">{!readonly && <ShareButton track={track} />}<DownloadButton track={track} /></div>
       {!readonly && (onQueueRemove
         ? <div className="track-row__queue-actions">
             <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="track-row__next" />

@@ -2,6 +2,7 @@ import { FileText, Heart, ListMusic, Pause, Play, Repeat2, Shuffle, SkipBack, Sk
 import { useEffect, useRef, useState } from 'react'
 import { usePlayer } from '../player/PlayerContext'
 import { CoverArt } from './CoverArt'
+import { DownloadButton } from './DownloadButton'
 import { ArtistLinks } from './ArtistLinks'
 import { ShareButton } from './ShareButton'
 import { PlaylistPicker } from './PlaylistPicker'
@@ -102,6 +103,7 @@ export function PlayerBar({ onQueue, readonly = false }: { onQueue: () => void; 
       </div>
 
       <div className="player-bar__tools">
+        {track && <DownloadButton key={track.id} track={track} />}
         {!readonly && <button className={`icon-button ${liked ? 'is-liked' : ''}`} type="button" aria-label={liked ? 'Убрать лайк' : 'Поставить лайк'} disabled={!track || liking} onClick={() => void onLike()}><Heart size={18} fill={liked ? 'currentColor' : 'none'} /></button>}
         {!readonly && track && <ShareButton track={track} startAtSeconds={player.progress} />}
         {!readonly && track && !player.isRemotePlayback && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} />}

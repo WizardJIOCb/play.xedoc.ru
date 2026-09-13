@@ -58,6 +58,7 @@ import { SourcesModal } from './components/SourcesModal'
 import { SocialFeedPage } from './components/SocialFeedPage'
 import { TrackRow } from './components/TrackRow'
 import { TrackTime } from './components/TrackTime'
+import { DownloadButton } from './components/DownloadButton'
 import { TrackPlaybackControls } from './components/TrackPlaybackControls'
 import { demoBootstrap } from './data/demo'
 import { decodeVKImportFragment, getAllLikedTracks, getBootstrap, getDiscoveryRecommendations, getGlobalTop, getListeningStats, getPlaylist, logoutAccount, startVKImportJob } from './lib/api'
@@ -103,7 +104,7 @@ export function QuickTrack({ track, context }: { track: Track; context: Track[] 
     <div className={`quick-track ${playing ? 'is-active' : ''}`} onClick={(event) => { if (event.target instanceof Element && !event.target.closest('button, a, input')) toggle() }}>
       <CoverArt title={track.title} url={track.coverUrl} tone={track.coverTone} className="quick-track__cover" />
       <span><strong>{track.title}</strong><ArtistLinks artists={track.artists} /><TrackTime track={track} /></span>
-      <button className="quick-track__play" type="button" aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle}>{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button>
+      <div className="quick-track__actions"><button className="quick-track__play" type="button" aria-label={`${playing ? 'Пауза' : 'Включить'} ${track.title}`} onClick={toggle}>{playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button><DownloadButton track={track} /></div>
       {active && <TrackPlaybackControls track={track} className="quick-track__playback" />}
     </div>
   )

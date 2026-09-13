@@ -382,6 +382,11 @@ def test_completed_generation_can_be_saved_and_played_from_a_local_playlist(
     assert track["generated"] is True
     assert track["lyrics"] == "[Verse]\nThe machines are waking up"
     assert track["streamUrl"] == f"/api/tracks/generated%3A{job_id}/stream"
+    downloaded = client.get(track["streamUrl"] + "?download=1")
+    assert downloaded.status_code == 200
+    assert downloaded.content == wav
+    assert downloaded.headers["content-type"] == "audio/wav"
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
 
     playlist = client.post("/api/local-playlists", json={"title": "My generated tracks"})
     assert playlist.status_code == 200

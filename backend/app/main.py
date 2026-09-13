@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, s
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from .config import Settings, get_settings
+from .downloads import download_audio
 from .gateway import (
     DeviceAuthorization,
     DeviceFlowRejected,
@@ -1437,7 +1438,7 @@ def create_app(
         track_id: str,
         request: Request,
         ticket: str = Query(min_length=20, max_length=500),
-    ) -> RedirectResponse:
+    ) -> Response:
         await enforce_rate_limit(request, "public-search-stream", maximum=240, window_seconds=60)
         track_identifier = _safe_identifier(track_id)
         if not signer.verify(ticket, f"public-search:{track_identifier}"):
@@ -1452,6 +1453,9 @@ def create_app(
             url = await gateway.stream_url(credential, track_identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -1698,6 +1702,9 @@ def create_app(
             url = await gateway.stream_url(credential, track_identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -1741,6 +1748,9 @@ def create_app(
             url = await gateway.stream_url(credential, track_identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -1797,6 +1807,9 @@ def create_app(
             url = await gateway.stream_url(credential, track_identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -1975,6 +1988,9 @@ def create_app(
             url = await gateway.stream_url(credential, identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -2083,6 +2099,9 @@ def create_app(
             url = await gateway.stream_url(credential, identifier)
         except GatewayError as exc:
             raise _http_gateway_error(exc) from exc
+        if request.query_params.get("download") == "1":
+            await enforce_rate_limit(request, "audio-download", maximum=30, window_seconds=60)
+            return await download_audio(url, request.query_params.get("filename") or track_id)
         return RedirectResponse(
             url=url,
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
