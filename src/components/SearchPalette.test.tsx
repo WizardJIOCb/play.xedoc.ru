@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   clearNowPlaying: vi.fn(),
   recordListeningEvent: vi.fn(),
   getTrackPlayCount: vi.fn(),
+  createTrackShare: vi.fn(),
 }))
 
 vi.mock('../lib/api', () => api)
@@ -43,6 +44,7 @@ describe('content search page', () => {
     api.clearNowPlaying.mockReset().mockResolvedValue(undefined)
     api.recordListeningEvent.mockReset().mockResolvedValue(undefined)
     api.getTrackPlayCount.mockReset().mockResolvedValue(0)
+    api.createTrackShare.mockReset().mockResolvedValue({ token: 'track-token', path: '/share/track-token' })
     vi.stubGlobal('Audio', FakeAudio)
   })
 
@@ -171,6 +173,26 @@ describe('content search page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Включить Другой трек' }))
     expect(screen.queryByRole('slider', { name: 'Перемотка Найденный трек' })).not.toBeInTheDocument()
     expect(screen.getByRole('slider', { name: 'Перемотка Другой трек' })).toHaveValue('0')
+  })
+
+  it('shares the current search track with one click and keeps playback unchanged', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: { writeText } } }))
+    window.history.replaceState(null, '', '/search?q=Новый')
+    api.searchMusic.mockResolvedValue({ tracks: [result, secondSuggestion], playlists: [], profiles: [] })
+    render(<PlayerProvider><SearchPalette suggestions={[]} onPlaylistPlay={() => undefined} /></PlayerProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Включить Найденный трек' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Поделиться: Найденный трек' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/share/track-token`))
+    expect(api.createTrackShare).toHaveBeenCalledWith(result)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пауза Найденный трек' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Перемотка Найденный трек' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Пауза Найденный трек' }))
+    expect(screen.getByRole('button', { name: 'Ссылка скопирована: Найденный трек' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Включить Другой трек' }))
+    expect(screen.getByRole('button', { name: 'Поделиться: Другой трек' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ссылка скопирована: Найденный трек' })).not.toBeInTheDocument()
   })
 
   it('shows pause only for the search result that is currently playing', () => {

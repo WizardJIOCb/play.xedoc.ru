@@ -1041,7 +1041,13 @@ kbd { display: inline-flex; align-items: center; gap: 3px; min-width: 24px; heig
 .search-result--active .search-result__main > svg { color: var(--acid); }
 .search-result--public { grid-template-columns: minmax(0,1fr); }
 .search-result__picker .icon-button { width: 31px; height: 31px; }
-.search-result .search-result__seek { grid-column: 1 / -1; justify-self: end; width: calc(100% - 67px); height: 22px; margin: -3px 8px 2px 0; }
+.search-result__timeline { grid-column: 1 / -1; justify-self: end; width: calc(100% - 67px); margin: -3px 8px 2px 0; display: flex; align-items: center; gap: 12px; }
+.search-result .search-result__seek { height: 22px; }
+.search-result__share { flex: 0 0 auto; min-height: 32px; padding: 0 9px; font-size: var(--type-caption); }
+@media (max-width: 600px) {
+  .search-result__share { width: 32px; padding: 0; }
+  .search-result__share > span:not([role="status"]) { display: none; }
+}
 .search-empty { min-height: 160px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--muted-2); text-align: center; }
 .search-empty p { margin: 0; font-size: var(--type-label); }
 .search-empty--error { color: #f2a0a8; }

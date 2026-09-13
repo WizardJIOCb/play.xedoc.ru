@@ -9,6 +9,7 @@ type ShareButtonProps = ({ track: Track; playlist?: never } | { playlist: Playli
   labeled?: boolean
   className?: string
   startAtSeconds?: number
+  direct?: boolean
 }
 
 function formatTime(seconds: number) {
@@ -36,7 +37,7 @@ async function copyText(value: string) {
   }
 }
 
-export function ShareButton({ track, playlist, labeled = false, className = '', startAtSeconds = 0 }: ShareButtonProps) {
+export function ShareButton({ track, playlist, labeled = false, className = '', startAtSeconds = 0, direct = false }: ShareButtonProps) {
   const auth = useAuthPrompt()
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -81,7 +82,7 @@ export function ShareButton({ track, playlist, labeled = false, className = '', 
   const share = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     if (state === 'loading' || !auth.requireAuth()) return
-    if (!track) {
+    if (!track || direct) {
       void copyShare()
       return
     }

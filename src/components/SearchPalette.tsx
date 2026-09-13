@@ -10,6 +10,7 @@ import { ArtistLinks } from './ArtistLinks'
 import { PlaylistPicker } from './PlaylistPicker'
 import { TrackTime } from './TrackTime'
 import { SearchShareButton } from './SearchShareButton'
+import { ShareButton } from './ShareButton'
 
 const emptyResults = (): SearchPayload => ({ tracks: [], playlists: [], profiles: [] })
 
@@ -143,7 +144,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
                   </div>
                   {!publicMode && <PlaylistPicker track={track} onAddNext={() => player.addNext(track)} className="search-result__picker" />}
-                  {active && <input
+                  {active && <div className="search-result__timeline"><input
                     className="quick-track__seek search-result__seek"
                     type="range"
                     min="0"
@@ -155,7 +156,7 @@ export function SearchPalette({ suggestions, onPlaylistPlay, publicMode = false 
                     aria-valuetext={`${Math.floor(progress / 60)}:${String(Math.floor(progress % 60)).padStart(2, '0')} из ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`}
                     onChange={(event) => player.seek(Number(event.target.value))}
                     style={{ '--seek-progress': `${duration ? progress / duration * 100 : 0}%` } as CSSProperties}
-                  />}
+                  />{!publicMode && <ShareButton track={track} direct labeled className="search-result__share" />}</div>}
                 </div>
               )
             })}
