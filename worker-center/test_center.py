@@ -76,6 +76,58 @@ class CenterTests(unittest.TestCase):
             self.center.start('../powershell')
         with self.assertRaises(ValueError):
             self.center.logs('../secrets')
+        with self.assertRaises(ValueError):
+            self.center.stop('../powershell')
+
+    def test_stop_availability_and_duplicate_suppression(self):
+        inventory = dict(self.empty, processes=[dict(Name='python.exe', ProcessId=12, CommandLine='python fixture-worker-marker')])
+        with patch.object(server, 'request_json', side_effect=OSError()), patch.object(self.center, 'inventory', return_value=inventory), patch.object(server.threading, 'Thread') as thread:
+            self.assertTrue(self.center.inspect(self.worker, inventory)['canStop'])
+            self.center.stop('test')
+            self.assertEqual(self.center.stop('test'), 'Остановка уже выполняется')
+            thread.assert_called_once()
+            state = self.center.inspect(self.worker, inventory)
+            self.assertEqual(state['status'], 'stopping')
+            self.assertFalse(state['canStart'])
+            self.assertFalse(state['canStop'])
+            with self.assertRaises(ValueError):
+                self.center.start('test')
+
+    def test_stop_confirmation_and_failure_are_reported(self):
+        self.center.stopping.add('test')
+        with patch.object(server, 'run', return_value=''), patch.object(self.center, 'inventory', return_value=self.empty), patch.object(server, 'request_json', side_effect=OSError()), patch.object(self.center, 'refresh'):
+            self.center.finish_stop(self.worker)
+        self.assertNotIn('test', self.center.stopping)
+        self.assertIn('остановлен', self.center.events[0]['message'])
+        with patch.object(server, 'run', side_effect=RuntimeError('access denied')), patch.object(self.center, 'refresh'):
+            self.center.finish_stop(self.worker)
+        self.assertIn('ошибка остановки', self.center.events[0]['message'])
+        self.assertIn('access denied', self.center.logs('test'))
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows process handling')
+    def test_real_stop_preserves_unrelated_process(self):
+        # Restrict discovery to our two fixtures; the production termination code runs unchanged.
+        marker = r'C:\Projects\models.xedoc.ru\studio\server.py'
+        target = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(90)', marker], creationflags=server.HIDDEN)
+        neighbor = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(90)', marker + '.unrelated'], creationflags=server.HIDDEN)
+        script = self.directory / 'isolated-stop.ps1'
+        script.write_text('''$ErrorActionPreference = 'Stop'
+function Get-CimInstance {
+    param($ClassName, $Filter)
+    $items = @(CimCmdlets\\Get-CimInstance -ClassName Win32_Process | Where-Object { $_.ProcessId -in @(''' + str(target.pid) + ',' + str(neighbor.pid) + ''') })
+    if ($Filter -match '^ProcessId=(\\d+)$') { $items | Where-Object { $_.ProcessId -eq [int]$Matches[1] } } else { $items }
+}
+& 'SERVER_SCRIPT' -WorkerId studio
+'''.replace('SERVER_SCRIPT', str(server.ROOT / 'stop-worker.ps1')), encoding='utf-8-sig')
+        try:
+            server.run(server.ps_command(script), timeout=25)
+            target.wait(timeout=5)
+            self.assertIsNone(neighbor.poll(), 'An unrelated Python process must remain running')
+        finally:
+            for process in (target, neighbor):
+                if process.poll() is None:
+                    process.terminate()
+                process.wait(timeout=10)
 
     def test_logs_redact_credentials(self):
         (self.directory / 'test.log').write_text('Authorization: Bearer ABC123\ntoken=PRIVATE\nnormal output', encoding='utf-8')
@@ -109,6 +161,12 @@ class CenterTests(unittest.TestCase):
                 headers = {'Origin': f'http://127.0.0.1:{port}', 'X-Center-Token': self.center.token}
                 self.assertEqual(request('POST', '/api/workers/test/start', headers)[0], 202)
                 start.assert_called_once_with('test')
+            with patch.object(self.center, 'stop', return_value='accepted') as stop:
+                self.assertEqual(request('POST', '/api/workers/test/stop')[0], 403)
+                self.assertEqual(request('POST', '/api/workers/test/stop', {'Origin': 'https://evil.example', 'X-Center-Token': self.center.token})[0], 403)
+                stop.assert_not_called()
+                self.assertEqual(request('POST', '/api/workers/test/stop', headers)[0], 202)
+                stop.assert_called_once_with('test')
         finally:
             httpd.shutdown()
             httpd.server_close()

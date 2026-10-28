@@ -5,4 +5,13 @@ $tasks = @(Get-ScheduledTask | Where-Object { $_.TaskName -in @('XEDOC Play YuE2
     $info = $_ | Get-ScheduledTaskInfo
     @{name=$_.TaskName;state=[string]$_.State;result=$info.LastTaskResult}
 })
-@{processes=$processes;tasks=$tasks;computer=$env:COMPUTERNAME} | ConvertTo-Json -Depth 5 -Compress
+$memory = $null
+try {
+    $systemMemory = Get-CimInstance Win32_OperatingSystem
+    $totalBytes = [long]$systemMemory.TotalVisibleMemorySize * 1024
+    $availableBytes = [long]$systemMemory.FreePhysicalMemory * 1024
+    if ($totalBytes -gt 0 -and $availableBytes -ge 0 -and $availableBytes -le $totalBytes) {
+        $memory = @{total=$totalBytes;available=$availableBytes;used=($totalBytes - $availableBytes)}
+    }
+} catch { }
+@{processes=$processes;tasks=$tasks;computer=$env:COMPUTERNAME;memory=$memory} | ConvertTo-Json -Depth 5 -Compress

@@ -1,5 +1,7 @@
 """Loopback-only Windows worker dashboard. Python standard library, no dependencies."""
 import argparse
+import ctypes
+from ctypes import wintypes
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -77,10 +79,32 @@ class Center:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.pending = {}
+        self.stopping = set()
         self.failures = {}
         self.snapshot = dict(workers=[], gpu=[], loading=True, updatedAt=None)
         self.events = []
         self.token = secrets.token_urlsafe(32)
+        self.cpu_sample = None
+
+    def cpu_usage(self):
+        # GetSystemTimes works even when Windows WMI performance counters are unavailable.
+        try:
+            get_times = ctypes.WinDLL('kernel32', use_last_error=True).GetSystemTimes
+            get_times.argtypes = [ctypes.POINTER(wintypes.FILETIME)] * 3
+            get_times.restype = wintypes.BOOL
+            idle, kernel, user = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+            if not get_times(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+                return None
+            ticks = lambda value: (value.dwHighDateTime << 32) | value.dwLowDateTime
+            current = (ticks(idle), ticks(kernel) + ticks(user))
+            with self.lock:
+                previous, self.cpu_sample = self.cpu_sample, current
+            if previous is None or current[1] <= previous[1]:
+                return None
+            usage = 100 * (1 - (current[0] - previous[0]) / (current[1] - previous[1]))
+            return dict(usage=round(max(0, min(100, usage)), 1))
+        except (AttributeError, OSError):
+            return None
 
     def inventory(self):
         return json.loads(run(ps_command(ROOT / 'inventory.ps1')))
@@ -156,7 +180,13 @@ class Center:
                     status, detail = 'starting', 'Запускается. Ожидаем подтверждения готовности…'
             if worker['id'] in self.failures and not pending and status == 'stopped':
                 status, detail = 'error', self.failures[worker['id']]
-        result.update(status=status, detail=detail, canStart=not missing and status in ('stopped', 'error') and not alive)
+        can_stop = bool(processes) or (worker['id'] in ('ollama', 'rag') and healthy)
+        with self.lock:
+            if worker['id'] in self.stopping:
+                status, detail = 'stopping', 'Останавливается. Проверяем завершение процессов…'
+        result.update(status=status, detail=detail, canStart=not missing and status in ('stopped', 'error') and not alive,
+                      canStop=can_stop and status not in ('starting', 'stopping'),
+                      stopNote='Текущее задание будет прервано.' if status == 'busy' else 'Активные запросы к сервису будут прерваны.')
         return result
 
     def event(self, message):
@@ -179,7 +209,7 @@ class Center:
         except Exception:
             pass
         with self.lock:
-            self.snapshot = dict(workers=workers, gpu=gpu, computer=inventory.get('computer', ''), loading=False, updatedAt=datetime.now(timezone.utc).isoformat())
+            self.snapshot = dict(workers=workers, gpu=gpu, memory=inventory.get('memory'), cpu=self.cpu_usage(), computer=inventory.get('computer', ''), loading=False, updatedAt=datetime.now(timezone.utc).isoformat())
 
     def watch(self):
         while True:
@@ -195,6 +225,8 @@ class Center:
         if worker is None:
             raise ValueError('Неизвестный воркер')
         with self.lock:
+            if worker_id in self.stopping:
+                raise ValueError('Дождитесь завершения остановки')
             if worker_id in self.pending:
                 return 'Запуск уже выполняется'
             current = self.inspect(worker, self.inventory())
@@ -213,6 +245,57 @@ class Center:
             self.snapshot = {**self.snapshot, 'workers': [dict(w, status='starting', detail='Ожидаем подтверждения запуска…', canStart=False) if w['id'] == worker_id else w for w in self.snapshot['workers']]}
             self.event(worker['name'] + ': отправлена команда запуска')
             return 'Команда запуска отправлена'
+
+    def stop(self, worker_id):
+        worker = next((w for w in self.workers if w['id'] == worker_id), None)
+        if worker is None:
+            raise ValueError('Неизвестный воркер')
+        with self.lock:
+            if worker_id in self.stopping:
+                return 'Остановка уже выполняется'
+            current = self.inspect(worker, self.inventory())
+            if current['status'] == 'starting':
+                raise ValueError('Дождитесь завершения запуска')
+            if not current['canStop']:
+                if current['status'] in ('stopped', 'missing', 'error'):
+                    return 'Уже остановлен'
+                raise ValueError('Не удалось однозначно определить процесс сервиса')
+            self.stopping.add(worker_id)
+            self.failures.pop(worker_id, None)
+            self.snapshot = {**self.snapshot, 'workers': [dict(w, status='stopping', detail='Ожидаем остановки…', canStart=False, canStop=False) if w['id'] == worker_id else w for w in self.snapshot['workers']]}
+        threading.Thread(target=self.finish_stop, args=(worker,), daemon=True).start()
+        return 'Команда остановки отправлена'
+
+    def finish_stop(self, worker):
+        worker_id = worker['id']
+        try:
+            # The helper accepts only server-selected catalog IDs, never a PID or command from HTTP.
+            output = run(ps_command(ROOT / 'stop-worker.ps1', '-WorkerId', worker_id), timeout=90)
+            if output.strip():
+                self.event(worker['name'] + ': ' + output.strip())
+            deadline = time.monotonic() + 25
+            while True:
+                with self.lock:
+                    self.stopping.discard(worker_id)
+                    try:
+                        current = self.inspect(worker, self.inventory())
+                    finally:
+                        self.stopping.add(worker_id)
+                if current['status'] in ('stopped', 'missing'):
+                    self.event(worker['name'] + ': остановлен')
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Остановка не подтверждена: сервис ещё работает или был запущен повторно. Откройте журнал.')
+                time.sleep(1)
+        except Exception as error:
+            message = redact(str(error))
+            self.event(worker['name'] + ': ошибка остановки: ' + message)
+            with (self.directory / (worker_id + '.log')).open('a', encoding='utf-8') as out:
+                out.write('\nОшибка остановки: ' + message + '\n')
+        finally:
+            with self.lock:
+                self.stopping.discard(worker_id)
+            self.refresh()
 
     def logs(self, worker_id):
         worker = next((w for w in self.workers if w['id'] == worker_id), None)
@@ -274,7 +357,7 @@ def handler(center, port):
                     return self.send(200, {'text': center.logs(match[1])})
                 except ValueError as error:
                     return self.send(404, {'error': str(error)})
-            static = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css')}
+            static = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/favicon.svg': ('favicon.svg', 'image/svg+xml')}
             if route in static:
                 filename, mime = static[route]
                 return self.send(200, (ROOT / filename).read_text(encoding='utf-8'), mime + '; charset=utf-8')
@@ -283,11 +366,12 @@ def handler(center, port):
         def do_POST(self):
             if not self.allowed(mutation=True):
                 return self.send(403, {'error': 'Недопустимый источник запроса'})
-            match = re.fullmatch(r'/api/workers/([a-z0-9-]+)/start', self.path)
+            match = re.fullmatch(r'/api/workers/([a-z0-9-]+)/(start|stop)', self.path)
             if not match:
                 return self.send(404, {'error': 'Не найдено'})
             try:
-                return self.send(202, {'message': center.start(match[1])})
+                action = center.start if match[2] == 'start' else center.stop
+                return self.send(202, {'message': action(match[1])})
             except ValueError as error:
                 return self.send(409, {'error': str(error)})
             except Exception as error:
